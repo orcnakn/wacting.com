@@ -6,6 +6,7 @@ import '../../app/widgets/modern_card.dart';
 import '../../core/services/social_auth_service.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/models/icon_model.dart';
+import '../../core/config/app_config.dart';
 import '../root_navigation.dart';
 import '../grid/day_night_layer.dart';
 
@@ -29,7 +30,7 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   void initState() {
     super.initState();
-    socketService.connect('http://127.0.0.1:3000');
+    socketService.connect(AppConfig.socketUrl);
   }
 
   @override
