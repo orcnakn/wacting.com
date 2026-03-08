@@ -1,0 +1,447 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+  binaryTargets   = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CORE USER
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String  @id @default(uuid())
+  deviceId     String? @unique
+  googleId     String? @unique
+  facebookId   String? @unique
+  instagramId  String? @unique
+  email        String? @unique
+  twitterUrl   String?
+  // User profile URLs
+  facebookUrl  String?
+  instagramUrl String?
+
+  role   String @default("USER") // USER, ADMIN
+  status String @default("ACTIVE") // ACTIVE, BANNED
+
+  // Profile
+  avatarUrl   String?
+  slogan      String? @db.VarChar(100)
+  description String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // A user can own 0 or 1 active map icon
+  icon Icon?
+
+  // WAC economy
+  wac UserWac?
+
+  // RAC protest economy
+  rac              UserRac?
+  racPoolsCreated  RacPool[] @relation("RacRep")
+  racPoolsTargeted RacPool[] @relation("RacTarget")
+
+  // Transaction history
+  transactions Transaction[]
+
+  // Social
+  followers Follow[] @relation("Following")
+  following Follow[] @relation("Follower")
+
+  notifications Notification[] @relation("UserNotifications")
+
+  // Admin moderation
+  reportsSubmitted Report[] @relation("Reporter")
+  reportsReceived  Report[] @relation("Reported")
+
+  // Campaign Voting System
+  campaignPolls CampaignPoll[] @relation("LeaderPolls")
+  pollVotes     PollVote[]     @relation("UserPollVotes")
+
+  // Feed & Social additions
+  campaignsFollowed CampaignFollow[] @relation("CampaignsFollowed")
+  campaignFollowers CampaignFollow[] @relation("UserCampaignFollows")
+  sentMessages      DirectMessage[]  @relation("SentMessages")
+  receivedMessages  DirectMessage[]  @relation("ReceivedMessages")
+
+  // Daily snapshot entries
+  snapshotEntries SnapshotEntry[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WAC ECONOMY
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Represents a user's WAC balance inside the ranking system.
+/// balanceUpdatedAt is the tie-breaker: earlier timestamp = higher rank on equal balance.
+/// It is ONLY updated on explicit Deposit or Exit — never during auto-compound.
+model UserWac {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  /// Current WAC in the ranking system (includes compounded rewards)
+  wacBalance Decimal @default(0) @db.Decimal(30, 6)
+
+  /// Tie-breaker timestamp — frozen on auto-compound, updated only on Deposit/Exit
+  balanceUpdatedAt DateTime @default(now())
+
+  /// When false the user has exited and is not included in ranking/snapshot
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+}
+
+/// Singleton row tracking the total WAC held in the Treasury (exit tax pool)
+model Treasury {
+  id        String   @id @default("singleton")
+  balance   Decimal  @default(0) @db.Decimal(30, 6)
+  updatedAt DateTime @updatedAt
+}
+
+/// One row per midnight snapshot cycle
+model DailySnapshot {
+  id                 String             @id @default(uuid())
+  /// Unix day number: floor(Date.UTC / 86400000)
+  epoch              Int                @unique
+  /// Hex-encoded Merkle root of all SnapshotEntry reward leaves
+  merkleRoot         String?
+  totalUsers         Int
+  totalRewarded      Decimal            @db.Decimal(30, 6)
+  treasuryBalance    Decimal            @db.Decimal(30, 6)
+  createdAt          DateTime           @default(now())
+  entries            SnapshotEntry[]
+  racSnapshotEntries RacSnapshotEntry[]
+}
+
+/// Per-user record inside a snapshot — stores rank, reward, and claim status
+model SnapshotEntry {
+  id         String        @id @default(uuid())
+  snapshotId String
+  snapshot   DailySnapshot @relation(fields: [snapshotId], references: [id])
+  userId     String
+  user       User          @relation(fields: [userId], references: [id])
+  rank       Int
+  usersBelow Int
+  rewardWac  Decimal       @db.Decimal(30, 6)
+  /// Will be set to true after the user calls /wac/claim-proof and the on-chain tx is confirmed
+  claimed    Boolean       @default(false)
+
+  @@unique([snapshotId, userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRANSACTION LEDGER
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Transaction {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  amount    Decimal  @db.Decimal(30, 6)
+  type      TxType
+  note      String?  @db.VarChar(255)
+  createdAt DateTime @default(now())
+}
+
+enum TxType {
+  WAC_DEPOSIT
+  WAC_EXIT_USER // 70% returned to user liquid balance
+  WAC_EXIT_TREASURY // 30% sent to treasury
+  WAC_DAILY_REWARD // auto-compound reward
+  RAC_MINTED // 60% of exit balance minted as RAC
+  RAC_POOL_DEPOSIT // user deposits RAC into a protest pool
+  RAC_POOL_DECAY // daily decay subtracted from pool
+  RAC_POOL_BONUS // tier bonus added to pool as RAC
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// RAC PROTEST ECONOMY
+// ───────────────────────────────────────────────────────────────────────────────
+
+/// RAC wallet — minted on WAC exit (2 × 30% = 60%). Integer only, no fractions.
+model UserRac {
+  id            String               @id @default(uuid())
+  userId        String               @unique
+  user          User                 @relation(fields: [userId], references: [id])
+  racBalance    BigInt               @default(0) // always integer RAC
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  contributions RacPoolParticipant[]
+}
+
+/// One protest pool per target campaign.
+/// The first depositor becomes the representative in the leaderboard.
+/// Ranked by totalBalance alongside WAC users, but works negatively.
+model RacPool {
+  id               String               @id @default(uuid())
+  targetUserId     String               @unique // one pool per campaign/user
+  targetUser       User                 @relation("RacTarget", fields: [targetUserId], references: [id])
+  representativeId String
+  representative   User                 @relation("RacRep", fields: [representativeId], references: [id])
+  totalBalance     BigInt               @default(0)
+  participantCount Int                  @default(0)
+  isActive         Boolean              @default(true)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  participants     RacPoolParticipant[]
+  snapshotEntries  RacSnapshotEntry[]
+}
+
+/// Tracks each user's RAC contribution to a pool.
+model RacPoolParticipant {
+  id           String   @id @default(uuid())
+  poolId       String
+  pool         RacPool  @relation(fields: [poolId], references: [id])
+  userId       String
+  userRac      UserRac  @relation(fields: [userId], references: [userId])
+  contribution BigInt // integer RAC deposited into this pool
+  joinedAt     DateTime @default(now())
+
+  @@unique([poolId, userId])
+}
+
+/// Daily snapshot record for a RAC pool's rank, decay, and bonus.
+model RacSnapshotEntry {
+  id          String        @id @default(uuid())
+  snapshotId  String
+  snapshot    DailySnapshot @relation(fields: [snapshotId], references: [id])
+  poolId      String
+  pool        RacPool       @relation(fields: [poolId], references: [id])
+  rank        Int
+  usersBelow  Int // individual WAC + RAC participants ranked below
+  decayAmount BigInt // participantCount × 1  (subtracted)
+  bonusAmount BigInt // tier bonus added as RAC
+  netChange   BigInt // bonusAmount - decayAmount
+
+  @@unique([snapshotId, poolId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAP / ICON
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Icon {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  slogan     String @db.VarChar(50)
+  colorHex   String @db.VarChar(7)
+  shapeIndex Int    @default(0)
+
+  // Aura driven by WAC — computed dynamically via ranking_engine / growth_calculator
+  auraRadius  Float @default(0.0)
+  exploreMode Int   @default(0) // 0=City, 1=Country, 2=World
+
+  followerCount Int @default(0)
+
+  // Last known coordinate
+  lastKnownX Float @default(0)
+  lastKnownY Float @default(0)
+
+  // Geographic Movement Constraints
+  restrictedContinents String[]
+  restrictedCountries  String[]
+  restrictedCities     String[]
+
+  visits IconCountryVisit[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model IconCountryVisit {
+  id          String   @id @default(uuid())
+  iconId      String
+  icon        Icon     @relation(fields: [iconId], references: [id])
+  countryName String   @db.VarChar(100)
+  visitCount  Int      @default(1)
+  firstVisit  DateTime @default(now())
+  lastVisit   DateTime @updatedAt
+
+  @@unique([iconId, countryName])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOCIAL
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Follow {
+  id String @id @default(uuid())
+
+  followerId String
+  follower   User   @relation("Follower", fields: [followerId], references: [id])
+
+  followingId String
+  following   User   @relation("Following", fields: [followingId], references: [id])
+
+  status FollowStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([followerId, followingId])
+}
+
+enum FollowStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation("UserNotifications", fields: [userId], references: [id])
+  type      NotifType
+  title     String
+  message   String    @db.Text
+  isRead    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+}
+
+enum NotifType {
+  FOLLOW_REQUEST
+  FOLLOW_ACCEPTED
+  POLL_CREATED
+  POLL_CLOSED
+  SYSTEM
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODERATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Report {
+  id         String   @id @default(uuid())
+  reason     String   @db.VarChar(500)
+  reporterId String
+  reporter   User     @relation("Reporter", fields: [reporterId], references: [id])
+  reportedId String
+  reported   User     @relation("Reported", fields: [reportedId], references: [id])
+  createdAt  DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FACTION / VOTING
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Poll {
+  id          String     @id @default(uuid())
+  commanderId String
+  commander   User       @relation("CommanderPolls", fields: [commanderId], references: [id])
+  targetId    String
+  question    String     @db.VarChar(255)
+  status      PollStatus @default(ACTIVE)
+  votes       Vote[]
+  createdAt   DateTime   @default(now())
+}
+
+enum PollStatus {
+  ACTIVE
+  COMPLETED
+  PASSED
+  FAILED
+}
+
+model Vote {
+  id        String   @id @default(uuid())
+  pollId    String
+  poll      Poll     @relation(fields: [pollId], references: [id])
+  voterId   String
+  voter     User     @relation("UserVotes", fields: [voterId], references: [id])
+  choice    Boolean
+  weight    Decimal  @db.Decimal(30, 6)
+  createdAt DateTime @default(now())
+
+  @@unique([pollId, voterId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CAMPAIGN VOTING SYSTEM
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A poll created by a campaign leader — Twitter/X style with up to 5 options.
+/// Results are determined by WAC weight of votes, not headcount.
+model CampaignPoll {
+  id           String       @id @default(uuid())
+  campaignId   String       // Leader's userId
+  leader       User         @relation("LeaderPolls", fields: [campaignId], references: [id])
+  title        String       @db.VarChar(140)
+  description  String?      @db.Text
+  status       PollStatus   @default(ACTIVE)
+  winnerOption String?      // Set on close: text of winning option
+  endsAt       DateTime
+  createdAt    DateTime     @default(now())
+  options      PollOption[]
+  votes        PollVote[]
+}
+
+/// One of 1-5 options inside a CampaignPoll.
+model PollOption {
+  id     String       @id @default(uuid())
+  pollId String
+  poll   CampaignPoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  text   String       @db.VarChar(100)
+  votes  PollVote[]
+
+  @@unique([pollId, text])
+}
+
+/// One vote per user per poll. wacWeight is captured at the moment of voting.
+model PollVote {
+  id        String     @id @default(uuid())
+  pollId    String
+  poll      CampaignPoll @relation(fields: [pollId], references: [id])
+  optionId  String
+  option    PollOption @relation(fields: [optionId], references: [id])
+  voterId   String
+  voter     User       @relation("UserPollVotes", fields: [voterId], references: [id])
+  wacWeight Decimal    @db.Decimal(30, 6) // snapshot of voter's WAC balance
+  createdAt DateTime   @default(now())
+
+  @@unique([pollId, voterId])  // 1 vote per user per poll
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOCIAL CAMPAIGNS & DIRECT MESSAGES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CampaignFollow {
+  id         String   @id @default(uuid())
+  followerId String
+  follower   User     @relation("UserCampaignFollows", fields: [followerId], references: [id])
+  targetId   String // The User ID of the campaign leader
+  target     User     @relation("CampaignsFollowed", fields: [targetId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@unique([followerId, targetId])
+}
+
+model CampaignHistory {
+  id          String   @id @default(uuid())
+  userId      String
+  campaignId  String
+  joinedAt    DateTime
+  exitedAt    DateTime @default(now())
+  totalEarned Decimal  @default(0) @db.Decimal(30, 6)
+}
+
+model DirectMessage {
+  id         String   @id @default(uuid())
+  senderId   String
+  sender     User     @relation("SentMessages", fields: [senderId], references: [id])
+  receiverId String
+  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  content    String   @db.Text
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}

@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  wacting-server:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://wacting_db_user:development_password@postgres:5432/wacting?schema=public
+      - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  postgres:
+    # We must use a PostGIS enabled image to support spatial querying via Prisma
+    image: postgis/postgis:15-3.3
+    container_name: wacting_postgres
+    environment:
+      POSTGRES_USER: wacting_db_user
+      POSTGRES_PASSWORD: development_password
+      POSTGRES_DB: wacting
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U wacting_db_user -d wacting" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: wacting_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

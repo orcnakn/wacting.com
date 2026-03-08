@@ -1,0 +1,24 @@
+# Node
+node_modules/
+dist/
+.env
+
+# Prisma generated engines
+wacting-server/node_modules/.prisma/client/*.node
+wacting-server/node_modules/.cache/
+
+# Flutter
+wacting/.dart_tool/
+wacting/build/
+wacting/.flutter-plugins
+wacting/.flutter-plugins-dependencies
+wacting/pubspec.lock
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db

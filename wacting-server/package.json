@@ -1,0 +1,37 @@
+{
+  "name": "wacting-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@prisma/client": "6.0.0",
+    "bullmq": "^5.70.1",
+    "fastify": "^5.7.4",
+    "firebase-admin": "^13.7.0",
+    "ioredis": "^5.9.3",
+    "jsonwebtoken": "^9.0.3",
+    "pino": "^10.3.1",
+    "rbush": "^4.0.1",
+    "socket.io": "^4.8.3",
+    "which-country": "^1.0.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@prisma/config": "^7.4.2",
+    "@types/node": "^25.3.2",
+    "@types/rbush": "^4.0.0",
+    "prisma": "6.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
