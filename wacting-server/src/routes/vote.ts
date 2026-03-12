@@ -1,9 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
+import { authenticateToken } from '../middleware/auth.js';
 
 const prisma = new PrismaClient();
 
 export async function voteRoutes(fastify: FastifyInstance) {
+
+    fastify.addHook('onRequest', authenticateToken);
 
     // ─────────────────────────────────────────────────────────────────────────────
     // CREATE POLL (Campaign Leader only)
@@ -12,7 +15,7 @@ export async function voteRoutes(fastify: FastifyInstance) {
     // ─────────────────────────────────────────────────────────────────────────────
     fastify.post('/create', async (request, reply) => {
         try {
-            const user = (request as any).user || { id: 'mockLeaderId_1' };
+            const user = (request as any).user;
             const { title, description, options, durationHours } = request.body as {
                 title: string;
                 description?: string;
@@ -95,7 +98,7 @@ export async function voteRoutes(fastify: FastifyInstance) {
     // ─────────────────────────────────────────────────────────────────────────────
     fastify.post('/:pollId/vote', async (request, reply) => {
         try {
-            const user = (request as any).user || { id: 'mockVoterId_1' };
+            const user = (request as any).user;
             const { pollId } = request.params as { pollId: string };
             const { optionId } = request.body as { optionId: string };
 
@@ -141,7 +144,7 @@ export async function voteRoutes(fastify: FastifyInstance) {
     // ─────────────────────────────────────────────────────────────────────────────
     fastify.post('/:pollId/close', async (request, reply) => {
         try {
-            const user = (request as any).user || { id: 'mockLeaderId_1' };
+            const user = (request as any).user;
             const { pollId } = request.params as { pollId: string };
 
             const poll = await (prisma as any).campaignPoll.findUnique({
@@ -185,7 +188,7 @@ export async function voteRoutes(fastify: FastifyInstance) {
     // ─────────────────────────────────────────────────────────────────────────────
     fastify.get('/history', async (request, reply) => {
         try {
-            const user = (request as any).user || { id: 'mockVoterId_1' };
+            const user = (request as any).user;
             const userVotes = await (prisma as any).pollVote.findMany({
                 where: { voterId: user.id },
                 orderBy: { createdAt: 'desc' },

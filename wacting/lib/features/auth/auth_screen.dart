@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import '../../app/theme.dart';
 import '../../app/widgets/modern_button.dart';
 import '../../app/widgets/modern_card.dart';
 import '../../core/services/social_auth_service.dart';
 import '../../core/services/socket_service.dart';
+import '../../core/services/api_service.dart';
 import '../../core/models/icon_model.dart';
 import '../../core/config/app_config.dart';
 import '../root_navigation.dart';
@@ -48,9 +51,15 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _handleAuth(bool isSignUp) async {
-    final username = _usernameController.text.trim();
-    if (username.isEmpty || username.length < 3) {
-      setState(() => _errorMessage = "Username must be at least 3 characters.");
+    final email = _usernameController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty) {
+      setState(() => _errorMessage = "Email is required.");
+      return;
+    }
+    if (password.isEmpty || password.length < 6) {
+      setState(() => _errorMessage = "Password must be at least 6 characters.");
       return;
     }
 
@@ -59,14 +68,29 @@ class _AuthScreenState extends State<AuthScreen> {
       _errorMessage = null;
     });
 
-    // Mock API Call delay (In reality, Dio POST to /auth)
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      if (isSignUp) {
+        await apiService.emailRegister(email, password);
+      } else {
+        await apiService.emailLogin(email, password);
+      }
 
-    // Simulate success and navigate to main world
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const RootNavigation()),
-      );
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const RootNavigation()),
+        );
+      }
+    } catch (e) {
+      String msg = 'Authentication failed.';
+      if (e is DioException && e.response?.data != null) {
+        msg = (e.response!.data as Map<String, dynamic>)['error'] ?? msg;
+      }
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = msg;
+        });
+      }
     }
   }
 
@@ -96,7 +120,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
       // Simulated API Transmit to Wacting.com Node Backend
       await Future.delayed(const Duration(seconds: 1));
-      
+
       print("Logged in via $provider in Mock Mode!");
 
       if (mounted) {
@@ -116,13 +140,11 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: const Color(0xFF0D0D0D), // Keep dark for map background
       body: Stack(
         children: [
           // Background animated map
           _buildBackgroundMap(),
-
-          // Removed the black dark overlay since DayNightLayer does this naturally
 
           // Auth Content
           Center(
@@ -132,9 +154,9 @@ class _AuthScreenState extends State<AuthScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.public, size: 80, color: Color(0xFF007AFF)),
+                  Icon(Icons.public, size: 80, color: AppColors.navyPrimary),
                   const SizedBox(height: 24),
-                  const Text(
+                  Text(
                     'WACTING',
                     textAlign: TextAlign.center,
                     style: TextStyle(
@@ -145,7 +167,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     'Establish your planetary dominance.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.white70, fontSize: 16),
@@ -166,13 +188,13 @@ class _AuthScreenState extends State<AuthScreen> {
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             margin: const EdgeInsets.only(bottom: 16),
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF00C6FF), Color(0xFF0072FF)],
+                              gradient: LinearGradient(
+                                colors: [AppColors.accentTeal, AppColors.accentBlue],
                               ),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: const Text(
-                              '⚡ DEV — Giriş Yap (Test)',
+                              'DEV — Giris Yap (Test)',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 color: Colors.white,
@@ -185,12 +207,12 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                         TextField(
                           controller: _usernameController,
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(color: AppColors.textPrimary),
                           decoration: InputDecoration(
                             hintText: 'Commander name or email',
-                            hintStyle: const TextStyle(color: Colors.white38),
+                            hintStyle: TextStyle(color: AppColors.textTertiary),
                             filled: true,
-                            fillColor: const Color(0xFF1C1C1E),
+                            fillColor: AppColors.surfaceLight,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                               borderSide: BorderSide.none,
@@ -201,12 +223,12 @@ class _AuthScreenState extends State<AuthScreen> {
                         TextField(
                           controller: _passwordController,
                           obscureText: true,
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(color: AppColors.textPrimary),
                           decoration: InputDecoration(
                             hintText: 'Password',
-                            hintStyle: const TextStyle(color: Colors.white38),
+                            hintStyle: TextStyle(color: AppColors.textTertiary),
                             filled: true,
-                            fillColor: const Color(0xFF1C1C1E),
+                            fillColor: AppColors.surfaceLight,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                               borderSide: BorderSide.none,
@@ -217,7 +239,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         if (_errorMessage != null)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 16.0),
-                            child: Text(_errorMessage!, style: const TextStyle(color: Colors.redAccent)),
+                            child: Text(_errorMessage!, style: TextStyle(color: AppColors.accentRed)),
                           ),
                         Row(
                           children: [
@@ -237,7 +259,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           ],
                         ),
                         const SizedBox(height: 32),
-                        const Text('OR CONTINUE WITH', style: TextStyle(color: Colors.white54, fontSize: 12, letterSpacing: 2)),
+                        Text('OR CONTINUE WITH', style: TextStyle(color: AppColors.textTertiary, fontSize: 12, letterSpacing: 2)),
                         const SizedBox(height: 16),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -265,11 +287,11 @@ class _AuthScreenState extends State<AuthScreen> {
       initialData: const [],
       builder: (context, snapshot) {
         final icons = snapshot.data ?? [];
-        
+
         final markers = icons.map((icon) {
             final latLng = _offsetToLatLng(icon.position);
             final size = (icon.size * 2).clamp(4.0, 50.0).toDouble();
-            
+
             return Marker(
               point: latLng,
               width: size,
@@ -279,7 +301,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   color: icon.color,
                   shape: BoxShape.circle,
                   boxShadow: [
-                    BoxShadow(color: icon.color.withOpacity(0.8), blurRadius: size/2.0),
+                    BoxShadow(color: icon.color.withOpacity(0.5), blurRadius: size/2.0),
                   ]
                 ),
               ),
@@ -322,7 +344,7 @@ class _AuthScreenState extends State<AuthScreen> {
         height: 56,
         width: 56,
         decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1E),
+          color: AppColors.surfaceLight,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: color.withOpacity(0.5), width: 1.5),
         ),

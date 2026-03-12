@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 
 class ModernCard extends StatelessWidget {
   final Widget child;
@@ -9,7 +10,7 @@ class ModernCard extends StatelessWidget {
     Key? key,
     required this.child,
     this.padding = const EdgeInsets.all(20.0),
-    this.backgroundColor = const Color(0xFF1C1C1E), // Apple Dark Mode Surface
+    this.backgroundColor,
   }) : super(key: key);
 
   @override
@@ -17,9 +18,16 @@ class ModernCard extends StatelessWidget {
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: backgroundColor ?? AppColors.surfaceWhite,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2C2C2E), width: 1),
+        border: Border.all(color: AppColors.borderLight, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: child,
     );

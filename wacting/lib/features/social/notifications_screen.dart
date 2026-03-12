@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../app/theme.dart';
 import '../../app/widgets/modern_card.dart';
 
 class NotificationsScreen extends StatelessWidget {
@@ -38,15 +39,15 @@ class NotificationsScreen extends StatelessWidget {
     ];
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.pageBackground,
       appBar: AppBar(
-        title: const Text('Alerts & Intel', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
+        title: Text('Alerts & Intel', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.textPrimary)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
       ),
       body: notifications.isEmpty
-          ? const Center(child: Text('No intel received.', style: TextStyle(color: Colors.white54)))
+          ? Center(child: Text('No intel received.', style: TextStyle(color: AppColors.textTertiary)))
           : ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: notifications.length,
@@ -63,7 +64,7 @@ class NotificationsScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         CircleAvatar(
-                          backgroundColor: _getIconColor(n['type'] as String).withOpacity(0.2),
+                          backgroundColor: _getIconColor(n['type'] as String).withOpacity(0.08),
                           child: Icon(_getIconData(n['type'] as String), color: _getIconColor(n['type'] as String)),
                         ),
                         const SizedBox(width: 16),
@@ -77,21 +78,21 @@ class NotificationsScreen extends StatelessWidget {
                                   Text(
                                     n['title'] as String,
                                     style: TextStyle(
-                                      color: isRead ? Colors.white70 : Colors.white,
+                                      color: isRead ? AppColors.textSecondary : AppColors.textPrimary,
                                       fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
                                       fontSize: 16,
                                     ),
                                   ),
                                   Text(
                                     n['time'] as String,
-                                    style: const TextStyle(color: Colors.blueAccent, fontSize: 12),
+                                    style: TextStyle(color: AppColors.accentBlue, fontSize: 12),
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 n['message'] as String,
-                                style: const TextStyle(color: Colors.white54, fontSize: 14),
+                                style: TextStyle(color: AppColors.textTertiary, fontSize: 14),
                               ),
                               if (isActionable) ...[
                                 const SizedBox(height: 12),
@@ -100,8 +101,8 @@ class NotificationsScreen extends StatelessWidget {
                                   children: [
                                     OutlinedButton(
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.redAccent,
-                                        side: const BorderSide(color: Colors.redAccent),
+                                        foregroundColor: AppColors.accentRed,
+                                        side: BorderSide(color: AppColors.accentRed),
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                       ),
                                       onPressed: () {},
@@ -110,8 +111,8 @@ class NotificationsScreen extends StatelessWidget {
                                     const SizedBox(width: 12),
                                     ElevatedButton(
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.cyanAccent,
-                                        foregroundColor: Colors.black,
+                                        backgroundColor: AppColors.accentTeal,
+                                        foregroundColor: Colors.white,
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                       ),
                                       onPressed: () {},
@@ -148,13 +149,13 @@ class NotificationsScreen extends StatelessWidget {
   Color _getIconColor(String type) {
     switch (type) {
       case 'new_follower':
-        return Colors.blueAccent;
+        return AppColors.accentBlue;
       case 'token_received':
-        return Colors.amberAccent;
+        return AppColors.accentAmber;
       case 'request_approved':
-        return Colors.greenAccent;
+        return AppColors.accentGreen;
       default:
-        return Colors.white54;
+        return AppColors.textTertiary;
     }
   }
 }

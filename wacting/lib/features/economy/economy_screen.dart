@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../app/theme.dart';
 import '../../app/widgets/modern_card.dart';
 import '../../app/widgets/modern_button.dart';
 
@@ -8,9 +9,9 @@ class EconomyScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.pageBackground,
       appBar: AppBar(
-        title: const Text('Store', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
+        title: Text('Store', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.textPrimary)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
@@ -25,19 +26,19 @@ class EconomyScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             ModernCard(
-              backgroundColor: const Color(0xFF007AFF).withOpacity(0.1),
+              backgroundColor: AppColors.accentBlue.withOpacity(0.06),
               child: Column(
-                children: const [
-                  Text('Current Balance', style: TextStyle(color: Colors.white54, fontSize: 14)),
-                  SizedBox(height: 8),
-                  Text('12,450 WAC', style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
+                children: [
+                  Text('Current Balance', style: TextStyle(color: AppColors.textTertiary, fontSize: 14)),
+                  const SizedBox(height: 8),
+                  Text('12,450 WAC', style: TextStyle(color: AppColors.textPrimary, fontSize: 36, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
             const SizedBox(height: 32),
-            const Text(
+            Text(
               'Token Bundles',
-              style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 16),
+              style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 16),
             ),
             const SizedBox(height: 16),
             _buildStoreItem('Starter Pack', '1,000 WAC', '\$0.99'),
@@ -63,13 +64,13 @@ class EconomyScreen extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                    Text(title, style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)),
                     if (isPopular) ...[
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF007AFF),
+                          color: AppColors.accentBlue,
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: const Text('POPULAR', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
@@ -78,7 +79,7 @@ class EconomyScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(amount, style: const TextStyle(color: Colors.white54, fontSize: 14)),
+                Text(amount, style: TextStyle(color: AppColors.textTertiary, fontSize: 14)),
               ],
             ),
             ModernButton(

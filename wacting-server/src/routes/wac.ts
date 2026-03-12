@@ -40,7 +40,7 @@ function requireAuth(fastify: FastifyInstance) {
         const authHeader = request.headers.authorization;
         if (!authHeader) return reply.code(401).send({ error: 'Missing token' });
         try {
-            const token = authHeader.split(' ')[1];
+            const token = authHeader.split(' ')[1]!;
             const decoded = jwt.verify(token, JWT_SECRET) as any;
             (request as any).userId = decoded.userId;
         } catch {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 
 class ModernButton extends StatelessWidget {
   final String text;
@@ -10,7 +11,7 @@ class ModernButton extends StatelessWidget {
     Key? key,
     required this.text,
     required this.onPressed,
-    this.color = const Color(0xFF007AFF), // Clean modern iOS-style blue
+    this.color = const Color(0xFF2C3E50),
     this.isGhost = false,
   }) : super(key: key);
 
@@ -23,14 +24,17 @@ class ModernButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         decoration: BoxDecoration(
           color: isGhost ? Colors.transparent : color,
-          border: isGhost ? Border.all(color: Colors.white24, width: 1) : null,
+          border: Border.all(
+            color: isGhost ? AppColors.borderMedium : color,
+            width: 1,
+          ),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(
           text,
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: isGhost ? Colors.white : Colors.white,
+            color: isGhost ? AppColors.navyPrimary : Colors.white,
             fontWeight: FontWeight.w600,
             fontSize: 16,
             letterSpacing: 0.5,

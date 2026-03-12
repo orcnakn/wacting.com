@@ -1,42 +1,28 @@
 import { describe, it, expect } from 'vitest';
-import { calculateSize, DECAY_RATE, FOLLOWER_WEIGHT, BASE_SIZE } from '../../src/engine/growth_calculator';
+import { calculateSize, computeIconAreaM2, computeAuraRadius, BASE_SIZE, FOLLOWER_WEIGHT, AREA_PER_WAC_M2 } from '../../src/engine/growth_calculator';
 
 describe('GrowthCalculator', () => {
-    it('Returns base size with 0 followers and 0 tokens', () => {
-        expect(calculateSize([], 0, Date.now())).toBe(BASE_SIZE);
+    it('Returns base size with 0 followers', () => {
+        expect(calculateSize(0)).toBe(BASE_SIZE);
     });
 
-    it('Scales linearly with permanent followers', () => {
-        // 10 followers = 5.0 size growth + 1.0 base
-        expect(calculateSize([], 10, Date.now())).toBe(6.0);
+    it('Scales linearly with followers', () => {
+        // 10 followers = 10 * 0.5 + 1.0 base = 6.0
+        expect(calculateSize(10)).toBe(6.0);
     });
 
-    it('Calculates token inflation correctly right at spend time', () => {
-        const now = Date.now();
-        const tokenHistory = [{ amount: 100, timestamp: now }];
-
-        // e^0 = 1.0. Total size = 100 + 1.0 = 101.0
-        expect(calculateSize(tokenHistory, 0, now)).toBe(101.0);
+    it('Applies FOLLOWER_WEIGHT per follower', () => {
+        expect(calculateSize(1)).toBe(BASE_SIZE + FOLLOWER_WEIGHT);
+        expect(calculateSize(2)).toBe(BASE_SIZE + 2 * FOLLOWER_WEIGHT);
     });
 
-    it('Decays token inflation exponentially over time', () => {
-        const timeSpent = Date.now();
-        const tokenHistory = [{ amount: 100, timestamp: timeSpent }];
-
-        // Simulate checking 693 seconds later (~11.55 minutes later, the half-life of DECAY_RATE 0.001)
-        // 0.001 * 693 = 0.693; e^-0.693 ≈ 0.5
-        const now = timeSpent + (693 * 1000);
-
-        const calculatedSize = calculateSize(tokenHistory, 0, now);
-        // Should have decayed to roughly half (50) + 1 base = 51
-        expect(calculatedSize).toBeGreaterThan(50);
-        expect(calculatedSize).toBeLessThan(52);
+    it('Computes icon area from WAC balance', () => {
+        expect(computeIconAreaM2(100)).toBe(100 * AREA_PER_WAC_M2);
     });
 
-    it('Ignores token spends from the future', () => {
-        const now = Date.now();
-        const tokenHistory = [{ amount: 500, timestamp: now + 50000 }];
-
-        expect(calculateSize(tokenHistory, 0, now)).toBe(BASE_SIZE);
+    it('Computes aura radius from area', () => {
+        const area = 100 * AREA_PER_WAC_M2;
+        const expected = Math.sqrt(area / Math.PI);
+        expect(computeAuraRadius(area)).toBeCloseTo(expected, 5);
     });
 });

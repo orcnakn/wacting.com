@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 
 const prisma = new PrismaClient();
@@ -23,24 +24,93 @@ const socialSchema = z.object({
     username: z.string().min(3).max(20).optional(),
 });
 
+const emailRegisterSchema = z.object({
+    email: z.string().email(),
+    password: z.string().min(6),
+    username: z.string().min(3).max(20).optional(),
+});
+
+const emailLoginSchema = z.object({
+    email: z.string().email(),
+    password: z.string().min(1),
+});
+
 export async function authRoutes(fastify: FastifyInstance) {
+
+    // ── Email/Password Register ──────────────────────────────────────────────
+    fastify.post('/auth/email/register', async (request, reply) => {
+        try {
+            const { email, password, username } = emailRegisterSchema.parse(request.body);
+
+            const existing = await prisma.user.findUnique({ where: { email } });
+            if (existing) {
+                return reply.code(409).send({ error: 'Email already registered.' });
+            }
+
+            const passwordHash = await bcrypt.hash(password, 10);
+            const displayName = (username || email.split('@')[0]) as string;
+
+            const user = await prisma.user.create({
+                data: {
+                    email,
+                    passwordHash,
+                    slogan: displayName,
+                    icon: {
+                        create: {
+                            slogan: displayName,
+                            colorHex: '#2C3E50',
+                            shapeIndex: 0,
+                            lastKnownX: 350.0,
+                            lastKnownY: 350.0
+                        }
+                    }
+                }
+            });
+
+            const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '30d' });
+            return reply.code(201).send({ token, userId: user.id });
+        } catch (err: any) {
+            fastify.log.error(`Email registration failed: ${err}`);
+            return reply.code(400).send({ error: err.message || 'Invalid payload' });
+        }
+    });
+
+    // ── Email/Password Login ─────────────────────────────────────────────────
+    fastify.post('/auth/email/login', async (request, reply) => {
+        try {
+            const { email, password } = emailLoginSchema.parse(request.body);
+
+            const user = await prisma.user.findUnique({ where: { email } });
+            if (!user || !user.passwordHash) {
+                return reply.code(401).send({ error: 'Invalid email or password.' });
+            }
+
+            const valid = await bcrypt.compare(password, user.passwordHash);
+            if (!valid) {
+                return reply.code(401).send({ error: 'Invalid email or password.' });
+            }
+
+            const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '30d' });
+            return reply.send({ token, userId: user.id });
+        } catch (err: any) {
+            fastify.log.error(`Email login failed: ${err}`);
+            return reply.code(400).send({ error: 'Invalid payload' });
+        }
+    });
 
     // Register a new user device to the map
     fastify.post('/auth/register', async (request, reply) => {
         try {
             const { deviceId, username } = registerSchema.parse(request.body);
 
-            // Check for existing
             const existing = await prisma.user.findUnique({ where: { deviceId } });
             if (existing) {
                 return reply.code(409).send({ error: 'Device already registered.' });
             }
 
-            // Create User and their starter Icon in DB
             const user = await prisma.user.create({
                 data: {
                     deviceId,
-                    tokens: 50, // Initial balance
                     icon: {
                         create: {
                             slogan: 'New Commander',
@@ -53,9 +123,7 @@ export async function authRoutes(fastify: FastifyInstance) {
                 }
             });
 
-            // Generate JWT Token
             const token = jwt.sign({ userId: user.id, deviceId }, JWT_SECRET, { expiresIn: '30d' });
-
             return reply.code(201).send({ token, userId: user.id });
         } catch (err: any) {
             fastify.log.error(`Registration failed: ${err}`);
@@ -75,7 +143,6 @@ export async function authRoutes(fastify: FastifyInstance) {
 
             const token = jwt.sign({ userId: user.id, deviceId }, JWT_SECRET, { expiresIn: '30d' });
             return reply.send({ token, userId: user.id });
-
         } catch (err: any) {
             return reply.code(400).send({ error: 'Invalid payload' });
         }
@@ -86,27 +153,23 @@ export async function authRoutes(fastify: FastifyInstance) {
         try {
             const { provider, providerId, email, username } = socialSchema.parse(request.body);
 
-            // Dynamically check which provider was passed
             const providerField = provider === 'google' ? 'googleId'
                 : provider === 'facebook' ? 'facebookId'
                     : 'instagramId';
 
-            // Check if user already linked this social account
             let user = await prisma.user.findUnique({
                 where: { [providerField]: providerId } as any
             });
 
-            // If new user, create their account and initial Icon
             if (!user) {
                 user = await prisma.user.create({
                     data: {
                         [providerField]: providerId,
                         email: email || null,
-                        tokens: 100, // Social login bonus!
                         icon: {
                             create: {
                                 slogan: username || 'Social Commander',
-                                colorHex: '#FF9500', // Social accounts get orange icons
+                                colorHex: '#FF9500',
                                 shapeIndex: 1,
                                 lastKnownX: 350.0,
                                 lastKnownY: 350.0
@@ -116,10 +179,8 @@ export async function authRoutes(fastify: FastifyInstance) {
                 });
             }
 
-            // Issue the game JWT
             const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '30d' });
             return reply.send({ token, userId: user.id, isNew: !user });
-
         } catch (err: any) {
             fastify.log.error(`Social auth failed: ${err}`);
             return reply.code(400).send({ error: 'Invalid social payload' });

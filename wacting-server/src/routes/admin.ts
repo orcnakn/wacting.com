@@ -37,18 +37,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
         const activeUsers = await prisma.user.count({ where: { status: 'ACTIVE' } });
         const bannedUsers = await prisma.user.count({ where: { status: 'BANNED' } });
 
-        // Count total tokens in circulation
-        const aggregations = await prisma.user.aggregate({
-            _sum: { tokens: true }
-        });
-
-        const totalTokensMinted = aggregations._sum.tokens || 0;
+        // Count total WAC deposited (sum from treasury + active balances)
+        const wacCount = await prisma.userWac.count({ where: { isActive: true } });
 
         return reply.send({
             totalUsers,
             activeUsers,
             bannedUsers,
-            totalTokensMinted: totalTokensMinted.toString() // BigInt to String
+            activeWacUsers: wacCount
         });
     });
 

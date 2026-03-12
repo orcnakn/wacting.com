@@ -9,6 +9,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import '../../core/services/socket_service.dart';
 import '../../core/models/icon_model.dart';
 import '../../app/constants.dart';
+import '../../app/theme.dart';
 import 'day_night_layer.dart';
 
 // ─── Continent → Country mapping ─────────────────────────────────────────────
@@ -393,7 +394,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('Toggled: $label\nTotal regions: ${allSelected.length}'),
-      backgroundColor: Colors.blueAccent,
+      backgroundColor: AppColors.accentBlue,
       duration: const Duration(seconds: 2),
     ));
   }
@@ -627,12 +628,12 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   decoration: BoxDecoration(
                     color: _regionSelectMode
                         ? Colors.orange.withOpacity(0.3)
-                        : Colors.blueAccent.withOpacity(0.2),
+                        : AppColors.accentBlue.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: _regionSelectMode
                           ? Colors.orangeAccent
-                          : Colors.blueAccent.withOpacity(0.5),
+                          : AppColors.accentBlue.withOpacity(0.5),
                     ),
                   ),
                   child: Center(
@@ -649,7 +650,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                                   ? '🗺️ COUNTRIES'
                                   : '🏙️ REGIONS'),
                       style: TextStyle(
-                        color: _regionSelectMode ? Colors.orangeAccent : Colors.blueAccent,
+                        color: _regionSelectMode ? Colors.orangeAccent : AppColors.accentBlue,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 2,
                       ),
@@ -666,12 +667,12 @@ class _GridScreenState extends ConsumerState<GridScreen> {
             left: 20,
             child: FloatingActionButton(
               heroTag: 'center_btn',
-              backgroundColor: const Color(0xFF1E1E1E),
+              backgroundColor: AppColors.navyPrimary,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: Colors.cyanAccent, width: 2)
+                side: BorderSide(color: AppColors.accentTeal, width: 2)
               ),
-              child: const Icon(Icons.center_focus_strong, color: Colors.cyanAccent),
+              child: Icon(Icons.center_focus_strong, color: AppColors.accentTeal),
               onPressed: () => _mapController.move(_initialCenter, 4.0),
             ),
           ),
@@ -684,17 +685,17 @@ class _GridScreenState extends ConsumerState<GridScreen> {
               heroTag: 'pause_btn',
               backgroundColor: _paused
                   ? Colors.amber.shade900
-                  : const Color(0xFF1E1E1E),
+                  : AppColors.navyPrimary,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
                 side: BorderSide(
-                  color: _paused ? Colors.amberAccent : Colors.cyanAccent,
+                  color: _paused ? AppColors.accentAmber : AppColors.accentTeal,
                   width: 2,
                 ),
               ),
               child: Icon(
                 _paused ? Icons.play_arrow : Icons.pause,
-                color: _paused ? Colors.amberAccent : Colors.cyanAccent,
+                color: _paused ? AppColors.accentAmber : AppColors.accentTeal,
               ),
               onPressed: () {
                 setState(() => _paused = !_paused);
@@ -724,14 +725,14 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                 decoration: BoxDecoration(
                   color: Colors.black87,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.cyanAccent, width: 1),
+                  border: Border.all(color: AppColors.accentTeal, width: 1),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('🔒 Restricted (${_totalSelectionCount}):',
-                        style: const TextStyle(color: Colors.cyanAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                    Text('Restricted (${_totalSelectionCount}):',
+                        style: TextStyle(color: AppColors.accentTeal, fontSize: 10, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
                     Text(
                       _selectionSummary,
@@ -752,11 +753,11 @@ class _GridScreenState extends ConsumerState<GridScreen> {
               heroTag: 'region_toggle_btn',
               backgroundColor: _regionSelectMode
                   ? Colors.orange.shade900
-                  : const Color(0xFF0D0D0D),
+                  : AppColors.navyPrimary,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
                 side: BorderSide(
-                  color: _regionSelectMode ? Colors.orangeAccent : Colors.cyanAccent,
+                  color: _regionSelectMode ? Colors.orangeAccent : AppColors.accentTeal,
                   width: 2,
                 ),
               ),
@@ -845,7 +846,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
       showModalBottomSheet(
           context: context,
-          backgroundColor: const Color(0xFF1E1E1E),
+          backgroundColor: AppColors.surfaceWhite,
           isScrollControlled: true,
           shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
           builder: (ctx) {
@@ -867,10 +868,10 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                                       ),
                                       const SizedBox(height: 16),
                                       Text('User: ${icon.id}',
-                                          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                                          style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
                                       const SizedBox(height: 8),
                                       Text('"$slogan"',
-                                          style: const TextStyle(color: Colors.cyanAccent, fontSize: 16, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600),
+                                          style: TextStyle(color: AppColors.accentTeal, fontSize: 16, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600),
                                           textAlign: TextAlign.center),
 
                                       if (nearbyUsers.isNotEmpty) ...[
@@ -878,15 +879,15 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                                           const Align(
                                             alignment: Alignment.centerLeft,
                                             child: Text('Under Influence / Nearby',
-                                                style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 14)),
+                                                style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 14)),
                                           ),
                                           const SizedBox(height: 8),
                                           Container(
                                               height: 120,
                                               decoration: BoxDecoration(
-                                                  color: Colors.black26,
+                                                  color: AppColors.surfaceLight,
                                                   borderRadius: BorderRadius.circular(12),
-                                                  border: Border.all(color: Colors.white12)
+                                                  border: Border.all(color: AppColors.borderLight)
                                               ),
                                               child: ListView.builder(
                                                   itemCount: nearbyUsers.length,
@@ -898,9 +899,9 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                                                           : 'World domination imminent.';
                                                       return ListTile(
                                                           leading: CircleAvatar(radius: 12, backgroundColor: nu.color),
-                                                          title: Text(nu.id, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
-                                                          subtitle: Text('"$nuSlogan"', style: const TextStyle(color: Colors.white54, fontSize: 10, fontStyle: FontStyle.italic), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                                          trailing: Text('${nu.size.toStringAsFixed(1)} Power', style: const TextStyle(color: Colors.cyanAccent, fontSize: 10)),
+                                                          title: Text(nu.id, style: TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+                                                          subtitle: Text('"$nuSlogan"', style: TextStyle(color: AppColors.textTertiary, fontSize: 10, fontStyle: FontStyle.italic), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                          trailing: Text('${nu.size.toStringAsFixed(1)} Power', style: TextStyle(color: AppColors.accentTeal, fontSize: 10)),
                                                           dense: true,
                                                           contentPadding: EdgeInsets.zero,
                                                       );
@@ -910,21 +911,21 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                                       ],
 
                                       const SizedBox(height: 24),
-                                      const Divider(color: Colors.white24),
+                                      Divider(color: AppColors.borderLight),
                                       const SizedBox(height: 16),
-                                      const Text('Send Tokens with Follow Request',
-                                          style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.w600)),
+                                      Text('Send Tokens with Follow Request',
+                                          style: TextStyle(color: AppColors.accentTeal, fontWeight: FontWeight.w600)),
                                       const SizedBox(height: 8),
                                       Slider(
                                           value: tokensToSend, min: 0, max: 1000, divisions: 100,
-                                          activeColor: Colors.cyanAccent,
+                                          activeColor: AppColors.accentTeal,
                                           label: '${tokensToSend.toInt()} WAC',
                                           onChanged: (val) => setModalState(() => tokensToSend = val),
                                       ),
                                       const SizedBox(height: 16),
                                       ElevatedButton(
                                           style: ElevatedButton.styleFrom(
-                                              backgroundColor: Colors.cyanAccent.shade700,
+                                              backgroundColor: AppColors.accentTeal,
                                               minimumSize: const Size(double.infinity, 50),
                                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
                                           ),

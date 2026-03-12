@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import cors from '@fastify/cors';
 import { PrismaClient } from '@prisma/client';
 import { MovementEngine } from './engine/movement_engine.js';
 import { SocketManager } from './socket/socket_manager.js';
@@ -12,6 +13,7 @@ import { racRoutes, racPublicRoutes } from './routes/rac.js';
 import { feedRoutes } from './routes/feed.js';
 import { voteRoutes } from './routes/vote.js';
 import { profileRoutes } from './routes/profile.js';
+import { campaignRoutes } from './routes/campaign.js';
 // import { registerSnapshotCron } from './workers/snapshot_worker.js';
 // import './services/notification_worker.js';
 
@@ -60,7 +62,15 @@ async function start() {
         // await registerSnapshotCron();
         // fastify.log.info('WAC Snapshot Cron Registered (midnight UTC)');
 
-        // 5. HTTP routing
+        // 5. CORS — allow browser requests from any origin (dev + prod)
+        await fastify.register(cors, {
+            origin: true,
+            methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+            allowedHeaders: ['Content-Type', 'Authorization'],
+            credentials: true
+        });
+
+        // 6. HTTP routing
         fastify.register(webhookRoutes);
         fastify.register(authRoutes);
         fastify.register(adminRoutes);
@@ -73,6 +83,7 @@ async function start() {
         fastify.register(feedRoutes, { prefix: '/feed' }); // New Feed APIs
         fastify.register(voteRoutes, { prefix: '/vote' }); // Voting System
         fastify.register(profileRoutes, { prefix: '/api/profile' });
+        fastify.register(campaignRoutes, { prefix: '/campaign' });
 
         fastify.get('/ping', async (request, reply) => {
             return { status: 'ok', time: Date.now(), total_icons: engine.icons.size };

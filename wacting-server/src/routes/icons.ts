@@ -66,9 +66,7 @@ export async function iconRoutes(fastify: FastifyInstance) {
         try {
             const topIcons = await prisma.icon.findMany({
                 orderBy: {
-                    user: {
-                        tokens: 'desc'
-                    }
+                    followerCount: 'desc'
                 },
                 take: 100,
                 include: {
@@ -77,18 +75,18 @@ export async function iconRoutes(fastify: FastifyInstance) {
                             id: true,
                             email: true,
                             role: true,
-                            tokens: true
+                            wac: { select: { wacBalance: true } }
                         }
                     }
                 }
             });
 
-            // Map the token BigInt to String for JSON serialization
+            // Map the WAC balance Decimal to String for JSON serialization
             const formatted = topIcons.map((icon: any) => ({
                 ...icon,
                 user: {
                     ...icon.user,
-                    tokens: icon.user.tokens.toString()
+                    wacBalance: icon.user.wac?.wacBalance?.toString() ?? '0'
                 }
             }));
             return reply.send({ top: formatted });
@@ -120,7 +118,7 @@ export async function iconRoutes(fastify: FastifyInstance) {
                         select: {
                             id: true,
                             email: true,
-                            tokens: true
+                            wac: { select: { wacBalance: true } }
                         }
                     }
                 }
@@ -130,7 +128,7 @@ export async function iconRoutes(fastify: FastifyInstance) {
                 ...icon,
                 user: {
                     ...icon.user,
-                    tokens: icon.user.tokens.toString()
+                    wacBalance: icon.user.wac?.wacBalance?.toString() ?? '0'
                 }
             }));
             return reply.send({ results: formatted });

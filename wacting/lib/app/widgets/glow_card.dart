@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 
 class GlowCard extends StatelessWidget {
   final Widget child;
@@ -8,7 +9,7 @@ class GlowCard extends StatelessWidget {
   const GlowCard({
     Key? key,
     required this.child,
-    this.glowColor = const Color(0x33FFFFFF),
+    this.glowColor = const Color(0x14000000),
     this.padding = const EdgeInsets.all(16.0),
   }) : super(key: key);
 
@@ -17,14 +18,14 @@ class GlowCard extends StatelessWidget {
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: const Color(0xFF111111),
+        color: AppColors.surfaceWhite,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white12, width: 1),
+        border: Border.all(color: AppColors.borderLight, width: 1),
         boxShadow: [
           BoxShadow(
             color: glowColor,
-            blurRadius: 20,
-            spreadRadius: -5,
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),

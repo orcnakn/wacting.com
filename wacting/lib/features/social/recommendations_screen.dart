@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../app/theme.dart';
 import '../../app/widgets/modern_card.dart';
 import '../../app/widgets/modern_button.dart';
-import 'package:dio/dio.dart';
 
 class RecommendationsScreen extends StatefulWidget {
   final String userToken;
@@ -26,7 +26,7 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
   Future<void> _fetchAIMatchmaking() async {
     setState(() { _isLoading = true; _error = null; });
     await Future.delayed(const Duration(milliseconds: 500));
-    
+
     final mockMatches = [
       {'slogan': 'Defenders of Earth', 'aiMatchScore': 98, 'lastKnownX': 255.4, 'lastKnownY': 102.1},
       {'slogan': 'Cosmic Federation', 'aiMatchScore': 91, 'lastKnownX': 12.9, 'lastKnownY': 400.8},
@@ -43,14 +43,14 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.pageBackground,
       appBar: AppBar(
-        title: const Text('AI STRATEGIC COMMANDS', style: TextStyle(color: Colors.cyanAccent, letterSpacing: 2)),
+        title: Text('AI STRATEGIC COMMANDS', style: TextStyle(color: AppColors.textPrimary, letterSpacing: 2)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.cyanAccent),
+            icon: Icon(Icons.refresh, color: AppColors.accentBlue),
             onPressed: () {
               setState(() {
                 _isLoading = true;
@@ -61,10 +61,10 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
           )
         ],
       ),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator(color: Colors.cyanAccent))
-        : _error != null 
-          ? Center(child: Text(_error!, style: const TextStyle(color: Colors.redAccent)))
+      body: _isLoading
+        ? Center(child: CircularProgressIndicator(color: AppColors.accentBlue))
+        : _error != null
+          ? Center(child: Text(_error!, style: TextStyle(color: AppColors.accentRed)))
           : ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: _matches.length,
@@ -79,19 +79,19 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(match['slogan'] ?? 'Unknown Commander', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                            Text(match['slogan'] ?? 'Unknown Commander', style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: Colors.cyanAccent.withOpacity(0.2),
+                                color: AppColors.accentTeal.withOpacity(0.08),
                                 borderRadius: BorderRadius.circular(4),
                               ),
-                              child: Text('${match['aiMatchScore']}% MATCH', style: const TextStyle(color: Colors.cyanAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                              child: Text('${match['aiMatchScore']}% MATCH', style: TextStyle(color: AppColors.accentTeal, fontSize: 12, fontWeight: FontWeight.bold)),
                             )
                           ],
                         ),
                         const SizedBox(height: 8),
-                        Text('Located at Grid X: ${match['lastKnownX'].toStringAsFixed(1)} Y: ${match['lastKnownY'].toStringAsFixed(1)}', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                        Text('Located at Grid X: ${match['lastKnownX'].toStringAsFixed(1)} Y: ${match['lastKnownY'].toStringAsFixed(1)}', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
                         const SizedBox(height: 16),
                         Row(
                           children: [

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
+import '../../app/theme.dart';
 import '../../app/widgets/modern_card.dart';
+import '../../core/services/api_service.dart';
 
 class SocialScreen extends StatefulWidget {
   final String userToken;
@@ -13,27 +14,26 @@ class SocialScreen extends StatefulWidget {
 
 class _SocialScreenState extends State<SocialScreen> {
   // Mock Data
-  bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        backgroundColor: const Color(0xFF0D0D0D),
+        backgroundColor: AppColors.pageBackground,
         appBar: AppBar(
-           title: const Text('Akış (Feed)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: Colors.white)),
+           title: Text('Akis (Feed)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.textPrimary)),
            backgroundColor: Colors.transparent,
            elevation: 0,
            centerTitle: true,
-           bottom: const TabBar(
-             indicatorColor: Colors.blueAccent,
-             labelColor: Colors.blueAccent,
-             unselectedLabelColor: Colors.white54,
+           bottom: TabBar(
+             indicatorColor: AppColors.accentBlue,
+             labelColor: AppColors.accentBlue,
+             unselectedLabelColor: AppColors.textTertiary,
              indicatorWeight: 3,
-             tabs: [
+             tabs: const [
                Tab(text: 'KAMPANYALAR', icon: Icon(Icons.flag)),
-               Tab(text: 'KİŞİSEL', icon: Icon(Icons.person)),
+               Tab(text: 'KISISEL', icon: Icon(Icons.person)),
                Tab(text: 'GLOBAL', icon: Icon(Icons.public)),
              ],
            ),
@@ -63,27 +63,42 @@ class _CampaignsTabState extends State<_CampaignsTab>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  // Mock active poll data
-  final Map<String, dynamic> _activePoll = {
-    'id': 'poll_001',
-    'title': 'Önümüzdeki ay için stratejimiz ne olsun?',
-    'description': 'Kampanyamızın yönünü belirlemek için oy kullanın.',
-    'endsAt': DateTime.now().add(const Duration(hours: 18, minutes: 34)),
-    'options': [
-      {'id': 'opt_1', 'text': 'Yeni bölgelere genişle', 'voterCount': 148, 'totalWac': 75000},
-      {'id': 'opt_2', 'text': 'Mevcut bölgeyi pekiştir', 'voterCount': 210, 'totalWac': 120000},
-      {'id': 'opt_3', 'text': 'RAC havuzunu temizle', 'voterCount': 55, 'totalWac': 15000},
-    ],
-    'totalVoters': 413,
-    'myVote': null, // null = not voted yet
-  };
-
-  bool _isMyOwnCampaign = true; // Mock: current user is campaign leader
+  List<dynamic> _myCampaigns = [];
+  List<dynamic> _myPolls = [];
+  List<dynamic> _votingHistory = [];
+  bool _loadingCampaigns = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    if (!apiService.isLoggedIn) {
+      setState(() => _loadingCampaigns = false);
+      return;
+    }
+    try {
+      final campaigns = await apiService.getMyCampaigns();
+      List<dynamic> polls = [];
+      if (apiService.userId != null) {
+        polls = await apiService.getCampaignPolls(apiService.userId!);
+      }
+      List<dynamic> history = [];
+      try { history = await apiService.getVotingHistory(); } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _myCampaigns = campaigns;
+          _myPolls = polls;
+          _votingHistory = history;
+          _loadingCampaigns = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loadingCampaigns = false);
+    }
   }
 
   @override
@@ -97,7 +112,7 @@ class _CampaignsTabState extends State<_CampaignsTab>
     if (diff.isNegative) return 'Sona erdi';
     final h = diff.inHours;
     final m = diff.inMinutes.remainder(60);
-    return '${h}sa ${m}dk kaldı';
+    return '${h}sa ${m}dk kaldi';
   }
 
   void _navigateToVotingHistory() {
@@ -110,16 +125,16 @@ class _CampaignsTabState extends State<_CampaignsTab>
       children: [
         TabBar(
           controller: _tabController,
-          indicatorColor: Colors.cyanAccent,
-          labelColor: Colors.cyanAccent,
-          unselectedLabelColor: Colors.white38,
+          indicatorColor: AppColors.accentTeal,
+          labelColor: AppColors.accentTeal,
+          unselectedLabelColor: AppColors.textTertiary,
           isScrollable: true,
           tabAlignment: TabAlignment.center,
           tabs: const [
             Tab(text: 'Aktif'),
             Tab(text: 'Pasif'),
             Tab(text: 'Takip Edilenler'),
-            Tab(text: '🗳️ Oylama'),
+            Tab(text: 'Oylama'),
           ],
         ),
         Expanded(
@@ -142,34 +157,67 @@ class _CampaignsTabState extends State<_CampaignsTab>
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _buildDetailedCampaignCard(
-          title: 'Commander of the North',
-          slogan: '"Winter is coming.. bring WAC"',
-          participants: 2450,
-          area: 145000,
-          myRank: 12,
-          totalEarned: 450,
-          dailyPremium: 12.5,
-          isRac: false,
-          hasActivePoll: true,
-          isLeader: _isMyOwnCampaign,
+        // ── Kampanya Olustur Butonu ──────────────────────────────────────────
+        GestureDetector(
+          onTap: () => _showCreateCampaignModal(context),
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 20),
+            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppColors.navyPrimary, AppColors.accentBlue],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(color: AppColors.accentBlue.withOpacity(0.15), blurRadius: 12, offset: const Offset(0, 4)),
+              ],
+            ),
+            child: Row(children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                child: const Icon(Icons.add, color: Colors.white, size: 28),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Kampanya Olustur', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 2),
+                  Text('Ikon, slogan, tanim ve sosyal medyalarini ekle', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                ]),
+              ),
+              const Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 16),
+            ]),
+          ),
         ),
-        const SizedBox(height: 16),
-        const Text('Tepki (Protest) Havuzları',
-            style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        _buildDetailedCampaignCard(
-          title: 'Anti-Spam Coalition',
-          slogan: '"Temiz harita istiyoruz"',
-          participants: 800,
-          area: -45000,
-          myRank: 45,
-          totalEarned: -50,
-          dailyPremium: -1.0,
-          isRac: true,
-          hasActivePoll: false,
-          isLeader: false,
-        ),
+        if (_loadingCampaigns)
+          Center(child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: CircularProgressIndicator(color: AppColors.accentBlue),
+          )),
+        if (!_loadingCampaigns && _myCampaigns.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(child: Text('Henuz kampanyaniz yok. Yukaridaki butondan olusturun!',
+                style: TextStyle(color: AppColors.textTertiary), textAlign: TextAlign.center)),
+          ),
+        ..._myCampaigns.map((c) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _buildDetailedCampaignCard(
+            title: c['title'] ?? 'Kampanya',
+            slogan: '"${c['slogan'] ?? ''}"',
+            participants: 0,
+            area: 0,
+            myRank: 1,
+            totalEarned: 0,
+            dailyPremium: 0,
+            isRac: false,
+            hasActivePoll: _myPolls.any((p) => p['status'] == 'ACTIVE'),
+            isLeader: true,
+          ),
+        )),
       ],
     );
   }
@@ -183,18 +231,18 @@ class _CampaignsTabState extends State<_CampaignsTab>
       padding: const EdgeInsets.all(16),
       children: [
         if (history.isEmpty)
-          const Center(child: Text('Ayrıldığınız kampanya yok.', style: TextStyle(color: Colors.white54))),
+          Center(child: Text('Ayrildiginiz kampanya yok.', style: TextStyle(color: AppColors.textTertiary))),
         ...history.map((h) => Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: ModernCard(
             padding: const EdgeInsets.all(16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(h['title']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              Text(h['title']!, style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 8),
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                _metricCol('Katıldı', h['joinedAt']!, Colors.white54),
-                _metricCol('Ayrıldı', h['exitedAt']!, Colors.white54),
-                _metricCol('Kazanılan', '${h['totalEarned']} WAC', Colors.amberAccent),
+                _metricCol('Katildi', h['joinedAt']!, AppColors.textTertiary),
+                _metricCol('Ayrildi', h['exitedAt']!, AppColors.textTertiary),
+                _metricCol('Kazanilan', '${h['totalEarned']} WAC', AppColors.accentAmber),
               ]),
             ]),
           ),
@@ -209,70 +257,53 @@ class _CampaignsTabState extends State<_CampaignsTab>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.bookmark_border, color: Colors.white38, size: 48),
+          Icon(Icons.bookmark_border, color: AppColors.textTertiary, size: 48),
           const SizedBox(height: 12),
-          const Text('Takip ettiğiniz kampanyalar burada görünecek.',
-              style: TextStyle(color: Colors.white54), textAlign: TextAlign.center),
+          Text('Takip ettiginiz kampanyalar burada gorunecek.',
+              style: TextStyle(color: AppColors.textTertiary), textAlign: TextAlign.center),
           const SizedBox(height: 16),
           ElevatedButton.icon(
             onPressed: () {},
             style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.cyanAccent.withOpacity(0.2),
-                foregroundColor: Colors.cyanAccent),
+                backgroundColor: AppColors.accentTeal.withOpacity(0.1),
+                foregroundColor: AppColors.accentTeal),
             icon: const Icon(Icons.public),
-            label: const Text('Global\'den Keşfet'),
+            label: const Text('Global\'den Kesfet'),
           ),
         ],
       ),
     );
   }
 
-  // ── Oylama Geçmişi ────────────────────────────────────────────────────────
+  // ── Oylama Gecmisi ────────────────────────────────────────────────────────
   Widget _buildVotingHistory() {
-    final mockHistory = [
-      {
-        'title': 'Önümüzdeki ay için stratejimiz ne olsun?',
-        'campaign': 'Commander of the North',
-        'myChoice': 'Mevcut bölgeyi pekiştir',
-        'winner': null, // null = still active
-        'status': 'Devam Ediyor',
-        'endsAt': DateTime.now().add(const Duration(hours: 18, minutes: 34)),
-      },
-      {
-        'title': 'Yeni simge rengi seçimi',
-        'campaign': 'Commander of the North',
-        'myChoice': 'Neon Mavi',
-        'winner': 'Neon Mavi',
-        'status': 'Kazandı',
-        'endsAt': DateTime.now().subtract(const Duration(days: 3)),
-      },
-      {
-        'title': 'Kış seferi başlatalım mı?',
-        'campaign': 'Commander of the North',
-        'myChoice': 'Hayır',
-        'winner': 'Evet',
-        'status': 'Kaybetti',
-        'endsAt': DateTime.now().subtract(const Duration(days: 7)),
-      },
-    ];
+    if (_votingHistory.isEmpty) {
+      return Center(child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Text('Henuz oy kullanmadiniz.', style: TextStyle(color: AppColors.textTertiary)),
+      ));
+    }
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text('Oy Kullandığım Anketler',
-            style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold)),
+        Text('Oy Kullandigim Anketler',
+            style: TextStyle(color: AppColors.textTertiary, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
-        ...mockHistory.map((h) {
-          final isActive = h['winner'] == null;
-          final didWin = h['winner'] != null && h['winner'] == h['myChoice'];
+        ..._votingHistory.map((h) {
+          final result = (h['result'] ?? 'Devam Ediyor') as String;
+          final isActive = result == 'Devam Ediyor';
+          final didWin = result == 'Kazandi';
           final statusColor = isActive
-              ? Colors.cyanAccent
-              : (didWin ? Colors.amberAccent : Colors.white38);
+              ? AppColors.accentTeal
+              : (didWin ? AppColors.accentAmber : AppColors.textTertiary);
           final statusIcon = isActive
               ? Icons.hourglass_top
               : (didWin ? Icons.emoji_events : Icons.close);
 
-          final endsAt = h['endsAt'] as DateTime;
+          DateTime endsAt;
+          try { endsAt = DateTime.parse(h['endsAt']); } catch (_) { endsAt = DateTime.now(); }
+
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: ModernCard(
@@ -282,39 +313,36 @@ class _CampaignsTabState extends State<_CampaignsTab>
                   Icon(statusIcon, color: statusColor, size: 18),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(h['title'] as String,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    child: Text((h['pollTitle'] ?? '') as String,
+                        style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.15),
+                        color: statusColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(20)),
-                    child: Text(h['status'] as String,
+                    child: Text(result,
                         style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
                   ),
                 ]),
                 const SizedBox(height: 8),
-                Text(h['campaign'] as String,
-                    style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                const SizedBox(height: 8),
-                const Divider(color: Colors.white10),
+                Divider(color: AppColors.borderLight),
                 const SizedBox(height: 8),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                   Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('Seçimim', style: TextStyle(color: Colors.white54, fontSize: 11)),
-                    Text(h['myChoice'] as String,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                    Text('Secimim', style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
+                    Text((h['myChoice'] ?? '') as String,
+                        style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
                   ]),
-                  if (h['winner'] != null) Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    const Text('Kazanan', style: TextStyle(color: Colors.white54, fontSize: 11)),
-                    Text(h['winner'] as String,
-                        style: TextStyle(color: didWin ? Colors.amberAccent : Colors.white54, fontWeight: FontWeight.w600)),
+                  if (h['winnerOption'] != null) Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Text('Kazanan', style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
+                    Text(h['winnerOption'] as String,
+                        style: TextStyle(color: didWin ? AppColors.accentAmber : AppColors.textTertiary, fontWeight: FontWeight.w600)),
                   ]),
                   if (isActive) Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    const Text('Kalan Süre', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                    Text('Kalan Sure', style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
                     Text(_formatCountdown(endsAt),
-                        style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+                        style: TextStyle(color: AppColors.accentTeal, fontWeight: FontWeight.bold, fontSize: 12)),
                   ]),
                 ]),
               ]),
@@ -338,8 +366,8 @@ class _CampaignsTabState extends State<_CampaignsTab>
     required bool hasActivePoll,
     required bool isLeader,
   }) {
-    final color = isRac ? Colors.redAccent : Colors.blueAccent;
-    final bgHex = isRac ? 0xFF2A0808 : 0xFF081C2A;
+    final color = isRac ? AppColors.accentRed : AppColors.accentBlue;
+    final bgColor = isRac ? AppColors.accentRed.withOpacity(0.06) : AppColors.accentBlue.withOpacity(0.06);
 
     return ModernCard(
       padding: const EdgeInsets.all(16),
@@ -347,16 +375,16 @@ class _CampaignsTabState extends State<_CampaignsTab>
         // Header row
         Row(children: [
           CircleAvatar(
-              backgroundColor: color.withOpacity(0.2),
+              backgroundColor: color.withOpacity(0.1),
               radius: 24,
               child: Icon(isRac ? Icons.warning : Icons.flag, color: color)),
           const SizedBox(width: 16),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title,
-                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-            Text(slogan, style: const TextStyle(color: Colors.white70, fontStyle: FontStyle.italic)),
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(slogan, style: TextStyle(color: AppColors.textSecondary, fontStyle: FontStyle.italic)),
           ])),
-          IconButton(icon: const Icon(Icons.map, color: Colors.white54), onPressed: () {}),
+          IconButton(icon: Icon(Icons.map, color: AppColors.textTertiary), onPressed: () {}),
         ]),
 
         // Poll badge (if active poll exists)
@@ -368,50 +396,50 @@ class _CampaignsTabState extends State<_CampaignsTab>
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                  color: Colors.amberAccent.withOpacity(0.12),
+                  color: AppColors.accentAmber.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.amberAccent.withOpacity(0.4))),
+                  border: Border.all(color: AppColors.accentAmber.withOpacity(0.3))),
               child: Row(children: [
-                const Icon(Icons.how_to_vote, color: Colors.amberAccent, size: 18),
+                Icon(Icons.how_to_vote, color: AppColors.accentAmber, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('🗳️ Aktif Oylama Var!',
-                        style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 13)),
-                    Text(_formatCountdown(_activePoll['endsAt'] as DateTime),
-                        style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                    Text('Aktif Oylama Var!',
+                        style: TextStyle(color: AppColors.accentAmber, fontWeight: FontWeight.bold, fontSize: 13)),
+                    Text(_myPolls.isNotEmpty ? _formatCountdown(DateTime.parse(_myPolls.first['endsAt'])) : '',
+                        style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
                   ]),
                 ),
-                const Icon(Icons.arrow_forward_ios, color: Colors.amberAccent, size: 14),
+                Icon(Icons.arrow_forward_ios, color: AppColors.accentAmber, size: 14),
               ]),
             ),
           ),
         ],
 
         const SizedBox(height: 16),
-        const Divider(color: Colors.white10),
+        Divider(color: AppColors.borderLight),
         const SizedBox(height: 16),
 
         // Metrics
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          _metricCol('Katılımcı', '$participants', color),
-          _metricCol('Büyüklük', '$area m²', color),
-          _metricCol('Sıram', '#$myRank', Colors.amberAccent),
+          _metricCol('Katilimci', '$participants', color),
+          _metricCol('Buyukluk', '$area m\u00B2', color),
+          _metricCol('Siram', '#$myRank', AppColors.accentAmber),
         ]),
         const SizedBox(height: 16),
 
         // Earnings
         Container(
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: Color(bgHex), borderRadius: BorderRadius.circular(8)),
+          decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(8)),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Toplam Kazanılan', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              Text('Toplam Kazanilan', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
               Text('$totalEarned ${isRac ? 'RAC' : 'WAC'}',
                   style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
             ]),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              const Text('Günlük Prim (Tahmini)', style: TextStyle(color: Colors.white54, fontSize: 12)),
+              Text('Gunluk Prim (Tahmini)', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
               Text('${dailyPremium > 0 ? '+' : ''}$dailyPremium',
                   style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
             ]),
@@ -424,8 +452,8 @@ class _CampaignsTabState extends State<_CampaignsTab>
           if (hasActivePoll && !isLeader) Expanded(
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.amberAccent.withOpacity(0.2),
-                  foregroundColor: Colors.amberAccent),
+                  backgroundColor: AppColors.accentAmber.withOpacity(0.1),
+                  foregroundColor: AppColors.accentAmber),
               icon: const Icon(Icons.how_to_vote, size: 18),
               label: const Text('Oy Ver'),
               onPressed: () => _showVoteModal(context),
@@ -435,10 +463,10 @@ class _CampaignsTabState extends State<_CampaignsTab>
             Expanded(
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.greenAccent.withOpacity(0.15),
-                    foregroundColor: Colors.greenAccent),
+                    backgroundColor: AppColors.accentGreen.withOpacity(0.1),
+                    foregroundColor: AppColors.accentGreen),
                 icon: const Icon(Icons.add_circle_outline, size: 18),
-                label: const Text('Oylama Başlat'),
+                label: const Text('Oylama Baslat'),
                 onPressed: () => _showCreatePollModal(context),
               ),
             ),
@@ -450,40 +478,41 @@ class _CampaignsTabState extends State<_CampaignsTab>
 
   // ── Vote Modal ─────────────────────────────────────────────────────────────
   void _showVoteModal(BuildContext context) {
+    if (_myPolls.isEmpty) return;
     String? selectedOptionId;
-    final poll = _activePoll;
-    final options = poll['options'] as List<Map<String, dynamic>>;
-    final totalWac = options.fold<double>(0, (s, o) => s + (o['totalWac'] as int).toDouble());
+    final poll = _myPolls.first as Map<String, dynamic>;
+    final options = (poll['options'] as List<dynamic>).cast<Map<String, dynamic>>();
+    final totalWac = options.fold<double>(0, (s, o) => s + ((o['totalWac'] ?? 0) as num).toDouble());
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: AppColors.surfaceWhite,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModal) => Padding(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              const Icon(Icons.how_to_vote, color: Colors.amberAccent),
+              Icon(Icons.how_to_vote, color: AppColors.accentAmber),
               const SizedBox(width: 8),
-              Text(_formatCountdown(poll['endsAt'] as DateTime),
-                  style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold)),
+              Text(_formatCountdown(DateTime.parse(poll['endsAt'])),
+                  style: TextStyle(color: AppColors.accentAmber, fontWeight: FontWeight.bold)),
               const Spacer(),
-              Text('${poll['totalVoters']} katılımcı',
-                  style: const TextStyle(color: Colors.white54, fontSize: 12)),
+              Text('${poll['totalVoters'] ?? 0} katilimci',
+                  style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
             ]),
             const SizedBox(height: 12),
             Text(poll['title'] as String,
-                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
             if ((poll['description'] as String?)?.isNotEmpty == true) ...[
               const SizedBox(height: 6),
               Text(poll['description'] as String,
-                  style: const TextStyle(color: Colors.white70)),
+                  style: TextStyle(color: AppColors.textSecondary)),
             ],
             const SizedBox(height: 20),
             ...options.map((opt) {
-              final wacPct = totalWac > 0 ? (opt['totalWac'] as int) / totalWac : 0.0;
+              final wacPct = totalWac > 0 ? ((opt['totalWac'] ?? 0) as num).toDouble() / totalWac : 0.0;
               final isSelected = selectedOptionId == opt['id'];
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
@@ -492,20 +521,20 @@ class _CampaignsTabState extends State<_CampaignsTab>
                   child: Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: isSelected ? Colors.amberAccent.withOpacity(0.15) : const Color(0xFF2A2A2A),
+                      color: isSelected ? AppColors.accentAmber.withOpacity(0.08) : AppColors.surfaceLight,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                          color: isSelected ? Colors.amberAccent : Colors.white12, width: isSelected ? 1.5 : 1),
+                          color: isSelected ? AppColors.accentAmber : AppColors.borderLight, width: isSelected ? 1.5 : 1),
                     ),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
                         Icon(isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-                            color: isSelected ? Colors.amberAccent : Colors.white38, size: 18),
+                            color: isSelected ? AppColors.accentAmber : AppColors.textTertiary, size: 18),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(opt['text'] as String,
                               style: TextStyle(
-                                  color: isSelected ? Colors.amberAccent : Colors.white,
+                                  color: isSelected ? AppColors.accentAmber : AppColors.textPrimary,
                                   fontWeight: FontWeight.w600)),
                         ),
                       ]),
@@ -515,17 +544,17 @@ class _CampaignsTabState extends State<_CampaignsTab>
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
                           value: wacPct,
-                          backgroundColor: Colors.white10,
-                          color: isSelected ? Colors.amberAccent : Colors.blueAccent,
+                          backgroundColor: AppColors.borderLight,
+                          color: isSelected ? AppColors.accentAmber : AppColors.accentBlue,
                           minHeight: 4,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                        Text('${((opt['totalWac'] as int) / 1000).toStringAsFixed(1)}K WAC',
-                            style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                        Text('${opt['voterCount']} kişi',
-                            style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                        Text('${(((opt['totalWac'] ?? 0) as num).toDouble() / 1000).toStringAsFixed(1)}K WAC',
+                            style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
+                        Text('${opt['voterCount']} kisi',
+                            style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
                       ]),
                     ]),
                   ),
@@ -537,27 +566,344 @@ class _CampaignsTabState extends State<_CampaignsTab>
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amberAccent,
-                    foregroundColor: Colors.black,
+                    backgroundColor: AppColors.accentAmber,
+                    foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                 onPressed: selectedOptionId == null
                     ? null
-                    : () {
-                        Navigator.pop(ctx);
-                        _navigateToVotingHistory();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('✅ Oyunuz kaydedildi! Oylama Geçmişinde takip edebilirsiniz.'),
-                            backgroundColor: Color(0xFF1E1E1E),
-                          ),
-                        );
+                    : () async {
+                        try {
+                          await apiService.castVote(poll['id'], selectedOptionId!);
+                          Navigator.pop(ctx);
+                          _navigateToVotingHistory();
+                          _loadData(); // Refresh
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text('Oyunuz kaydedildi!'),
+                              backgroundColor: AppColors.navyPrimary,
+                            ),
+                          );
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Hata: $e'), backgroundColor: AppColors.accentRed),
+                          );
+                        }
                       },
                 child: const Text('OY VER', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
             ),
           ]),
         ),
+      ),
+    );
+  }
+
+  // ── Create Campaign Modal ──────────────────────────────────────────────────
+  void _showCreateCampaignModal(BuildContext context) {
+    final sloganCtrl  = TextEditingController();
+    final descCtrl    = TextEditingController();
+    final videoCtrl   = TextEditingController();
+    final igCtrl      = TextEditingController();
+    final twCtrl      = TextEditingController();
+    final fbCtrl      = TextEditingController();
+    final tiktokCtrl  = TextEditingController();
+    final webCtrl     = TextEditingController();
+
+    // Icon selection state
+    final List<Color> _iconColors = [
+      AppColors.accentBlue, AppColors.accentTeal, AppColors.accentGreen,
+      AppColors.accentAmber, AppColors.accentRed, Colors.purpleAccent,
+      Colors.orangeAccent, Colors.teal,
+    ];
+    final List<IconData> _iconShapes = [
+      Icons.flag, Icons.star, Icons.bolt, Icons.local_fire_department,
+      Icons.public, Icons.shield, Icons.favorite, Icons.eco,
+    ];
+    int selectedColorIdx = 0;
+    int selectedShapeIdx = 0;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surfaceWhite,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModal) {
+          Widget _field(TextEditingController ctrl, String hint,
+              {int maxLines = 1, int? maxLength, String? prefix, IconData? icon}) {
+            return TextField(
+              controller: ctrl,
+              style: TextStyle(color: AppColors.textPrimary),
+              maxLines: maxLines,
+              maxLength: maxLength,
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: TextStyle(color: AppColors.textTertiary),
+                prefixIcon: icon != null ? Icon(icon, color: AppColors.textTertiary, size: 20) : null,
+                prefixText: prefix,
+                prefixStyle: TextStyle(color: AppColors.textTertiary),
+                filled: true,
+                fillColor: AppColors.surfaceLight,
+                counterStyle: TextStyle(color: AppColors.textTertiary),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              ),
+            );
+          }
+
+          return DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.9,
+            minChildSize: 0.5,
+            maxChildSize: 0.95,
+            builder: (ctx2, scrollCtrl) => Column(children: [
+              // Handle
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 4),
+                width: 40, height: 4,
+                decoration: BoxDecoration(color: AppColors.borderMedium, borderRadius: BorderRadius.circular(2)),
+              ),
+              Expanded(
+                child: ListView(
+                  controller: scrollCtrl,
+                  padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
+                  children: [
+                    // ── Baslik ──────────────────────────────────────────────
+                    Text('Kampanya Olustur',
+                        style: TextStyle(color: AppColors.textPrimary, fontSize: 22, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text('Ikon, slogan ve sosyal medya baglantilari gir.',
+                        style: TextStyle(color: AppColors.textTertiary, fontSize: 13)),
+                    const SizedBox(height: 24),
+
+                    // ── Ikon Secimi ──────────────────────────────────────────
+                    Text('Ikon', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 14)),
+                    const SizedBox(height: 12),
+                    // Preview
+                    Center(
+                      child: Container(
+                        width: 72, height: 72,
+                        decoration: BoxDecoration(
+                          color: _iconColors[selectedColorIdx].withOpacity(0.1),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: _iconColors[selectedColorIdx], width: 2),
+                        ),
+                        child: Icon(_iconShapes[selectedShapeIdx], color: _iconColors[selectedColorIdx], size: 36),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Renk secimi
+                    Text('Renk', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8, runSpacing: 8,
+                      children: List.generate(_iconColors.length, (i) => GestureDetector(
+                        onTap: () => setModal(() => selectedColorIdx = i),
+                        child: Container(
+                          width: 32, height: 32,
+                          decoration: BoxDecoration(
+                            color: _iconColors[i],
+                            shape: BoxShape.circle,
+                            border: selectedColorIdx == i
+                                ? Border.all(color: AppColors.navyPrimary, width: 2.5)
+                                : null,
+                          ),
+                        ),
+                      )),
+                    ),
+                    const SizedBox(height: 12),
+                    // Sekil secimi
+                    Text('Sekil', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8, runSpacing: 8,
+                      children: List.generate(_iconShapes.length, (i) => GestureDetector(
+                        onTap: () => setModal(() => selectedShapeIdx = i),
+                        child: Container(
+                          width: 44, height: 44,
+                          decoration: BoxDecoration(
+                            color: selectedShapeIdx == i
+                                ? _iconColors[selectedColorIdx].withOpacity(0.1)
+                                : AppColors.surfaceLight,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                                color: selectedShapeIdx == i ? _iconColors[selectedColorIdx] : AppColors.borderLight),
+                          ),
+                          child: Icon(_iconShapes[i],
+                              color: selectedShapeIdx == i ? _iconColors[selectedColorIdx] : AppColors.textTertiary,
+                              size: 22),
+                        ),
+                      )),
+                    ),
+
+                    const SizedBox(height: 24),
+                    Divider(color: AppColors.borderLight),
+                    const SizedBox(height: 16),
+
+                    // ── Slogan ────────────────────────────────────────────────
+                    Text('Slogan', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 14)),
+                    const SizedBox(height: 8),
+                    _field(sloganCtrl, '"Sloganini buraya yaz..."', maxLength: 100, icon: Icons.format_quote),
+
+                    const SizedBox(height: 16),
+
+                    // ── Kampanya Tanimi ───────────────────────────────────────
+                    Text('Kampanya Tanimi', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 14)),
+                    const SizedBox(height: 8),
+                    _field(descCtrl, 'Kampanyani detayli anlat...', maxLines: 5, maxLength: 1000, icon: Icons.description_outlined),
+
+                    const SizedBox(height: 24),
+                    Divider(color: AppColors.borderLight),
+                    const SizedBox(height: 16),
+
+                    // ── Video ─────────────────────────────────────────────────
+                    Text('Video', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 14)),
+                    const SizedBox(height: 4),
+                    Text('YouTube veya Vimeo linki ekle', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    _field(videoCtrl, 'https://youtube.com/...', icon: Icons.play_circle_outline),
+
+                    const SizedBox(height: 24),
+                    Divider(color: AppColors.borderLight),
+                    const SizedBox(height: 16),
+
+                    // ── Sosyal Medya ──────────────────────────────────────────
+                    Text('Sosyal Medya Baglantilari',
+                        style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 14)),
+                    const SizedBox(height: 12),
+
+                    // Instagram
+                    Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                      Container(
+                        width: 38, height: 38,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFE1306C), Color(0xFF833AB4), Color(0xFFF77737)],
+                            begin: Alignment.topLeft, end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: _field(igCtrl, 'instagram.com/kullanici', prefix: 'instagram.com/')),
+                    ]),
+                    const SizedBox(height: 10),
+
+                    // Twitter / X
+                    Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                      Container(
+                        width: 38, height: 38,
+                        decoration: BoxDecoration(color: AppColors.navyDark, borderRadius: BorderRadius.circular(10)),
+                        child: const Center(
+                          child: Text('X', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: _field(twCtrl, 'x.com/kullanici', prefix: 'x.com/')),
+                    ]),
+                    const SizedBox(height: 10),
+
+                    // Facebook
+                    Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                      Container(
+                        width: 38, height: 38,
+                        decoration: BoxDecoration(color: const Color(0xFF1877F2), borderRadius: BorderRadius.circular(10)),
+                        child: const Icon(Icons.facebook, color: Colors.white, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: _field(fbCtrl, 'facebook.com/sayfa', prefix: 'facebook.com/')),
+                    ]),
+                    const SizedBox(height: 10),
+
+                    // TikTok
+                    Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                      Container(
+                        width: 38, height: 38,
+                        decoration: BoxDecoration(color: AppColors.navyDark, borderRadius: BorderRadius.circular(10)),
+                        child: const Icon(Icons.music_note, color: Colors.white, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: _field(tiktokCtrl, 'tiktok.com/@kullanici', prefix: 'tiktok.com/@')),
+                    ]),
+                    const SizedBox(height: 10),
+
+                    // Web sitesi
+                    Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                      Container(
+                        width: 38, height: 38,
+                        decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.borderLight)),
+                        child: Icon(Icons.language, color: AppColors.textTertiary, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: _field(webCtrl, 'https://kampanyasitesi.com', icon: null)),
+                    ]),
+
+                    const SizedBox(height: 32),
+
+                    // ── Olustur Butonu ────────────────────────────────────────
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.navyPrimary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          elevation: 0,
+                        ),
+                        icon: const Icon(Icons.flag, size: 20),
+                        label: const Text('KAMPANYAYI OLUSTUR',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, letterSpacing: 0.5)),
+                        onPressed: () async {
+                          if (sloganCtrl.text.trim().isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: const Text('Slogan gerekli!'), backgroundColor: AppColors.accentRed),
+                            );
+                            return;
+                          }
+                          try {
+                            final colorHex = '#${_iconColors[selectedColorIdx].value.toRadixString(16).substring(2).toUpperCase()}';
+                            await apiService.createCampaign(
+                              title: sloganCtrl.text.trim().substring(0, sloganCtrl.text.trim().length.clamp(0, 50)),
+                              slogan: sloganCtrl.text.trim(),
+                              description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+                              videoUrl: videoCtrl.text.trim().isEmpty ? null : videoCtrl.text.trim(),
+                              iconColor: colorHex,
+                              iconShape: selectedShapeIdx,
+                              instagramUrl: igCtrl.text.trim().isEmpty ? null : igCtrl.text.trim(),
+                              twitterUrl: twCtrl.text.trim().isEmpty ? null : twCtrl.text.trim(),
+                              facebookUrl: fbCtrl.text.trim().isEmpty ? null : fbCtrl.text.trim(),
+                              tiktokUrl: tiktokCtrl.text.trim().isEmpty ? null : tiktokCtrl.text.trim(),
+                              websiteUrl: webCtrl.text.trim().isEmpty ? null : webCtrl.text.trim(),
+                            );
+                            Navigator.pop(ctx);
+                            if (mounted) {
+                              setState(() {}); // Refresh
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text('Kampanyan olusturuldu!'),
+                                  backgroundColor: AppColors.navyPrimary,
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Hata: $e'), backgroundColor: AppColors.accentRed),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ]),
+          );
+        },
       ),
     );
   }
@@ -572,34 +918,34 @@ class _CampaignsTabState extends State<_CampaignsTab>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: AppColors.surfaceWhite,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModal) => Padding(
           padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Yeni Oylama Başlat', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              Text('Yeni Oylama Baslat', style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
-              _modalField(titleCtrl, 'Başlık (max 140 karakter)', maxLength: 140),
+              _modalField(titleCtrl, 'Baslik (max 140 karakter)', maxLength: 140),
               const SizedBox(height: 10),
-              _modalField(descCtrl, 'Açıklama (isteğe bağlı)', maxLines: 2),
+              _modalField(descCtrl, 'Aciklama (istege bagli)', maxLines: 2),
               const SizedBox(height: 16),
-              const Text('Seçenekler (en az 2, en fazla 5)',
-                  style: TextStyle(color: Colors.white54, fontSize: 13)),
+              Text('Secenekler (en az 2, en fazla 5)',
+                  style: TextStyle(color: AppColors.textTertiary, fontSize: 13)),
               const SizedBox(height: 8),
               ...optionCtrls.asMap().entries.map((e) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: _modalField(e.value, 'Seçenek ${e.key + 1}'),
+                child: _modalField(e.value, 'Secenek ${e.key + 1}'),
               )),
               if (optionCtrls.length < 5)
                 TextButton.icon(
                   onPressed: () => setModal(() => optionCtrls.add(TextEditingController())),
-                  icon: const Icon(Icons.add, color: Colors.cyanAccent),
-                  label: const Text('Seçenek Ekle', style: TextStyle(color: Colors.cyanAccent)),
+                  icon: Icon(Icons.add, color: AppColors.accentTeal),
+                  label: Text('Secenek Ekle', style: TextStyle(color: AppColors.accentTeal)),
                 ),
               const SizedBox(height: 16),
-              const Text('Oylama Süresi', style: TextStyle(color: Colors.white54, fontSize: 13)),
+              Text('Oylama Suresi', style: TextStyle(color: AppColors.textTertiary, fontSize: 13)),
               const SizedBox(height: 8),
               Row(children: [24, 48, 72].map((h) {
                 final selected = durationHours == h;
@@ -610,10 +956,10 @@ class _CampaignsTabState extends State<_CampaignsTab>
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                          color: selected ? Colors.cyanAccent.withOpacity(0.2) : const Color(0xFF2A2A2A),
+                          color: selected ? AppColors.accentTeal.withOpacity(0.1) : AppColors.surfaceLight,
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: selected ? Colors.cyanAccent : Colors.white12)),
-                      child: Text('${h}sa', style: TextStyle(color: selected ? Colors.cyanAccent : Colors.white54)),
+                          border: Border.all(color: selected ? AppColors.accentTeal : AppColors.borderLight)),
+                      child: Text('${h}sa', style: TextStyle(color: selected ? AppColors.accentTeal : AppColors.textTertiary)),
                     ),
                   ),
                 );
@@ -623,17 +969,44 @@ class _CampaignsTabState extends State<_CampaignsTab>
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.greenAccent.withOpacity(0.9),
-                      foregroundColor: Colors.black,
+                      backgroundColor: AppColors.accentGreen,
+                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('🗳️ Oylama başlatıldı! Tüm katılımcılara bildirim gönderildi.')),
-                    );
+                  onPressed: () async {
+                    if (titleCtrl.text.trim().isEmpty) return;
+                    final opts = optionCtrls
+                        .map((c) => c.text.trim())
+                        .where((t) => t.isNotEmpty)
+                        .toList();
+                    if (opts.length < 2) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: const Text('En az 2 secenek gerekli!'), backgroundColor: AppColors.accentRed),
+                      );
+                      return;
+                    }
+                    try {
+                      await apiService.createPoll(
+                        title: titleCtrl.text.trim(),
+                        description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+                        options: opts,
+                        durationHours: durationHours,
+                      );
+                      Navigator.pop(ctx);
+                      if (mounted) {
+                        setState(() {});
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: const Text('Oylama baslatildi!'),
+                              backgroundColor: AppColors.navyPrimary),
+                        );
+                      }
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Hata: $e'), backgroundColor: AppColors.accentRed),
+                      );
+                    }
                   },
-                  child: const Text('OYLAMAYA BAŞLA', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  child: const Text('OYLAMAYA BASLA', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 ),
               ),
             ]),
@@ -646,15 +1019,15 @@ class _CampaignsTabState extends State<_CampaignsTab>
   Widget _modalField(TextEditingController ctrl, String hint, {int maxLines = 1, int? maxLength}) {
     return TextField(
       controller: ctrl,
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: AppColors.textPrimary),
       maxLines: maxLines,
       maxLength: maxLength,
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: Colors.white38),
+        hintStyle: TextStyle(color: AppColors.textTertiary),
         filled: true,
-        fillColor: const Color(0xFF2A2A2A),
-        counterStyle: const TextStyle(color: Colors.white38),
+        fillColor: AppColors.surfaceLight,
+        counterStyle: TextStyle(color: AppColors.textTertiary),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
       ),
     );
@@ -663,13 +1036,13 @@ class _CampaignsTabState extends State<_CampaignsTab>
   Widget _metricCol(String label, String val, Color color) {
     return Column(children: [
       Text(val, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 15)),
-      Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+      Text(label, style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
     ]);
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. KİŞİSEL (PERSONAL) TAB
+// 2. KISISEL (PERSONAL) TAB
 // ─────────────────────────────────────────────────────────────────────────────
 class _PersonalTab extends StatelessWidget {
   const _PersonalTab();
@@ -680,12 +1053,12 @@ class _PersonalTab extends StatelessWidget {
       length: 2,
       child: Column(
         children: [
-          const TabBar(
-            indicatorColor: Colors.purpleAccent,
-            labelColor: Colors.purpleAccent,
-            unselectedLabelColor: Colors.white38,
-            tabs: [
-              Tab(text: 'Takipçilerim'),
+          TabBar(
+            indicatorColor: AppColors.navyLight,
+            labelColor: AppColors.navyLight,
+            unselectedLabelColor: AppColors.textTertiary,
+            tabs: const [
+              Tab(text: 'Takipcilerim'),
               Tab(text: 'Takip Ettiklerim'),
             ],
           ),
@@ -713,13 +1086,13 @@ class _PersonalTab extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                CircleAvatar(backgroundColor: Colors.grey.shade800, child: const Icon(Icons.person, color: Colors.white)),
+                CircleAvatar(backgroundColor: AppColors.surfaceLight, child: Icon(Icons.person, color: AppColors.textSecondary)),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('User_$index', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      Text('User_$index', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
                       Row(
                         children: [
                           IconButton(icon: const Icon(Icons.camera_alt, size: 16, color: Colors.pinkAccent), onPressed: () {}, constraints: const BoxConstraints(), padding: EdgeInsets.zero),
@@ -731,13 +1104,13 @@ class _PersonalTab extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.message, color: Colors.purpleAccent),
+                  icon: Icon(Icons.message, color: AppColors.navyLight),
                   onPressed: () {
                     // Open DM
                   },
                 ),
-                if (!isFollower) 
-                  TextButton(onPressed: () {}, child: const Text('Unfollow', style: TextStyle(color: Colors.redAccent)))
+                if (!isFollower)
+                  TextButton(onPressed: () {}, child: Text('Unfollow', style: TextStyle(color: AppColors.accentRed)))
               ],
             ),
           ),
@@ -760,37 +1133,37 @@ class _GlobalTab extends StatelessWidget {
       children: [
         // Search
         TextField(
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: AppColors.textPrimary),
           decoration: InputDecoration(
-            hintText: 'Kampanya veya Kullanıcı Ara...',
-            hintStyle: const TextStyle(color: Colors.white54),
-            prefixIcon: const Icon(Icons.search, color: Colors.blueAccent),
+            hintText: 'Kampanya veya Kullanici Ara...',
+            hintStyle: TextStyle(color: AppColors.textTertiary),
+            prefixIcon: Icon(Icons.search, color: AppColors.accentBlue),
             filled: true,
-            fillColor: const Color(0xFF1E1E1E),
+            fillColor: AppColors.surfaceLight,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)
           ),
         ),
         const SizedBox(height: 24),
-        
+
         // Local Campaigns
-        const Row(
+        Row(
           children: [
-            Icon(Icons.location_on, color: Colors.greenAccent),
-            SizedBox(width: 8),
-            Text('Bölgemdeki Kampanyalar', style: TextStyle(color: Colors.greenAccent, fontSize: 16, fontWeight: FontWeight.bold)),
+            Icon(Icons.location_on, color: AppColors.accentGreen),
+            const SizedBox(width: 8),
+            Text('Bolgemdeki Kampanyalar', style: TextStyle(color: AppColors.accentGreen, fontSize: 16, fontWeight: FontWeight.bold)),
           ],
         ),
         const SizedBox(height: 12),
         _buildMiniCampaignCard('Save The Oceans (Local)', 15000),
-        
+
         const SizedBox(height: 24),
-        const Text('En Popüler Kampanyalar', style: TextStyle(color: Colors.amberAccent, fontSize: 16, fontWeight: FontWeight.bold)),
+        Text('En Populer Kampanyalar', style: TextStyle(color: AppColors.accentAmber, fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
         _buildMiniCampaignCard('Global Peace Order', 5000000),
         _buildMiniCampaignCard('Mars Colony Fund', 1200000),
 
         const SizedBox(height: 24),
-        const Text('En Çok Tepki Alanlar (RAC)', style: TextStyle(color: Colors.redAccent, fontSize: 16, fontWeight: FontWeight.bold)),
+        Text('En Cok Tepki Alanlar (RAC)', style: TextStyle(color: AppColors.accentRed, fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
         _buildMiniCampaignCard('Corporate Monopoly', -850000, isRac: true),
       ],
@@ -804,10 +1177,10 @@ class _GlobalTab extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            Icon(isRac ? Icons.warning : Icons.star, color: isRac ? Colors.redAccent : Colors.amberAccent),
+            Icon(isRac ? Icons.warning : Icons.star, color: isRac ? AppColors.accentRed : AppColors.accentAmber),
             const SizedBox(width: 12),
-            Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-            Text('${size} m²', style: const TextStyle(color: Colors.white70)),
+            Expanded(child: Text(title, style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold))),
+            Text('${size} m\u00B2', style: TextStyle(color: AppColors.textSecondary)),
           ],
         ),
       ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../app/theme.dart';
 import '../../app/widgets/modern_card.dart';
 import '../../app/widgets/modern_button.dart';
 import '../economy/economy_screen.dart';
@@ -13,16 +14,16 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   double _iconSize = 1.0;
   String _iconAlign = 'center';
-  
+
   final TextEditingController _sloganCtl = TextEditingController(text: 'World domination imminent.');
   final TextEditingController _descCtl = TextEditingController(text: 'I am a placeholder description for now.');
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D), // Deeper true dark
+      backgroundColor: AppColors.pageBackground,
       appBar: AppBar(
-        title: const Text('Profile', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
+        title: Text('Profile', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.textPrimary)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
@@ -45,7 +46,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         backgroundImage: NetworkImage('https://via.placeholder.com/150'), // Mock avatar
                       ),
                       Container(
-                        decoration: BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle),
+                        decoration: BoxDecoration(color: AppColors.accentBlue, shape: BoxShape.circle),
                         child: IconButton(
                           icon: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
                           onPressed: () {
@@ -56,19 +57,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  const Text(
+                  Text(
                     'CypherPunk99',
-                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w600),
+                    style: TextStyle(color: AppColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _sloganCtl,
-                    style: const TextStyle(color: Colors.white70),
+                    style: TextStyle(color: AppColors.textSecondary),
                     decoration: InputDecoration(
                         labelText: 'Slogan',
-                        labelStyle: const TextStyle(color: Colors.white54),
+                        labelStyle: TextStyle(color: AppColors.textTertiary),
                         filled: true,
-                        fillColor: Colors.white10,
+                        fillColor: AppColors.surfaceLight,
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))
                     ),
                   ),
@@ -76,12 +77,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   TextField(
                     controller: _descCtl,
                     maxLines: 3,
-                    style: const TextStyle(color: Colors.white70),
+                    style: TextStyle(color: AppColors.textSecondary),
                     decoration: InputDecoration(
                         labelText: 'Description',
-                        labelStyle: const TextStyle(color: Colors.white54),
+                        labelStyle: TextStyle(color: AppColors.textTertiary),
                         filled: true,
-                        fillColor: Colors.white10,
+                        fillColor: AppColors.surfaceLight,
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))
                     ),
                   ),
@@ -98,11 +99,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            
+
             // Icon Progression Stats
-            const Text(
+            Text(
               'Map Appearance',
-              style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 14),
+              style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 14),
             ),
             const SizedBox(height: 12),
             ModernCard(
@@ -112,8 +113,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                            const Text('Visual Size', style: TextStyle(color: Colors.white, fontSize: 16)),
-                            Text('${_iconSize.toStringAsFixed(1)}x', style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                            Text('Visual Size', style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
+                            Text('${_iconSize.toStringAsFixed(1)}x', style: TextStyle(color: AppColors.accentBlue, fontWeight: FontWeight.bold)),
                         ],
                     ),
                     Slider(
@@ -121,11 +122,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       min: 0.5,
                       max: 5.0, // This would dynamically be bound to User.tokens / 100
                       divisions: 45,
-                      activeColor: Colors.blueAccent,
+                      activeColor: AppColors.accentBlue,
                       onChanged: (val) => setState(() => _iconSize = val),
                     ),
                     const SizedBox(height: 12),
-                    const Text('Icon Alignment', style: TextStyle(color: Colors.white, fontSize: 16)),
+                    Text('Icon Alignment', style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
                     const SizedBox(height: 8),
                     SegmentedButton<String>(
                         segments: const [
@@ -140,10 +141,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             });
                         },
                         style: ButtonStyle(
-                            backgroundColor: MaterialStateProperty.resolveWith<Color>(
-                                (states) => states.contains(MaterialState.selected) ? Colors.blueAccent : Colors.transparent,
+                            backgroundColor: WidgetStateProperty.resolveWith<Color>(
+                                (states) => states.contains(WidgetState.selected) ? AppColors.accentBlue : Colors.transparent,
                             ),
-                            foregroundColor: MaterialStateProperty.all(Colors.white)
+                            foregroundColor: WidgetStateProperty.resolveWith<Color>(
+                                (states) => states.contains(WidgetState.selected) ? Colors.white : AppColors.textPrimary,
+                            ),
                         ),
                     ),
                     const SizedBox(height: 16),
@@ -157,9 +160,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 24),
 
             // Token Wallet
-            const Text(
+            Text(
               'Wallet',
-              style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 14),
+              style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 14),
             ),
             const SizedBox(height: 12),
             ModernCard(
@@ -171,17 +174,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     children: [
                        Row(
                          children: [
-                             const Text('Total Balance', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                             Text('Total Balance', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
                          ]
                        ),
                        const SizedBox(height: 4),
-                       const Text('12,450 WAC', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                       Text('12,450 WAC', style: TextStyle(color: AppColors.textPrimary, fontSize: 24, fontWeight: FontWeight.bold)),
                        const SizedBox(height: 8),
                        Row(
-                         children: const [
-                             Icon(Icons.auto_graph, color: Colors.cyanAccent, size: 14),
+                         children: [
+                             Icon(Icons.auto_graph, color: AppColors.accentTeal, size: 14),
                              SizedBox(width: 4),
-                             Text('Passive Earnings: +350 WAC', style: TextStyle(color: Colors.cyanAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                             Text('Passive Earnings: +350 WAC', style: TextStyle(color: AppColors.accentTeal, fontSize: 13, fontWeight: FontWeight.bold)),
                          ]
                        )
                     ],

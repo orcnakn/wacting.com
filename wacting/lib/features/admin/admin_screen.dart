@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../app/theme.dart';
 import '../../app/widgets/modern_card.dart';
 import 'package:dio/dio.dart';
 
@@ -14,7 +15,7 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   bool _isLoading = true;
   String? _error;
-  
+
   int _totalUsers = 0;
   int _activeUsers = 0;
   int _bannedUsers = 0;
@@ -61,11 +62,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.pageBackground,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('WACTING ADMIN PORTAL', style: TextStyle(color: Colors.redAccent, letterSpacing: 2)),
+        title: Text('WACTING ADMIN PORTAL', style: TextStyle(color: AppColors.accentRed, letterSpacing: 2)),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: () {
             setState(() { _isLoading = true; _error = null; });
@@ -73,43 +74,43 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           })
         ],
       ),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator(color: Colors.redAccent))
-        : _error != null 
-          ? Center(child: Text(_error!, style: const TextStyle(color: Colors.redAccent)))
+      body: _isLoading
+        ? Center(child: CircularProgressIndicator(color: AppColors.accentRed))
+        : _error != null
+          ? Center(child: Text(_error!, style: TextStyle(color: AppColors.accentRed)))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Live Traffic & Telemetry', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                  Text('Live Traffic & Telemetry', style: TextStyle(color: AppColors.textPrimary, fontSize: 24, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 24),
-                  
+
                   // Graphing Cards
                   Row(
                     children: [
-                      Expanded(child: _buildStatCard('Total Registered Users', _totalUsers.toString(), Colors.blueAccent)),
+                      Expanded(child: _buildStatCard('Total Registered Users', _totalUsers.toString(), AppColors.accentBlue)),
                       const SizedBox(width: 16),
-                      Expanded(child: _buildStatCard('Active Sessions', _activeUsers.toString(), Colors.greenAccent)),
+                      Expanded(child: _buildStatCard('Active Sessions', _activeUsers.toString(), AppColors.accentGreen)),
                     ],
                   ),
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      Expanded(child: _buildStatCard('Platform Bans', _bannedUsers.toString(), Colors.redAccent)),
+                      Expanded(child: _buildStatCard('Platform Bans', _bannedUsers.toString(), AppColors.accentRed)),
                       const SizedBox(width: 16),
-                      Expanded(child: _buildStatCard('Total WAC Minted', _totalTokens, Colors.amberAccent)),
+                      Expanded(child: _buildStatCard('Total WAC Minted', _totalTokens, AppColors.accentAmber)),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 48),
-                  const Text('Recent User Reports', style: TextStyle(color: Colors.white, fontSize: 20)),
+                  Text('Recent User Reports', style: TextStyle(color: AppColors.textPrimary, fontSize: 20)),
                   const SizedBox(height: 16),
                   ModernCard(
-                    child: const Center(
+                    child: Center(
                       child: Padding(
-                        padding: EdgeInsets.all(32.0),
-                        child: Text("No unresolved reports in queue.", style: TextStyle(color: Colors.white54)),
+                        padding: const EdgeInsets.all(32.0),
+                        child: Text("No unresolved reports in queue.", style: TextStyle(color: AppColors.textTertiary)),
                       )
                     )
                   )
@@ -124,7 +125,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: TextStyle(color: Colors.white54, fontSize: 12, letterSpacing: 1)),
+          Text(title, style: TextStyle(color: AppColors.textTertiary, fontSize: 12, letterSpacing: 1)),
           const SizedBox(height: 8),
           Text(value, style: TextStyle(color: flavor, fontSize: 32, fontWeight: FontWeight.bold)),
         ],
