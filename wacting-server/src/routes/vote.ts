@@ -29,7 +29,7 @@ export async function voteRoutes(fastify: FastifyInstance) {
 
             const endsAt = new Date(Date.now() + (durationHours || 24) * 3600 * 1000);
 
-            const poll = await (prisma as any).campaignPoll.create({
+            const poll = await prisma.campaignPoll.create({
                 data: {
                     campaignId: user.id,
                     title,
@@ -60,7 +60,7 @@ export async function voteRoutes(fastify: FastifyInstance) {
     fastify.get('/campaign/:campaignId', async (request, reply) => {
         try {
             const { campaignId } = request.params as { campaignId: string };
-            const polls = await (prisma as any).campaignPoll.findMany({
+            const polls = await prisma.campaignPoll.findMany({
                 where: { campaignId },
                 orderBy: { createdAt: 'desc' },
                 include: {
@@ -103,7 +103,7 @@ export async function voteRoutes(fastify: FastifyInstance) {
             const { optionId } = request.body as { optionId: string };
 
             // Check poll is still active
-            const poll = await (prisma as any).campaignPoll.findUnique({
+            const poll = await prisma.campaignPoll.findUnique({
                 where: { id: pollId }
             });
             if (!poll || poll.status !== 'ACTIVE') {
@@ -119,7 +119,7 @@ export async function voteRoutes(fastify: FastifyInstance) {
             });
             const wacWeight = wacRecord?.wacBalance ?? 1; // Default weight 1 if no WAC
 
-            const vote = await (prisma as any).pollVote.create({
+            const vote = await prisma.pollVote.create({
                 data: {
                     pollId,
                     optionId,
@@ -147,7 +147,7 @@ export async function voteRoutes(fastify: FastifyInstance) {
             const user = (request as any).user;
             const { pollId } = request.params as { pollId: string };
 
-            const poll = await (prisma as any).campaignPoll.findUnique({
+            const poll = await prisma.campaignPoll.findUnique({
                 where: { id: pollId },
                 include: { options: { include: { votes: true } } }
             });
@@ -167,7 +167,7 @@ export async function voteRoutes(fastify: FastifyInstance) {
                 }
             }
 
-            const updated = await (prisma as any).campaignPoll.update({
+            const updated = await prisma.campaignPoll.update({
                 where: { id: pollId },
                 data: {
                     status: 'COMPLETED',
@@ -189,7 +189,7 @@ export async function voteRoutes(fastify: FastifyInstance) {
     fastify.get('/history', async (request, reply) => {
         try {
             const user = (request as any).user;
-            const userVotes = await (prisma as any).pollVote.findMany({
+            const userVotes = await prisma.pollVote.findMany({
                 where: { voterId: user.id },
                 orderBy: { createdAt: 'desc' },
                 include: {

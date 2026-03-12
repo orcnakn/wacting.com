@@ -1,5 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
 import { PrismaClient } from '@prisma/client';
 import { MovementEngine } from './engine/movement_engine.js';
 import { SocketManager } from './socket/socket_manager.js';
@@ -62,12 +64,32 @@ async function start() {
         // await registerSnapshotCron();
         // fastify.log.info('WAC Snapshot Cron Registered (midnight UTC)');
 
-        // 5. CORS — allow browser requests from any origin (dev + prod)
+        // 5a. CORS — must be first so preflight OPTIONS gets correct headers
+        const allowedOrigins = process.env.NODE_ENV === 'production'
+            ? ['https://wacting.com', 'https://www.wacting.com']
+            : true; // allow all in development
         await fastify.register(cors, {
-            origin: true,
+            origin: allowedOrigins,
             methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
             allowedHeaders: ['Content-Type', 'Authorization'],
             credentials: true
+        });
+
+        // 5b. Security headers
+        await fastify.register(helmet, {
+            contentSecurityPolicy: false // Flutter web manages its own CSP
+        });
+
+        // 5c. Rate limiting — OPTIONS (preflight) requests bypass via allowList logic
+        await fastify.register(rateLimit, {
+            max: 100,
+            timeWindow: '1 minute',
+            allowList: ['127.0.0.1'],
+            keyGenerator: (req) => {
+                // Preflight requests don't count toward rate limit
+                if (req.method === 'OPTIONS') return 'preflight_bypass';
+                return req.ip;
+            }
         });
 
         // 6. HTTP routing

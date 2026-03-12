@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../app/theme.dart';
 import '../../app/widgets/modern_card.dart';
+import '../../core/config/app_config.dart';
 import 'package:dio/dio.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
@@ -31,7 +32,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     try {
       final dio = Dio();
       final response = await dio.get(
-        'http://127.0.0.1:3000/admin/stats',
+        '${AppConfig.apiBaseUrl}/admin/stats',
         options: Options(
           headers: {'Authorization': 'Bearer ${widget.adminToken}'},
         ),

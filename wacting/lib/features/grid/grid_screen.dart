@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import 'providers/grid_state.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import '../../core/services/socket_service.dart';
+import '../../core/config/app_config.dart';
 import '../../core/models/icon_model.dart';
 import '../../app/constants.dart';
 import '../../app/theme.dart';
@@ -102,7 +103,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   @override
   void initState() {
     super.initState();
-    socketService.connect('http://127.0.0.1:3000');
+    socketService.connect(AppConfig.socketUrl);
   }
 
   // ── Lazy-load 110m countries ──

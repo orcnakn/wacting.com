@@ -1,21 +1,47 @@
 import { Server, Socket } from 'socket.io';
+import jwt from 'jsonwebtoken';
 import { MovementEngine } from '../engine/movement_engine.js';
 import { ChatManager } from './chat_manager.js';
+
+const JWT_SECRET: string = process.env.JWT_SECRET || 'super_secret_dev_key';
 
 export class SocketManager {
     private io: Server;
     private engine: MovementEngine;
 
     constructor(server: any, engine: MovementEngine) {
+        const allowedOrigins = process.env.NODE_ENV === 'production'
+            ? ['https://wacting.com', 'https://www.wacting.com']
+            : '*';
         this.io = new Server(server, {
-            cors: { origin: '*' } // TODO: Restrict to Wacting.com in Phase 7 production
+            cors: { origin: allowedOrigins }
         });
         this.engine = engine;
     }
 
     public init() {
+        // WebSocket JWT authentication middleware
+        this.io.use((socket, next) => {
+            const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.replace('Bearer ', '');
+            if (!token) {
+                // Allow unauthenticated connections in dev, reject in production
+                if (process.env.NODE_ENV === 'production') {
+                    return next(new Error('Authentication required'));
+                }
+                socket.data.userId = null;
+                return next();
+            }
+            try {
+                const payload = jwt.verify(token, JWT_SECRET as jwt.Secret) as { userId: string };
+                socket.data.userId = payload.userId;
+                next();
+            } catch {
+                return next(new Error('Invalid token'));
+            }
+        });
+
         this.io.on('connection', (socket: Socket) => {
-            console.log(`Client Connected: ${socket.id}`);
+            console.log(`Client Connected: ${socket.id} (user: ${socket.data.userId || 'anonymous'})`);
 
             const chatManager = new ChatManager(this.io);
             chatManager.handleConnection(socket);

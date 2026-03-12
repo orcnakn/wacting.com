@@ -113,7 +113,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
     fastify.get('/mine', async (request, reply) => {
         try {
             const user = (request as any).user;
-            const campaigns = await (prisma as any).campaign.findMany({
+            const campaigns = await prisma.campaign.findMany({
                 where: { leaderId: user.id },
                 orderBy: { createdAt: 'desc' }
             });
@@ -127,7 +127,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
     // ── List All Active Campaigns (Global) ───────────────────────────────────
     fastify.get('/all', async (request, reply) => {
         try {
-            const campaigns = await (prisma as any).campaign.findMany({
+            const campaigns = await prisma.campaign.findMany({
                 where: { isActive: true },
                 orderBy: { createdAt: 'desc' },
                 take: 50,
@@ -148,7 +148,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
     fastify.get('/:id', async (request, reply) => {
         try {
             const { id } = request.params as { id: string };
-            const campaign = await (prisma as any).campaign.findUnique({
+            const campaign = await prisma.campaign.findUnique({
                 where: { id },
                 include: {
                     leader: {

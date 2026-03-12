@@ -24,6 +24,23 @@ class IconModel extends Equatable {
     this.exploreMode = 0,
   });
 
+  factory IconModel.fromJson(Map<String, dynamic> json) {
+    return IconModel(
+      id: json['id'] as String,
+      userId: json['userId'] as String,
+      position: Offset(
+        (json['x'] as num).toDouble(),
+        (json['y'] as num).toDouble(),
+      ),
+      size: (json['size'] as num).toDouble(),
+      color: const Color(0xFF2196F3),
+      shapeIndex: 0,
+      speed: (json['baseSpeed'] as num?)?.toDouble() ?? 1.0,
+      followerCount: 0,
+      exploreMode: (json['exploreMode'] as num?)?.toInt() ?? 0,
+    );
+  }
+
   bool get isMicro => size < 5.0;
   bool get isSmall => size >= 5.0 && size < 25.0;
   bool get isMedium => size >= 25.0 && size < 100.0;

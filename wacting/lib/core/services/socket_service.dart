@@ -3,17 +3,16 @@ import 'dart:math';
 import 'dart:ui';
 import '../models/icon_model.dart';
 import '../config/app_config.dart';
+import '../services/api_service.dart';
 import '../../features/grid/providers/grid_state.dart';
-
-// Production: socket_io_client
-// ignore: depend_on_referenced_packages
-// import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 class SocketService {
   final _iconStreamController = StreamController<List<IconModel>>.broadcast();
   Stream<List<IconModel>> get iconStream => _iconStreamController.stream;
   Timer? _mockPhysicsTimer;
   List<IconModel> _mockIcons = [];
+  IO.Socket? _socket;
 
   void connect(String serverUrl) {
     if (AppConfig.isProduction) {
@@ -25,24 +24,34 @@ class SocketService {
 
   // ─── PRODUCTION MODE ────────────────────────────────────────────────────────
   void _connectProduction(String serverUrl) {
-    // Production socket.io connection to wacting-server
-    // Uses the real Brownian physics engine running on the VDS
-    //
-    // Uncomment when deploying to production:
-    //
-    // final socket = IO.io(serverUrl, <String, dynamic>{
-    //   'transports': ['websocket'],
-    //   'autoConnect': true,
-    // });
-    //
-    // socket.on('icons', (data) {
-    //   final icons = (data as List).map((d) => IconModel.fromJson(d)).toList();
-    //   _iconStreamController.add(icons);
-    // });
-    //
-    // socket.connect();
-    print('[PRODUCTION] Socket connecting to $serverUrl');
-    _connectMock(); // Fallback to mock until socket_io_client is activated
+    final token = apiService.token;
+
+    _socket = IO.io(serverUrl, <String, dynamic>{
+      'transports': ['websocket'],
+      'autoConnect': false,
+      if (token != null) 'auth': {'token': token},
+    });
+
+    _socket!.on('tick', (data) {
+      try {
+        final icons = (data as List)
+            .map((d) => IconModel.fromJson(d as Map<String, dynamic>))
+            .toList();
+        _iconStreamController.add(icons);
+      } catch (e) {
+        print('[SOCKET] Error parsing tick: $e');
+      }
+    });
+
+    _socket!.on('connect', (_) {
+      print('[PRODUCTION] Socket connected to $serverUrl');
+    });
+
+    _socket!.on('connect_error', (err) {
+      print('[PRODUCTION] Socket connection error: $err');
+    });
+
+    _socket!.connect();
   }
 
   // ─── DEVELOPMENT / MOCK MODE ────────────────────────────────────────────────
@@ -104,6 +113,8 @@ class SocketService {
   void updateViewportSubscription(ViewportState viewport) {}
 
   void dispose() {
+    _socket?.disconnect();
+    _socket?.dispose();
     _mockPhysicsTimer?.cancel();
     _iconStreamController.close();
   }
