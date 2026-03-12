@@ -176,35 +176,6 @@ class _AuthScreenState extends State<AuthScreen> {
                   ModernCard(
                     child: Column(
                       children: [
-                        // DEV BYPASS BUTTON
-                        GestureDetector(
-                          onTap: () {
-                            Navigator.of(context).pushReplacement(
-                              MaterialPageRoute(builder: (_) => const RootNavigation()),
-                            );
-                          },
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            margin: const EdgeInsets.only(bottom: 16),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [AppColors.accentTeal, AppColors.accentBlue],
-                              ),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Text(
-                              'DEV — Giris Yap (Test)',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                                letterSpacing: 1,
-                              ),
-                            ),
-                          ),
-                        ),
                         TextField(
                           controller: _usernameController,
                           style: TextStyle(color: AppColors.textPrimary),

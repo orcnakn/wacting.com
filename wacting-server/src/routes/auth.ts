@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
@@ -63,12 +63,28 @@ export async function authRoutes(fastify: FastifyInstance) {
                             lastKnownX: 350.0,
                             lastKnownY: 350.0
                         }
+                    },
+                    wac: {
+                        create: {
+                            wacBalance: new Prisma.Decimal('1.000000'),
+                            isActive: true,
+                        }
                     }
                 }
             });
 
+            // Log the initial WAC grant
+            await prisma.transaction.create({
+                data: {
+                    userId: user.id,
+                    amount: new Prisma.Decimal('1.000000'),
+                    type: 'WAC_DEPOSIT',
+                    note: 'Welcome bonus: 1 WAC on registration',
+                },
+            });
+
             const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '30d' });
-            return reply.code(201).send({ token, userId: user.id });
+            return reply.code(201).send({ token, userId: user.id, wacBalance: '1.000000' });
         } catch (err: any) {
             fastify.log.error(`Email registration failed: ${err}`);
             return reply.code(400).send({ error: err.message || 'Invalid payload' });
