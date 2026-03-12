@@ -50,6 +50,6 @@ export class SpatialIndex {
      */
     public search(minX: number, minY: number, maxX: number, maxY: number): IconState[] {
         const results = this.tree.search({ minX, minY, maxX, maxY });
-        return results.map(item => item.icon);
+        return results.map((item: SpatialItem) => item.icon);
     }
 }
