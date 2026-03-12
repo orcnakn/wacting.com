@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import '../../app/theme.dart';
 import '../../app/widgets/modern_card.dart';
 import '../../core/services/api_service.dart';
+
+String _extractError(dynamic e, [String fallback = 'Bir hata olustu.']) {
+  if (e is DioException && e.response?.data is Map) {
+    return (e.response!.data as Map)['error']?.toString() ?? fallback;
+  }
+  return fallback;
+}
 
 class SocialScreen extends StatefulWidget {
   final String userToken;
@@ -586,7 +594,7 @@ class _CampaignsTabState extends State<_CampaignsTab>
                           );
                         } catch (e) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Hata: $e'), backgroundColor: AppColors.accentRed),
+                            SnackBar(content: Text(_extractError(e, 'Oy kullanilamadi.')), backgroundColor: AppColors.accentRed),
                           );
                         }
                       },
@@ -892,7 +900,7 @@ class _CampaignsTabState extends State<_CampaignsTab>
                             }
                           } catch (e) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Hata: $e'), backgroundColor: AppColors.accentRed),
+                              SnackBar(content: Text(_extractError(e, 'Bir hata olustu.')), backgroundColor: AppColors.accentRed),
                             );
                           }
                         },
@@ -1002,7 +1010,7 @@ class _CampaignsTabState extends State<_CampaignsTab>
                       }
                     } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Hata: $e'), backgroundColor: AppColors.accentRed),
+                        SnackBar(content: Text(_extractError(e, 'Bir hata olustu.')), backgroundColor: AppColors.accentRed),
                       );
                     }
                   },
