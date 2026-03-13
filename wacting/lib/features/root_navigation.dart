@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../app/theme.dart';
 import 'grid/grid_screen.dart';
 import 'social/social_screen.dart';
-import 'social/notifications_screen.dart';
 import 'profile/profile_screen.dart';
 
 class RootNavigation extends StatefulWidget {
@@ -18,7 +17,6 @@ class _RootNavigationState extends State<RootNavigation> {
   final List<Widget> _screens = [
     const GridScreen(),
     const SocialScreen(userToken: 'mock_jwt_local_testing'),
-    const NotificationsScreen(),
     const ProfileScreen(),
   ];
 
@@ -55,10 +53,6 @@ class _RootNavigationState extends State<RootNavigation> {
             BottomNavigationBarItem(
               icon: Icon(Icons.people_alt),
               label: 'FEED',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.notifications),
-              label: 'ALERTS',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.account_circle),

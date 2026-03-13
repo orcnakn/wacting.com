@@ -26,7 +26,7 @@ class _SocialScreenState extends State<SocialScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 2,
       child: Scaffold(
         backgroundColor: AppColors.pageBackground,
         appBar: AppBar(
@@ -41,7 +41,6 @@ class _SocialScreenState extends State<SocialScreen> {
              indicatorWeight: 3,
              tabs: const [
                Tab(text: 'KAMPANYALAR', icon: Icon(Icons.flag)),
-               Tab(text: 'KISISEL', icon: Icon(Icons.person)),
                Tab(text: 'GLOBAL', icon: Icon(Icons.public)),
              ],
            ),
@@ -49,7 +48,6 @@ class _SocialScreenState extends State<SocialScreen> {
         body: const TabBarView(
           children: [
             _CampaignsTab(),
-            _PersonalTab(),
             _GlobalTab(),
           ],
         ),
@@ -618,6 +616,9 @@ class _CampaignsTabState extends State<_CampaignsTab>
     final tiktokCtrl  = TextEditingController();
     final webCtrl     = TextEditingController();
 
+    // Speed state (0.0–1.0; 0.5 = 75% of reference speed)
+    double campaignSpeed = 0.5;
+
     // Icon selection state
     final List<Color> _iconColors = [
       AppColors.accentBlue, AppColors.accentTeal, AppColors.accentGreen,
@@ -849,6 +850,48 @@ class _CampaignsTabState extends State<_CampaignsTab>
                       Expanded(child: _field(webCtrl, 'https://kampanyasitesi.com', icon: null)),
                     ]),
 
+                    const SizedBox(height: 24),
+                    Divider(color: AppColors.borderLight),
+                    const SizedBox(height: 16),
+
+                    // ── Hareket Hızı ──────────────────────────────────────────
+                    Text('Hareket Hızı',
+                        style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 14)),
+                    const SizedBox(height: 4),
+                    Text('İkonun haritadaki hareket hızını ayarla (0 = sabit, 0.5 = varsayılan)',
+                        style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Icon(Icons.directions_run, color: AppColors.textTertiary, size: 18),
+                        Expanded(
+                          child: Slider(
+                            value: campaignSpeed,
+                            min: 0.0,
+                            max: 1.0,
+                            divisions: 10,
+                            activeColor: _iconColors[selectedColorIdx],
+                            inactiveColor: AppColors.borderMedium,
+                            onChanged: (v) => setModal(() => campaignSpeed = v),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 36,
+                          child: Text(
+                            campaignSpeed.toStringAsFixed(2),
+                            style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+                            textAlign: TextAlign.end,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (campaignSpeed == 0.0)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text('İkon sabit kalır, hareket etmez.',
+                            style: TextStyle(color: AppColors.accentAmber, fontSize: 11)),
+                      ),
+
                     const SizedBox(height: 32),
 
                     // ── Olustur Butonu ────────────────────────────────────────
@@ -881,6 +924,7 @@ class _CampaignsTabState extends State<_CampaignsTab>
                               videoUrl: videoCtrl.text.trim().isEmpty ? null : videoCtrl.text.trim(),
                               iconColor: colorHex,
                               iconShape: selectedShapeIdx,
+                              speed: campaignSpeed,
                               instagramUrl: igCtrl.text.trim().isEmpty ? null : igCtrl.text.trim(),
                               twitterUrl: twCtrl.text.trim().isEmpty ? null : twCtrl.text.trim(),
                               facebookUrl: fbCtrl.text.trim().isEmpty ? null : fbCtrl.text.trim(),
@@ -1131,12 +1175,54 @@ class _PersonalTab extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // 3. GLOBAL TAB
 // ─────────────────────────────────────────────────────────────────────────────
-class _GlobalTab extends StatelessWidget {
+class _GlobalTab extends StatefulWidget {
   const _GlobalTab();
 
   @override
+  State<_GlobalTab> createState() => _GlobalTabState();
+}
+
+class _GlobalTabState extends State<_GlobalTab> {
+  List<dynamic> _nearby = [];
+  List<dynamic> _popular = [];
+  List<dynamic> _trending = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCampaigns();
+  }
+
+  Future<void> _loadCampaigns() async {
+    if (!apiService.isLoggedIn) {
+      setState(() => _loading = false);
+      return;
+    }
+    try {
+      final [nearby, popular, trending] = await Future.wait([
+        apiService.getNearbyCampaigns(),
+        apiService.getPopularCampaigns(),
+        apiService.getTrendingCampaigns(),
+      ]);
+      if (mounted) {
+        setState(() {
+          _nearby = nearby;
+          _popular = popular;
+          _trending = trending;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ListView(
+    return _loading
+        ? Center(child: CircularProgressIndicator(color: AppColors.accentBlue))
+        : ListView(
       padding: const EdgeInsets.all(16),
       children: [
         // Search
@@ -1153,7 +1239,7 @@ class _GlobalTab extends StatelessWidget {
         ),
         const SizedBox(height: 24),
 
-        // Local Campaigns
+        // Nearby Campaigns
         Row(
           children: [
             Icon(Icons.location_on, color: AppColors.accentGreen),
@@ -1162,33 +1248,163 @@ class _GlobalTab extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        _buildMiniCampaignCard('Save The Oceans (Local)', 15000),
+        if (_nearby.isEmpty)
+          Text('Bolgemdeki kampanya bulunamadi', style: TextStyle(color: AppColors.textTertiary))
+        else
+          SizedBox(
+            height: 140,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _nearby.length,
+              itemBuilder: (ctx, idx) => Padding(
+                padding: EdgeInsets.only(right: idx == _nearby.length - 1 ? 0 : 12),
+                child: _buildCompactCampaignCard(_nearby[idx]),
+              ),
+            ),
+          ),
 
         const SizedBox(height: 24),
-        Text('En Populer Kampanyalar', style: TextStyle(color: AppColors.accentAmber, fontSize: 16, fontWeight: FontWeight.bold)),
+        Row(
+          children: [
+            Icon(Icons.trending_up, color: AppColors.accentAmber),
+            const SizedBox(width: 8),
+            Text('En Populer Kampanyalar', style: TextStyle(color: AppColors.accentAmber, fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
         const SizedBox(height: 12),
-        _buildMiniCampaignCard('Global Peace Order', 5000000),
-        _buildMiniCampaignCard('Mars Colony Fund', 1200000),
+        if (_popular.isEmpty)
+          Text('Populer kampanya bulunamadi', style: TextStyle(color: AppColors.textTertiary))
+        else
+          SizedBox(
+            height: 140,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _popular.length,
+              itemBuilder: (ctx, idx) => Padding(
+                padding: EdgeInsets.only(right: idx == _popular.length - 1 ? 0 : 12),
+                child: _buildCompactCampaignCard(_popular[idx]),
+              ),
+            ),
+          ),
 
         const SizedBox(height: 24),
-        Text('En Cok Tepki Alanlar (RAC)', style: TextStyle(color: AppColors.accentRed, fontSize: 16, fontWeight: FontWeight.bold)),
+        Row(
+          children: [
+            Icon(Icons.flash_on, color: AppColors.accentRed),
+            const SizedBox(width: 8),
+            Text('En Cok Tepki Alanlar', style: TextStyle(color: AppColors.accentRed, fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
         const SizedBox(height: 12),
-        _buildMiniCampaignCard('Corporate Monopoly', -850000, isRac: true),
+        if (_trending.isEmpty)
+          Text('Trending kampanya bulunamadi', style: TextStyle(color: AppColors.textTertiary))
+        else
+          SizedBox(
+            height: 140,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _trending.length,
+              itemBuilder: (ctx, idx) => Padding(
+                padding: EdgeInsets.only(right: idx == _trending.length - 1 ? 0 : 12),
+                child: _buildCompactCampaignCard(_trending[idx]),
+              ),
+            ),
+          ),
       ],
     );
   }
 
-  Widget _buildMiniCampaignCard(String title, int size, {bool isRac = false}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: ModernCard(
+  /// Compact campaign card for horizontal scrolling lists
+  Widget _buildCompactCampaignCard(Map<String, dynamic> campaign) {
+    final title = (campaign['title'] ?? 'Kampanya') as String;
+    final slogan = (campaign['slogan'] ?? '') as String;
+    final memberCount = (campaign['memberCount'] ?? 0) as int;
+    final totalWac = (campaign['totalWac'] ?? '0.000000') as String;
+    final pollCount = (campaign['pollCount'] ?? 0) as int;
+
+    // Parse WAC as double for display
+    final wacValue = double.tryParse(totalWac) ?? 0.0;
+    final wacDisplay = wacValue >= 1000000
+        ? '${(wacValue / 1000000).toStringAsFixed(1)}M'
+        : wacValue >= 1000
+            ? '${(wacValue / 1000).toStringAsFixed(1)}K'
+            : wacValue.toStringAsFixed(0);
+
+    return GestureDetector(
+      onTap: () {
+        // TODO: Navigate to campaign detail
+      },
+      child: Container(
+        width: 160,
+        decoration: BoxDecoration(
+          color: AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.borderLight, width: 0.5),
+        ),
         padding: const EdgeInsets.all(12),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(isRac ? Icons.warning : Icons.star, color: isRac ? AppColors.accentRed : AppColors.accentAmber),
-            const SizedBox(width: 12),
-            Expanded(child: Text(title, style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold))),
-            Text('${size} m\u00B2', style: TextStyle(color: AppColors.textSecondary)),
+            // Title
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 2),
+            // Slogan
+            Text(
+              slogan,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: AppColors.textTertiary, fontSize: 10, fontStyle: FontStyle.italic),
+            ),
+            const SizedBox(height: 8),
+            Divider(height: 1, color: AppColors.borderLight),
+            const SizedBox(height: 8),
+            // Metrics row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      '$memberCount',
+                      style: TextStyle(color: AppColors.accentBlue, fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                    Text('Uye', style: TextStyle(color: AppColors.textTertiary, fontSize: 9)),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      wacDisplay,
+                      style: TextStyle(color: AppColors.accentAmber, fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                    Text('WAC', style: TextStyle(color: AppColors.textTertiary, fontSize: 9)),
+                  ],
+                ),
+                if (pollCount > 0)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        '$pollCount',
+                        style: TextStyle(color: AppColors.accentGreen, fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                      Text('Oy', style: TextStyle(color: AppColors.textTertiary, fontSize: 9)),
+                    ],
+                  ),
+              ],
+            ),
           ],
         ),
       ),

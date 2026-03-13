@@ -40,7 +40,8 @@ async function start() {
                 baseSpeed: 1 + Math.random(),
                 size: 15 + (Math.random() * 100),
                 wacBalance: 0,   // WAC balance drives map size
-                exploreMode: 0
+                exploreMode: 0,
+                campaignSpeed: 0.5, // default: 75% of reference (mock_95) speed
             });
         }
 

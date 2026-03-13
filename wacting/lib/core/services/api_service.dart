@@ -35,24 +35,47 @@ class ApiService {
 
   // ── Auth ────────────────────────────────────────────────────────────────────
 
-  Future<Map<String, dynamic>> emailLogin(String email, String password) async {
-    final res = await _dio.post('/auth/email/login', data: {
-      'email': email,
-      'password': password,
-    });
-    final data = res.data as Map<String, dynamic>;
-    setAuth(data['token'], data['userId']);
-    return data;
-  }
-
+  /// Register — token DÖNMEZ, needsVerification: true döner
   Future<Map<String, dynamic>> emailRegister(String email, String password, {String? username}) async {
     final res = await _dio.post('/auth/email/register', data: {
       'email': email,
       'password': password,
       if (username != null) 'username': username,
     });
+    return res.data as Map<String, dynamic>;
+  }
+
+  /// 6 haneli aktivasyon kodunu doğrula — başarılıysa token döner
+  Future<Map<String, dynamic>> verifyCode(String email, String code) async {
+    final res = await _dio.post('/auth/verify-code', data: {
+      'email': email,
+      'code': code,
+    });
     final data = res.data as Map<String, dynamic>;
-    setAuth(data['token'], data['userId']);
+    if (data['token'] != null) {
+      setAuth(data['token'], data['userId']);
+    }
+    return data;
+  }
+
+  /// Aktivasyon kodunu tekrar gönder
+  Future<Map<String, dynamic>> resendVerification(String email) async {
+    final res = await _dio.post('/auth/resend-verification', data: {
+      'email': email,
+    });
+    return res.data as Map<String, dynamic>;
+  }
+
+  /// Login — sadece doğrulanmış kullanıcılar giriş yapabilir
+  Future<Map<String, dynamic>> emailLogin(String email, String password) async {
+    final res = await _dio.post('/auth/email/login', data: {
+      'email': email,
+      'password': password,
+    });
+    final data = res.data as Map<String, dynamic>;
+    if (data['token'] != null) {
+      setAuth(data['token'], data['userId']);
+    }
     return data;
   }
 
@@ -65,6 +88,7 @@ class ApiService {
     String? videoUrl,
     required String iconColor,
     required int iconShape,
+    double speed = 0.5,
     String? instagramUrl,
     String? twitterUrl,
     String? facebookUrl,
@@ -78,6 +102,7 @@ class ApiService {
       if (videoUrl != null && videoUrl.isNotEmpty) 'videoUrl': videoUrl,
       'iconColor': iconColor,
       'iconShape': iconShape,
+      'speed': speed,
       if (instagramUrl != null && instagramUrl.isNotEmpty) 'instagramUrl': instagramUrl,
       if (twitterUrl != null && twitterUrl.isNotEmpty) 'twitterUrl': twitterUrl,
       if (facebookUrl != null && facebookUrl.isNotEmpty) 'facebookUrl': facebookUrl,
@@ -100,12 +125,14 @@ class ApiService {
   // ── Polls / Voting ──────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> createPoll({
+    required String campaignId,
     required String title,
     String? description,
     required List<String> options,
     required int durationHours,
   }) async {
     final res = await _dio.post('/vote/create', data: {
+      'campaignId': campaignId,
       'title': title,
       if (description != null && description.isNotEmpty) 'description': description,
       'options': options,
@@ -129,6 +156,21 @@ class ApiService {
   Future<List<dynamic>> getVotingHistory() async {
     final res = await _dio.get('/vote/history');
     return (res.data as Map<String, dynamic>)['history'] as List<dynamic>;
+  }
+
+  Future<List<dynamic>> getNearbyCampaigns() async {
+    final res = await _dio.get('/campaign/nearby');
+    return (res.data as Map<String, dynamic>)['campaigns'] as List<dynamic>;
+  }
+
+  Future<List<dynamic>> getPopularCampaigns() async {
+    final res = await _dio.get('/campaign/popular');
+    return (res.data as Map<String, dynamic>)['campaigns'] as List<dynamic>;
+  }
+
+  Future<List<dynamic>> getTrendingCampaigns() async {
+    final res = await _dio.get('/campaign/trending');
+    return (res.data as Map<String, dynamic>)['campaigns'] as List<dynamic>;
   }
 }
 

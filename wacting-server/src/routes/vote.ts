@@ -11,27 +11,40 @@ export async function voteRoutes(fastify: FastifyInstance) {
     // ─────────────────────────────────────────────────────────────────────────────
     // CREATE POLL (Campaign Leader only)
     // POST /vote/create
-    // Body: { title, description?, options: string[], durationHours: number }
+    // Body: { campaignId, title, description?, options: string[], durationHours: number }
     // ─────────────────────────────────────────────────────────────────────────────
     fastify.post('/create', async (request, reply) => {
         try {
             const user = (request as any).user;
-            const { title, description, options, durationHours } = request.body as {
+            const { campaignId, title, description, options, durationHours } = request.body as {
+                campaignId: string;
                 title: string;
                 description?: string;
                 options: string[];
                 durationHours: number;
             };
 
+            if (!campaignId) {
+                return reply.status(400).send({ success: false, error: 'campaignId is required.' });
+            }
             if (!title || !options || options.length < 2 || options.length > 5) {
-                return reply.status(400).send({ success: false, error: 'Must provide 2-5 options.' });
+                return reply.status(400).send({ success: false, error: 'Must provide title and 2-5 options.' });
+            }
+
+            // Verify the user is the leader of this campaign
+            const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
+            if (!campaign || !campaign.isActive) {
+                return reply.status(404).send({ success: false, error: 'Campaign not found.' });
+            }
+            if (campaign.leaderId !== user.id) {
+                return reply.status(403).send({ success: false, error: 'Only the campaign leader can create polls.' });
             }
 
             const endsAt = new Date(Date.now() + (durationHours || 24) * 3600 * 1000);
 
             const poll = await prisma.campaignPoll.create({
                 data: {
-                    campaignId: user.id,
+                    campaignId,
                     title,
                     description: description ?? null,
                     endsAt,
@@ -42,14 +55,12 @@ export async function voteRoutes(fastify: FastifyInstance) {
                 include: { options: true }
             });
 
-            // Notify all followers / WAC participants
-            // TODO: Replace with actual participant lookup once DB is live
-            fastify.log.info(`Poll created: ${poll.id} — notifications would be sent to participants`);
+            fastify.log.info(`Poll created: ${poll.id} for campaign ${campaignId}`);
 
             return reply.send({ success: true, poll });
         } catch (error: any) {
             fastify.log.error(error);
-            return reply.status(500).send({ success: false, error: 'Failed to create poll' });
+            return reply.status(500).send({ success: false, error: error.message || 'Failed to create poll' });
         }
     });
 
@@ -65,15 +76,12 @@ export async function voteRoutes(fastify: FastifyInstance) {
                 orderBy: { createdAt: 'desc' },
                 include: {
                     options: {
-                        include: {
-                            votes: true
-                        }
+                        include: { votes: true }
                     },
                     votes: true
                 }
             });
 
-            // Enrich with WAC totals and voter count per option
             const enriched = polls.map((poll: any) => ({
                 ...poll,
                 options: poll.options.map((opt: any) => ({
@@ -102,10 +110,7 @@ export async function voteRoutes(fastify: FastifyInstance) {
             const { pollId } = request.params as { pollId: string };
             const { optionId } = request.body as { optionId: string };
 
-            // Check poll is still active
-            const poll = await prisma.campaignPoll.findUnique({
-                where: { id: pollId }
-            });
+            const poll = await prisma.campaignPoll.findUnique({ where: { id: pollId } });
             if (!poll || poll.status !== 'ACTIVE') {
                 return reply.status(400).send({ success: false, error: 'Poll is not active' });
             }
@@ -113,19 +118,11 @@ export async function voteRoutes(fastify: FastifyInstance) {
                 return reply.status(400).send({ success: false, error: 'Poll has expired' });
             }
 
-            // Get user's current WAC balance as vote weight
-            const wacRecord = await prisma.userWac.findUnique({
-                where: { userId: user.id }
-            });
-            const wacWeight = wacRecord?.wacBalance ?? 1; // Default weight 1 if no WAC
+            const wacRecord = await prisma.userWac.findUnique({ where: { userId: user.id } });
+            const wacWeight = wacRecord?.wacBalance ?? 1;
 
             const vote = await prisma.pollVote.create({
-                data: {
-                    pollId,
-                    optionId,
-                    voterId: user.id,
-                    wacWeight
-                }
+                data: { pollId, optionId, voterId: user.id, wacWeight }
             });
 
             return reply.send({ success: true, vote });
@@ -149,30 +146,29 @@ export async function voteRoutes(fastify: FastifyInstance) {
 
             const poll = await prisma.campaignPoll.findUnique({
                 where: { id: pollId },
-                include: { options: { include: { votes: true } } }
+                include: {
+                    campaign: true,
+                    options: { include: { votes: true } }
+                }
             });
 
-            if (!poll || poll.campaignId !== user.id) {
-                return reply.status(403).send({ success: false, error: 'Not authorized or poll not found' });
+            if (!poll) {
+                return reply.status(404).send({ success: false, error: 'Poll not found' });
+            }
+            if (poll.campaign.leaderId !== user.id) {
+                return reply.status(403).send({ success: false, error: 'Only the campaign leader can close polls' });
             }
 
-            // Calculate winner by WAC weight
             let winnerOption = poll.options[0];
             let maxWac = 0;
             for (const opt of poll.options) {
                 const total = opt.votes.reduce((sum: number, v: any) => sum + parseFloat(v.wacWeight || 0), 0);
-                if (total > maxWac) {
-                    maxWac = total;
-                    winnerOption = opt;
-                }
+                if (total > maxWac) { maxWac = total; winnerOption = opt; }
             }
 
             const updated = await prisma.campaignPoll.update({
                 where: { id: pollId },
-                data: {
-                    status: 'COMPLETED',
-                    winnerOption: winnerOption?.text ?? null
-                }
+                data: { status: 'COMPLETED', winnerOption: winnerOption?.text ?? null }
             });
 
             return reply.send({ success: true, winner: winnerOption?.text, poll: updated });
@@ -183,7 +179,7 @@ export async function voteRoutes(fastify: FastifyInstance) {
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // GET USER'S VOTING HISTORY (for "Oylama Geçmişi" tab)
+    // GET USER'S VOTING HISTORY
     // GET /vote/history
     // ─────────────────────────────────────────────────────────────────────────────
     fastify.get('/history', async (request, reply) => {
@@ -195,11 +191,7 @@ export async function voteRoutes(fastify: FastifyInstance) {
                 include: {
                     option: true,
                     poll: {
-                        include: {
-                            options: {
-                                include: { votes: true }
-                            }
-                        }
+                        include: { options: { include: { votes: true } } }
                     }
                 }
             });
@@ -209,7 +201,6 @@ export async function voteRoutes(fastify: FastifyInstance) {
                 const myOption = v.option.text;
                 const winner = poll.winnerOption;
                 const isActive = poll.status === 'ACTIVE';
-                const didWin = winner === myOption;
                 return {
                     pollId: poll.id,
                     pollTitle: poll.title,
@@ -218,7 +209,7 @@ export async function voteRoutes(fastify: FastifyInstance) {
                     winnerOption: winner,
                     status: poll.status,
                     endsAt: poll.endsAt,
-                    result: isActive ? 'Devam Ediyor' : (didWin ? 'Kazandı' : 'Kaybetti')
+                    result: isActive ? 'Devam Ediyor' : (winner === myOption ? 'Kazandı' : 'Kaybetti')
                 };
             });
 

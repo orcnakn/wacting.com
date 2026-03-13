@@ -28,6 +28,10 @@ model User {
   role   String @default("USER") // USER, ADMIN
   status String @default("ACTIVE") // ACTIVE, BANNED
 
+  // Email verification
+  emailVerified    Boolean @default(false)
+  emailVerifyToken String? @unique
+
   // Profile
   avatarUrl   String?
   slogan      String? @db.VarChar(100)
@@ -65,7 +69,6 @@ model User {
   votes          Vote[] @relation("UserVotes")
 
   // Campaign Voting System
-  campaignPolls CampaignPoll[] @relation("LeaderPolls")
   pollVotes     PollVote[]     @relation("UserPollVotes")
 
   // Feed & Social additions
@@ -78,7 +81,8 @@ model User {
   snapshotEntries SnapshotEntry[]
 
   // Campaigns
-  campaigns Campaign[]
+  campaigns           Campaign[]
+  campaignMemberships CampaignMember[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -379,8 +383,8 @@ model Vote {
 /// Results are determined by WAC weight of votes, not headcount.
 model CampaignPoll {
   id           String       @id @default(uuid())
-  campaignId   String       // Leader's userId
-  leader       User         @relation("LeaderPolls", fields: [campaignId], references: [id])
+  campaignId   String
+  campaign     Campaign     @relation(fields: [campaignId], references: [id])
   title        String       @db.VarChar(140)
   description  String?      @db.Text
   status       PollStatus   @default(ACTIVE)
@@ -442,23 +446,39 @@ model CampaignHistory {
 }
 
 model Campaign {
-  id           String   @id @default(uuid())
+  id           String           @id @default(uuid())
   leaderId     String
-  leader       User     @relation(fields: [leaderId], references: [id])
-  title        String   @db.VarChar(100)
-  slogan       String   @db.VarChar(100)
-  description  String?  @db.Text
+  leader       User             @relation(fields: [leaderId], references: [id])
+  title        String           @db.VarChar(100)
+  slogan       String           @db.VarChar(100)
+  description  String?          @db.Text
   videoUrl     String?
-  iconColor    String   @db.VarChar(7)
-  iconShape    Int      @default(0)
+  iconColor    String           @db.VarChar(7)
+  iconShape    Int              @default(0)
   instagramUrl String?
   twitterUrl   String?
   facebookUrl  String?
   tiktokUrl    String?
   websiteUrl   String?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  speed        Float            @default(0.5)
+  isActive     Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  polls        CampaignPoll[]
+  members      CampaignMember[]
+}
+
+/// Campaign membership — tracks who is in a campaign and enables leader succession.
+/// Ranked by joinedAt (earlier = higher priority) for succession.
+model CampaignMember {
+  id         String   @id @default(uuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  joinedAt   DateTime @default(now())
+
+  @@unique([campaignId, userId])
 }
 
 model DirectMessage {

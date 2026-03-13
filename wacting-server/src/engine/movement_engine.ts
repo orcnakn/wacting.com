@@ -17,6 +17,10 @@ export interface IconState {
     size: number;
     wacBalance: number; // WAC balance — drives aura/visibility
     exploreMode: number; // 0=City, 1=Country, 2=World
+    // Campaign data — drives icon movement speed, color, and slogan display
+    campaignSpeed?: number;  // 0-1, default 0.5 = 75% of reference speed
+    campaignColor?: string;  // hex color from campaign iconColor
+    campaignSlogan?: string; // slogan text from campaign
     restrictedContinents?: string[];
     restrictedCountries?: string[];
     restrictedCities?: string[];
@@ -25,13 +29,17 @@ export interface IconState {
 }
 
 export function tickMovement(icon: IconState, dt: number): void {
-    // 0=City, 1=Country, 2=World
+    // 0=City, 1=Country, 2=World — base step sizes (reference: mock_95 speed)
     let stepSize = 0.5; // Default City
     if (icon.exploreMode === 1) {
         stepSize = 2.0;
     } else if (icon.exploreMode === 2) {
         stepSize = 10.0;
     }
+
+    // Apply campaign speed: campaignSpeed=0.5 → 75% of reference step, campaignSpeed=0 → stays in place
+    const cSpeed = icon.campaignSpeed ?? 0.5;
+    stepSize = stepSize * (cSpeed / 0.5) * 0.75;
 
     icon.vx = (Math.random() - 0.5) * stepSize;
     icon.vy = (Math.random() - 0.5) * stepSize;

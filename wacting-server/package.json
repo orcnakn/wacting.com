@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "vitest",
-    "build": "tsc",
+    "build": "tsc && cp -r src/public dist/public",
     "start": "node dist/index.js"
   },
   "keywords": [],
@@ -17,12 +17,14 @@
     "@fastify/helmet": "^13.0.2",
     "@fastify/rate-limit": "^10.3.0",
     "@prisma/client": "6.0.0",
+    "@types/nodemailer": "^7.0.11",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.70.1",
     "fastify": "^5.7.4",
     "firebase-admin": "^13.7.0",
     "ioredis": "^5.9.3",
     "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^8.0.2",
     "pino": "^10.3.1",
     "rbush": "^4.0.1",
     "socket.io": "^4.8.3",

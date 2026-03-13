@@ -463,29 +463,79 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                  final latLng = _offsetToLatLng(icon.position);
                  final double tokenPower = icon.size > 1.0 ? (icon.size - 1.0) : 0.0;
                  final auraRadiusMeters = tokenPower * 10000.0;
+                 final Color auraColor = icon.displayColor;
                  return CircleMarker(
                    point: latLng,
                    radius: auraRadiusMeters,
                    useRadiusInMeter: true,
-                   color: icon.color.withOpacity(0.2),
-                   borderColor: icon.color.withOpacity(0.4),
+                   color: auraColor.withOpacity(0.2),
+                   borderColor: auraColor.withOpacity(0.4),
                    borderStrokeWidth: 1.0,
                  );
               }).where((c) => c.radius > 0).toList();
 
+              // zoom >= 7 (regions): 3:2 dikdörtgen ikon + slogan etiketi
+              // zoom  < 7         : yuvarlak daire ikon
+              final bool useRect = _currentZoom >= 7;
+
               final markerDots = icons.map((icon) {
                   final latLng = _offsetToLatLng(icon.position);
-                  return Marker(
-                      point: latLng,
-                      width: 10.0,
-                      height: 10.0,
-                      child: Container(
-                          decoration: BoxDecoration(
-                              color: icon.color,
-                              shape: BoxShape.circle,
-                          ),
-                      )
-                  );
+                  final Color displayColor = icon.displayColor;
+
+                  if (useRect) {
+                    // 3:2 dikdörtgen ikon + kampanya sloganı
+                    final String? slogan = icon.campaignSlogan;
+                    return Marker(
+                        point: latLng,
+                        width: slogan != null ? 90.0 : 15.0,
+                        height: slogan != null ? 26.0 : 10.0,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 15.0,
+                              height: 10.0,
+                              decoration: BoxDecoration(
+                                color: displayColor,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            if (slogan != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.65),
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                                child: Text(
+                                  slogan,
+                                  style: TextStyle(
+                                    color: displayColor,
+                                    fontSize: 7,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.2,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                          ],
+                        ),
+                    );
+                  } else {
+                    // Daire ikon
+                    return Marker(
+                        point: latLng,
+                        width: 10.0,
+                        height: 10.0,
+                        child: Container(
+                            decoration: BoxDecoration(
+                                color: displayColor,
+                                shape: BoxShape.circle,
+                            ),
+                        )
+                    );
+                  }
               }).toList();
 
               // ── Polygon layer ──
