@@ -101,6 +101,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
         const where: any = {};
         if (query.status) where.status = query.status;
+        if ((query as any).emailVerified !== undefined && (query as any).emailVerified !== '') {
+            where.emailVerified = (query as any).emailVerified === 'true';
+        }
         if (query.search) {
             where.OR = [
                 { email:  { contains: query.search, mode: 'insensitive' } },
