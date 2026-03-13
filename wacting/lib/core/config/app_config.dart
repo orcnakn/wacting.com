@@ -15,12 +15,12 @@ class AppConfig {
 
   /// REST API base URL
   static String get apiBaseUrl => isProduction
-      ? 'https://wacting.com'
+      ? 'https://api.wacting.com'
       : 'http://127.0.0.1:3000';
 
   /// WebSocket server URL
   static String get socketUrl => isProduction
-      ? 'https://wacting.com'
+      ? 'https://api.wacting.com'
       : 'http://127.0.0.1:3000';
 
   /// Flutter web origin (used for CORS reference)
