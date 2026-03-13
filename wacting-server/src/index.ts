@@ -2,6 +2,13 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
+import staticFiles from '@fastify/static';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { existsSync } from 'fs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 import { PrismaClient } from '@prisma/client';
 import { MovementEngine } from './engine/movement_engine.js';
 import { SocketManager } from './socket/socket_manager.js';
@@ -93,7 +100,32 @@ async function start() {
             }
         });
 
-        // 6. HTTP routing
+        // 6. Serve Flutter web build (SPA)
+        const webRoot = join(__dirname, 'public', 'web');
+        if (existsSync(webRoot)) {
+            await fastify.register(staticFiles, {
+                root: webRoot,
+                prefix: '/',
+                decorateReply: false,
+            });
+            // SPA fallback — all unmatched routes serve index.html
+            fastify.setNotFoundHandler(async (request, reply) => {
+                if (!request.url.startsWith('/api') && !request.url.startsWith('/auth') &&
+                    !request.url.startsWith('/wac') && !request.url.startsWith('/rac') &&
+                    !request.url.startsWith('/feed') && !request.url.startsWith('/vote') &&
+                    !request.url.startsWith('/campaign') && !request.url.startsWith('/social') &&
+                    !request.url.startsWith('/icon') && !request.url.startsWith('/admin') &&
+                    !request.url.startsWith('/ping') && !request.url.startsWith('/webhook')) {
+                    return reply.sendFile('index.html');
+                }
+                reply.code(404).send({ error: 'Not found' });
+            });
+            fastify.log.info(`Flutter web served from ${webRoot}`);
+        } else {
+            fastify.log.warn(`Flutter web build not found at ${webRoot} — only API will be served`);
+        }
+
+        // 7. HTTP routing
         fastify.register(webhookRoutes);
         fastify.register(authRoutes);
         fastify.register(adminRoutes);

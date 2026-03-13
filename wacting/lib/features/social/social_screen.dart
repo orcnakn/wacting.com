@@ -212,6 +212,7 @@ class _CampaignsTabState extends State<_CampaignsTab>
         ..._myCampaigns.map((c) => Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: _buildDetailedCampaignCard(
+            campaignId: c['id'] ?? '',
             title: c['title'] ?? 'Kampanya',
             slogan: '"${c['slogan'] ?? ''}"',
             participants: 0,
@@ -361,6 +362,7 @@ class _CampaignsTabState extends State<_CampaignsTab>
 
   // ── Campaign Card ──────────────────────────────────────────────────────────
   Widget _buildDetailedCampaignCard({
+    required String campaignId,
     required String title,
     required String slogan,
     required int participants,
@@ -473,7 +475,7 @@ class _CampaignsTabState extends State<_CampaignsTab>
                     foregroundColor: AppColors.accentGreen),
                 icon: const Icon(Icons.add_circle_outline, size: 18),
                 label: const Text('Oylama Baslat'),
-                onPressed: () => _showCreatePollModal(context),
+                onPressed: () => _showCreatePollModal(context, campaignId),
               ),
             ),
           ],
@@ -961,7 +963,7 @@ class _CampaignsTabState extends State<_CampaignsTab>
   }
 
   // ── Create Poll Modal ──────────────────────────────────────────────────────
-  void _showCreatePollModal(BuildContext context) {
+  void _showCreatePollModal(BuildContext context, String campaignId) {
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     final optionCtrls = [TextEditingController(), TextEditingController()];
@@ -1039,6 +1041,7 @@ class _CampaignsTabState extends State<_CampaignsTab>
                     }
                     try {
                       await apiService.createPoll(
+                        campaignId: campaignId,
                         title: titleCtrl.text.trim(),
                         description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
                         options: opts,
