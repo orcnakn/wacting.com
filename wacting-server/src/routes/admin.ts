@@ -93,6 +93,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
             limit?: string;
             search?: string;
             status?: string;
+            createdAfter?: string;
         };
 
         const page  = Math.max(1, Number(query.page  || '1'));
@@ -103,6 +104,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
         if (query.status) where.status = query.status;
         if ((query as any).emailVerified !== undefined && (query as any).emailVerified !== '') {
             where.emailVerified = (query as any).emailVerified === 'true';
+        }
+        if (query.createdAfter) {
+            where.createdAt = { gte: new Date(query.createdAfter) };
         }
         if (query.search) {
             where.OR = [
@@ -126,6 +130,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
                     emailVerified: true,
                     createdAt: true,
                     wac: { select: { wacBalance: true, isActive: true } },
+                    rac: { select: { racBalance: true } },
                     _count: { select: { campaigns: true } },
                 },
             }),
@@ -187,6 +192,27 @@ export async function adminRoutes(fastify: FastifyInstance) {
         });
 
         return reply.send({ success: true, message: 'Email manually verified.' });
+    });
+
+    // ── POST /admin/notify ────────────────────────────────────────────────────
+    fastify.post('/admin/notify', async (request, reply) => {
+        const { userId, title, message } = request.body as { userId: string; title: string; message: string };
+        if (!userId || !title || !message) {
+            return reply.code(400).send({ error: 'userId, title and message are required.' });
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { email: true, slogan: true },
+        });
+        if (!user) return reply.code(404).send({ error: 'User not found.' });
+
+        await prisma.notification.create({
+            data: { userId, type: 'SYSTEM', title, message },
+        });
+
+        fastify.log.info(`[Admin] Notification sent to user ${userId}: ${title}`);
+        return reply.send({ success: true });
     });
 
     // ── GET /admin/reports ────────────────────────────────────────────────────
