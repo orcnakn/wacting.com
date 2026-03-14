@@ -14,6 +14,19 @@ function generate6DigitCode(): string {
     return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+// ─── Helper: tiered welcome bonus ────────────────────────────────────────────
+// İlk 1000 kişi → 100 WAC, sonraki 9000 (1001–10000) → 10 WAC, sonrası → 1 WAC
+async function getWelcomeBonus(): Promise<{ amount: string; note: string }> {
+    const count = await prisma.user.count();
+    if (count < 1000) {
+        return { amount: '100.000000', note: `Welcome bonus: 100 WAC (Early Adopter #${count + 1})` };
+    } else if (count < 10000) {
+        return { amount: '10.000000', note: `Welcome bonus: 10 WAC (Early Supporter #${count + 1})` };
+    } else {
+        return { amount: '1.000000', note: 'Welcome bonus: 1 WAC on registration' };
+    }
+}
+
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
 const registerSchema = z.object({
     deviceId: z.string().min(5),
@@ -77,6 +90,7 @@ export async function authRoutes(fastify: FastifyInstance) {
                 });
             } else {
                 // Yeni kullanıcı
+                const bonus = await getWelcomeBonus();
                 const user = await prisma.user.create({
                     data: {
                         email,
@@ -95,7 +109,7 @@ export async function authRoutes(fastify: FastifyInstance) {
                         },
                         wac: {
                             create: {
-                                wacBalance: new Prisma.Decimal('1.000000'),
+                                wacBalance: new Prisma.Decimal(bonus.amount),
                                 isActive: true,
                             },
                         },
@@ -105,9 +119,9 @@ export async function authRoutes(fastify: FastifyInstance) {
                 await prisma.$transaction(async (tx) => {
                     await recordChainedTransaction(tx, {
                         userId: user.id,
-                        amount: '1.000000',
+                        amount: bonus.amount,
                         type: 'WAC_WELCOME_BONUS' as any,
-                        note: 'Welcome bonus: 1 WAC on registration',
+                        note: bonus.note,
                     });
                 });
             }
@@ -280,6 +294,7 @@ export async function authRoutes(fastify: FastifyInstance) {
                 return reply.code(409).send({ error: 'Device already registered.' });
             }
 
+            const bonus = await getWelcomeBonus();
             const user = await prisma.user.create({
                 data: {
                     deviceId,
@@ -294,20 +309,20 @@ export async function authRoutes(fastify: FastifyInstance) {
                     },
                     wac: {
                         create: {
-                            wacBalance: new Prisma.Decimal('1.000000'),
+                            wacBalance: new Prisma.Decimal(bonus.amount),
                             isActive: true,
                         },
                     },
                 },
             });
 
-            // Welcome bonus: 1 WAC (chained tx)
+            // Welcome bonus (chained tx)
             await prisma.$transaction(async (tx) => {
                 await recordChainedTransaction(tx, {
                     userId: user.id,
-                    amount: '1.000000',
+                    amount: bonus.amount,
                     type: 'WAC_WELCOME_BONUS' as any,
-                    note: 'Welcome bonus: 1 WAC on device registration',
+                    note: bonus.note,
                 });
             });
 
@@ -353,6 +368,7 @@ export async function authRoutes(fastify: FastifyInstance) {
             });
 
             if (!user) {
+                const bonus = await getWelcomeBonus();
                 user = await prisma.user.create({
                     data: {
                         [providerField]: providerId,
@@ -369,20 +385,20 @@ export async function authRoutes(fastify: FastifyInstance) {
                         },
                         wac: {
                             create: {
-                                wacBalance: new Prisma.Decimal('1.000000'),
+                                wacBalance: new Prisma.Decimal(bonus.amount),
                                 isActive: true,
                             },
                         },
                     },
                 });
 
-                // Welcome bonus: 1 WAC (chained tx)
+                // Welcome bonus (chained tx)
                 await prisma.$transaction(async (tx) => {
                     await recordChainedTransaction(tx, {
                         userId: user!.id,
-                        amount: '1.000000',
+                        amount: bonus.amount,
                         type: 'WAC_WELCOME_BONUS' as any,
-                        note: 'Welcome bonus: 1 WAC on social registration',
+                        note: bonus.note,
                     });
                 });
             }

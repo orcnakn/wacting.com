@@ -87,6 +87,12 @@ model User {
   // Campaigns
   campaigns           Campaign[]
   campaignMemberships CampaignMember[]
+
+  // Bot flag
+  isBot Boolean @default(false)
+
+  // Developer notes
+  devNotes DevNote[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -516,4 +522,24 @@ model DirectMessage {
   content    String   @db.Text
   isRead     Boolean  @default(false)
   createdAt  DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEVELOPER NOTES (User → Admin feedback)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model DevNote {
+  id        String          @id @default(uuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id])
+  content   String          @db.Text
+  category  DevNoteCategory
+  isRead    Boolean         @default(false)
+  createdAt DateTime        @default(now())
+}
+
+enum DevNoteCategory {
+  BUG
+  SUGGESTION
+  FEEDBACK
 }

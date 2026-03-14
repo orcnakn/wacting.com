@@ -57,6 +57,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
             activeCampaigns,
             todayUsers,
             weekUsers,
+            botUsers,
+            devNotesTotal,
+            devNotesUnread,
         ] = await Promise.all([
             prisma.user.count(),
             prisma.user.count({ where: { emailVerified: true } }),
@@ -71,6 +74,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
             prisma.user.count({
                 where: { createdAt: { gte: new Date(Date.now() - 7 * 86_400_000) } }
             }),
+            prisma.user.count({ where: { isBot: true } }),
+            prisma.devNote.count(),
+            prisma.devNote.count({ where: { isRead: false } }),
         ]);
 
         return reply.send({
@@ -83,6 +89,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
             activeCampaigns,
             todayUsers,
             weekUsers,
+            botUsers,
+            devNotesTotal,
+            devNotesUnread,
         });
     });
 
@@ -94,6 +103,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
             search?: string;
             status?: string;
             createdAfter?: string;
+            isBot?: string;
         };
 
         const page  = Math.max(1, Number(query.page  || '1'));
@@ -104,6 +114,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
         if (query.status) where.status = query.status;
         if ((query as any).emailVerified !== undefined && (query as any).emailVerified !== '') {
             where.emailVerified = (query as any).emailVerified === 'true';
+        }
+        if (query.isBot !== undefined && query.isBot !== '') {
+            where.isBot = query.isBot === 'true';
         }
         if (query.createdAfter) {
             where.createdAt = { gte: new Date(query.createdAfter) };
@@ -128,6 +141,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
                     role: true,
                     status: true,
                     emailVerified: true,
+                    isBot: true,
                     createdAt: true,
                     wac: { select: { wacBalance: true, isActive: true } },
                     rac: { select: { racBalance: true } },
@@ -227,5 +241,60 @@ export async function adminRoutes(fastify: FastifyInstance) {
         });
 
         return reply.send({ reports });
+    });
+
+    // ── GET /admin/dev-notes ────────────────────────────────────────────────
+    fastify.get('/admin/dev-notes', async (request, reply) => {
+        const query = request.query as {
+            page?: string;
+            limit?: string;
+            category?: string;
+            userId?: string;
+            isRead?: string;
+        };
+
+        const page  = Math.max(1, Number(query.page || '1'));
+        const limit = Math.min(100, Math.max(1, Number(query.limit || '20')));
+        const skip  = (page - 1) * limit;
+
+        const where: any = {};
+        if (query.category) where.category = query.category;
+        if (query.userId) where.userId = query.userId;
+        if (query.isRead !== undefined && query.isRead !== '') {
+            where.isRead = query.isRead === 'true';
+        }
+
+        const [notes, total] = await Promise.all([
+            prisma.devNote.findMany({
+                where,
+                skip,
+                take: limit,
+                orderBy: { createdAt: 'desc' },
+                include: {
+                    user: { select: { id: true, email: true, slogan: true, isBot: true } },
+                },
+            }),
+            prisma.devNote.count({ where }),
+        ]);
+
+        return reply.send({
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+            notes,
+        });
+    });
+
+    // ── POST /admin/dev-notes/:id/read ──────────────────────────────────────
+    fastify.post('/admin/dev-notes/:id/read', async (request, reply) => {
+        const { id } = request.params as { id: string };
+
+        await prisma.devNote.update({
+            where: { id },
+            data: { isRead: true },
+        });
+
+        return reply.send({ success: true });
     });
 }

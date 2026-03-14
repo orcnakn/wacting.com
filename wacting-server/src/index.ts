@@ -24,6 +24,7 @@ import { voteRoutes } from './routes/vote.js';
 import { profileRoutes } from './routes/profile.js';
 import { campaignRoutes } from './routes/campaign.js';
 import { oauthRoutes } from './routes/oauth.js';
+import { devNotesRoutes } from './routes/devnotes.js';
 // import { registerSnapshotCron } from './workers/snapshot_worker.js';
 // import './services/notification_worker.js';
 
@@ -140,6 +141,7 @@ async function start() {
         fastify.register(feedRoutes, { prefix: '/feed' }); // New Feed APIs
         fastify.register(voteRoutes, { prefix: '/vote' }); // Voting System
         fastify.register(profileRoutes, { prefix: '/api/profile' });
+        fastify.register(devNotesRoutes, { prefix: '/api/devnotes' });
         fastify.register(campaignRoutes, { prefix: '/campaign' });
 
         fastify.get('/ping', async (request, reply) => {
