@@ -13,7 +13,7 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import { buildRankedList } from '../engine/ranking_engine.js';
-import { verifyProof } from '../engine/merkle_builder.js';
+import { recordChainedTransaction } from '../engine/chain_engine.js';
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_dev_key';
@@ -81,14 +81,14 @@ export async function wacRoutes(fastify: FastifyInstance) {
                 },
             });
 
-            // Record transaction
-            await prisma.transaction.create({
-                data: {
+            // Record chained transaction
+            await prisma.$transaction(async (tx) => {
+                await recordChainedTransaction(tx, {
                     userId,
                     amount: amountDecimal,
                     type: 'WAC_DEPOSIT',
                     note: `Deposit of ${amount} WAC`,
-                },
+                });
             });
 
             fastify.log.info(`[WAC] Deposit ${amount} WAC for user ${userId}`);
@@ -103,6 +103,8 @@ export async function wacRoutes(fastify: FastifyInstance) {
     });
 
     // ── POST /wac/exit ────────────────────────────────────────────────────────
+    // Full exit from liquid WAC (non-campaign balance).
+    // 30% penalty: 15% burn + 15% dev, 2x penalty minted as RAC.
     fastify.post('/wac/exit', async (request, reply) => {
         try {
             const userId = (request as any).userId as string;
@@ -117,12 +119,12 @@ export async function wacRoutes(fastify: FastifyInstance) {
                 return reply.code(400).send({ error: 'Balance is zero, nothing to exit' });
             }
 
-            // WAC split: 70% user, 30% treasury
-            const toTreasury = totalBalance.mul('0.30').toDecimalPlaces(6);
+            // Tokenomics: 30% penalty, 70% return, 2x penalty as RAC
+            const penalty = totalBalance.mul('0.30').toDecimalPlaces(6);
             const toUser = totalBalance.mul('0.70').toDecimalPlaces(6);
-
-            // RAC mint: 2 × 30% = 60% of original, FLOORED to integer
-            const racMinted = BigInt(totalBalance.mul('0.60').floor().toFixed(0));
+            const burnAmount = penalty.mul('0.50').toDecimalPlaces(6);   // 15% of total
+            const devAmount = penalty.sub(burnAmount);                    // 15% of total
+            const racMinted = BigInt(penalty.mul('2').floor().toFixed(0)); // 2x penalty
 
             await prisma.$transaction(async (tx) => {
                 // Deactivate WAC position
@@ -131,57 +133,72 @@ export async function wacRoutes(fastify: FastifyInstance) {
                     data: { wacBalance: 0, isActive: false },
                 });
 
-                // Credit treasury
+                // Burn 15% + Dev 15%
                 await tx.treasury.upsert({
                     where: { id: 'singleton' },
-                    update: { balance: { increment: toTreasury } },
-                    create: { id: 'singleton', balance: toTreasury },
+                    update: {
+                        burnedTotal: { increment: burnAmount },
+                        devBalance: { increment: devAmount },
+                    } as any,
+                    create: {
+                        id: 'singleton',
+                        burnedTotal: burnAmount,
+                        devBalance: devAmount,
+                    } as any,
                 });
 
-                // Mint RAC to user wallet (upsert — user may already have RAC from previous exits)
-                await tx.userRac.upsert({
-                    where: { userId },
-                    update: { racBalance: { increment: racMinted } },
-                    create: { userId, racBalance: racMinted },
+                // Mint RAC to user wallet
+                if (racMinted > 0n) {
+                    await tx.userRac.upsert({
+                        where: { userId },
+                        update: { racBalance: { increment: racMinted } },
+                        create: { userId, racBalance: racMinted },
+                    });
+                }
+
+                // Chained transaction records
+                await recordChainedTransaction(tx, {
+                    userId,
+                    amount: toUser,
+                    type: 'WAC_EXIT_USER' as any,
+                    note: `Full exit — 70% of ${totalBalance.toFixed(6)} WAC returned`,
                 });
 
-                // Log all three legs
-                await tx.transaction.createMany({
-                    data: [
-                        {
-                            userId,
-                            amount: toUser,
-                            type: 'WAC_EXIT_USER' as const,
-                            note: `Full exit — 70% of ${totalBalance.toFixed(6)} WAC`,
-                        },
-                        {
-                            userId,
-                            amount: toTreasury,
-                            type: 'WAC_EXIT_TREASURY' as const,
-                            note: `Exit tax — 30% of ${totalBalance.toFixed(6)} WAC`,
-                        },
-                        {
-                            userId,
-                            amount: new Prisma.Decimal(racMinted.toString()),
-                            type: 'RAC_MINTED' as const,
-                            note: `RAC minted on exit — 60% (floor) of ${totalBalance.toFixed(6)} WAC`,
-                        },
-                    ],
+                await recordChainedTransaction(tx, {
+                    userId,
+                    amount: burnAmount,
+                    type: 'WAC_BURN' as any,
+                    note: `Exit — 15% burned (${burnAmount.toFixed(6)} WAC)`,
+                });
+
+                await recordChainedTransaction(tx, {
+                    userId,
+                    amount: devAmount,
+                    type: 'WAC_DEV_FEE' as any,
+                    note: `Exit — 15% dev fee (${devAmount.toFixed(6)} WAC)`,
+                });
+
+                await recordChainedTransaction(tx, {
+                    userId,
+                    amount: racMinted.toString(),
+                    type: 'RAC_MINTED' as any,
+                    note: `Exit — ${racMinted} RAC minted (2x penalty)`,
                 });
             });
 
             fastify.log.info(
                 `[WAC] Exit: user=${userId} wac=${totalBalance} toUser=${toUser} ` +
-                `toTreasury=${toTreasury} racMinted=${racMinted}`
+                `burned=${burnAmount} dev=${devAmount} racMinted=${racMinted}`
             );
 
             return reply.send({
                 success: true,
                 totalExited: totalBalance.toFixed(6),
                 returnedToUser: toUser.toFixed(6),
-                sentToTreasury: toTreasury.toFixed(6),
+                burned: burnAmount.toFixed(6),
+                devFee: devAmount.toFixed(6),
                 racMinted: Number(racMinted),
-                message: 'Exit complete. Your WAC has been returned and RAC has been minted to your wallet.',
+                message: 'Çıkış tamamlandı. WAC iadeniz ve RAC ödülünüz hesabınıza aktarıldı.',
             });
         } catch (err: any) {
             fastify.log.error(`[WAC] Exit error: ${err}`);

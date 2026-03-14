@@ -1,15 +1,16 @@
 /**
- * rac.ts — RAC Protest Token Routes
+ * rac.ts — RAC Protest Token Routes (Campaign-based)
  *
- * POST /rac/pool/deposit  — deposit RAC into a protest pool (creates pool if first)
- * GET  /rac/pool/:targetUserId — view active protest pool for a campaign
- * GET  /rac/balance        — my current RAC wallet balance
+ * POST /rac/pool/deposit       — deposit RAC into a protest pool against a campaign
+ * GET  /rac/pool/:campaignId   — view active protest pool for a campaign
+ * GET  /rac/balance            — my current RAC wallet balance
  */
 
 import { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
+import { recordChainedTransaction } from '../engine/chain_engine.js';
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_dev_key';
@@ -17,7 +18,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_dev_key';
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
 const depositSchema = z.object({
-    targetUserId: z.string().uuid('targetUserId must be a valid user UUID'),
+    targetCampaignId: z.string().uuid('targetCampaignId must be a valid UUID'),
     amount: z.number().int('RAC amount must be an integer').positive(),
 });
 
@@ -43,29 +44,34 @@ export async function racRoutes(fastify: FastifyInstance) {
     requireAuth(fastify);
 
     // ── POST /rac/pool/deposit ────────────────────────────────────────────────
-    // Deposits integer RAC into a protest pool. Creates the pool if it's the first depositor.
+    // Deposits integer RAC into a protest pool against a campaign.
+    // Creates the pool if it's the first depositor.
     fastify.post('/rac/pool/deposit', async (request, reply) => {
         try {
             const userId = (request as any).userId as string;
-            const { targetUserId, amount } = depositSchema.parse(request.body);
+            const { targetCampaignId, amount } = depositSchema.parse(request.body);
 
-            if (userId === targetUserId) {
-                return reply.code(400).send({ error: 'Cannot protest your own campaign' });
+            // Check target campaign exists and user is NOT a member
+            const campaign = await prisma.campaign.findUnique({
+                where: { id: targetCampaignId },
+                include: { members: { where: { userId }, take: 1 } },
+            });
+            if (!campaign || !campaign.isActive) {
+                return reply.code(404).send({ error: 'Kampanya bulunamadı.' });
+            }
+            if (campaign.members.length > 0) {
+                return reply.code(400).send({ error: 'Kendi kampanyanızı protesto edemezsiniz.' });
             }
 
             // Check user's RAC wallet
             const userRac = await prisma.userRac.findUnique({ where: { userId } });
             if (!userRac || BigInt(amount) > userRac.racBalance) {
                 return reply.code(400).send({
-                    error: 'Insufficient RAC balance',
+                    error: 'Yetersiz RAC bakiyesi.',
                     have: userRac ? Number(userRac.racBalance) : 0,
                     need: amount,
                 });
             }
-
-            // Verify target campaign exists
-            const target = await prisma.user.findUnique({ where: { id: targetUserId } });
-            if (!target) return reply.code(404).send({ error: 'Target campaign not found' });
 
             const amountBig = BigInt(amount);
 
@@ -76,14 +82,16 @@ export async function racRoutes(fastify: FastifyInstance) {
                     data: { racBalance: { decrement: amountBig } },
                 });
 
-                // Upsert pool — create if first depositor (they become representative)
-                const existingPool = await tx.racPool.findUnique({ where: { targetUserId } });
+                // Upsert pool — create if first depositor
+                const existingPool = await (tx as any).racPool.findUnique({
+                    where: { targetCampaignId },
+                });
 
                 if (!existingPool) {
                     // First depositor → creates pool and becomes representative
-                    const pool = await tx.racPool.create({
+                    const pool = await (tx as any).racPool.create({
                         data: {
-                            targetUserId,
+                            targetCampaignId,
                             representativeId: userId,
                             totalBalance: amountBig,
                             participantCount: 1,
@@ -94,7 +102,7 @@ export async function racRoutes(fastify: FastifyInstance) {
                     });
                 } else {
                     if (!existingPool.isActive) {
-                        throw new Error('This protest pool has been dissolved');
+                        throw new Error('Bu protesto havuzu çözülmüş.');
                     }
 
                     // Check if user already in pool
@@ -108,41 +116,40 @@ export async function racRoutes(fastify: FastifyInstance) {
                             where: { poolId_userId: { poolId: existingPool.id, userId } },
                             data: { contribution: { increment: amountBig } },
                         });
+                        await (tx as any).racPool.update({
+                            where: { id: existingPool.id },
+                            data: { totalBalance: { increment: amountBig } },
+                        });
                     } else {
                         // New participant
                         await tx.racPoolParticipant.create({
                             data: { poolId: existingPool.id, userId, contribution: amountBig },
                         });
-                        await tx.racPool.update({
+                        await (tx as any).racPool.update({
                             where: { id: existingPool.id },
                             data: {
                                 totalBalance: { increment: amountBig },
                                 participantCount: { increment: 1 },
                             },
                         });
-                        return; // skip double totalBalance update below
                     }
-
-                    await tx.racPool.update({
-                        where: { id: existingPool.id },
-                        data: { totalBalance: { increment: amountBig } },
-                    });
                 }
 
-                // Log transaction
-                await tx.transaction.create({
-                    data: {
-                        userId,
-                        amount: String(amount), // store as string for Decimal field
-                        type: 'RAC_POOL_DEPOSIT',
-                        note: `Deposited ${amount} RAC into protest pool for ${targetUserId}`,
-                    },
+                // Chained transaction record
+                await recordChainedTransaction(tx, {
+                    userId,
+                    amount: String(amount),
+                    type: 'RAC_POOL_DEPOSIT' as any,
+                    note: `Deposited ${amount} RAC into protest pool for campaign ${targetCampaignId}`,
+                    campaignId: targetCampaignId,
                 });
             });
 
-            const pool = await prisma.racPool.findUnique({ where: { targetUserId } });
+            const pool = await (prisma as any).racPool.findUnique({
+                where: { targetCampaignId },
+            });
 
-            fastify.log.info(`[RAC] User ${userId} deposited ${amount} RAC → pool for ${targetUserId}`);
+            fastify.log.info(`[RAC] User ${userId} deposited ${amount} RAC → pool for campaign ${targetCampaignId}`);
             return reply.send({
                 success: true,
                 poolTotalBalance: Number(pool!.totalBalance),
@@ -172,16 +179,16 @@ export async function racRoutes(fastify: FastifyInstance) {
 
 export async function racPublicRoutes(fastify: FastifyInstance) {
 
-    // ── GET /rac/pool/:targetUserId ───────────────────────────────────────────
-    fastify.get('/rac/pool/:targetUserId', async (request, reply) => {
+    // ── GET /rac/pool/:campaignId ─────────────────────────────────────────────
+    fastify.get('/rac/pool/:campaignId', async (request, reply) => {
         try {
-            const { targetUserId } = request.params as { targetUserId: string };
+            const { campaignId } = request.params as { campaignId: string };
 
-            const pool = await prisma.racPool.findUnique({
-                where: { targetUserId },
+            const pool = await (prisma as any).racPool.findUnique({
+                where: { targetCampaignId: campaignId },
                 include: {
                     representative: { select: { id: true, slogan: true, avatarUrl: true } },
-                    targetUser: { select: { id: true, slogan: true, avatarUrl: true } },
+                    targetCampaign: { select: { id: true, title: true, slogan: true } },
                     participants: {
                         select: { userId: true, contribution: true, joinedAt: true },
                         orderBy: { contribution: 'desc' },
@@ -200,8 +207,8 @@ export async function racPublicRoutes(fastify: FastifyInstance) {
                 totalBalance: Number(pool.totalBalance),
                 participantCount: pool.participantCount,
                 representative: pool.representative,
-                targetUser: pool.targetUser,
-                topParticipants: pool.participants.map((p) => ({
+                targetCampaign: pool.targetCampaign,
+                topParticipants: pool.participants.map((p: any) => ({
                     userId: p.userId,
                     contribution: Number(p.contribution),
                     joinedAt: p.joinedAt,

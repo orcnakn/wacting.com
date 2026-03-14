@@ -18,6 +18,11 @@ model User {
   googleId     String? @unique
   facebookId   String? @unique
   instagramId  String? @unique
+  twitterId    String? @unique
+  tiktokId     String? @unique
+  linkedinId   String? @unique
+  appleId      String? @unique
+  steamId      String? @unique
   email        String? @unique
   passwordHash String?
   twitterUrl   String?
@@ -49,7 +54,6 @@ model User {
   // RAC protest economy
   rac              UserRac?
   racPoolsCreated  RacPool[] @relation("RacRep")
-  racPoolsTargeted RacPool[] @relation("RacTarget")
 
   // Transaction history
   transactions Transaction[]
@@ -109,11 +113,12 @@ model UserWac {
   createdAt DateTime @default(now())
 }
 
-/// Singleton row tracking the total WAC held in the Treasury (exit tax pool)
+/// Singleton row tracking burned WAC and developer treasury
 model Treasury {
-  id        String   @id @default("singleton")
-  balance   Decimal  @default(0) @db.Decimal(30, 6)
-  updatedAt DateTime @updatedAt
+  id           String   @id @default("singleton")
+  burnedTotal  Decimal  @default(0) @db.Decimal(30, 6) // Total WAC burned (deflation)
+  devBalance   Decimal  @default(0) @db.Decimal(30, 6) // Developer treasury balance
+  updatedAt    DateTime @updatedAt
 }
 
 /// One row per midnight snapshot cycle
@@ -152,24 +157,39 @@ model SnapshotEntry {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Transaction {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  amount    Decimal  @db.Decimal(30, 6)
-  type      TxType
-  note      String?  @db.VarChar(255)
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  amount     Decimal  @db.Decimal(30, 6)
+  type       TxType
+  note       String?  @db.VarChar(255)
+  createdAt  DateTime @default(now())
+
+  // Chain integrity — each tx links to the previous via hash
+  blockNumber  Int?    @unique
+  txHash       String? @unique
+  prevTxHash   String?
+  campaignId   String?
+  ipHash       String?
 }
 
 enum TxType {
+  // WAC operations
   WAC_DEPOSIT
-  WAC_EXIT_USER // 70% returned to user liquid balance
-  WAC_EXIT_TREASURY // 30% sent to treasury
-  WAC_DAILY_REWARD // auto-compound reward
-  RAC_MINTED // 60% of exit balance minted as RAC
-  RAC_POOL_DEPOSIT // user deposits RAC into a protest pool
-  RAC_POOL_DECAY // daily decay subtracted from pool
-  RAC_POOL_BONUS // tier bonus added to pool as RAC
+  WAC_WELCOME_BONUS    // 1 WAC on registration
+  WAC_CAMPAIGN_STAKE   // WAC locked into a campaign
+  WAC_CAMPAIGN_RETURN  // 70% returned on campaign exit
+  WAC_BURN             // 15% of penalty burned (deflation)
+  WAC_DEV_FEE          // 15% of penalty to developer treasury
+  WAC_DAILY_REWARD     // daily reward from ranking
+  WAC_EXIT_USER        // legacy: full exit 70%
+  WAC_EXIT_TREASURY    // legacy: full exit 30%
+
+  // RAC operations
+  RAC_MINTED           // 2x penalty minted as RAC on campaign exit
+  RAC_POOL_DEPOSIT     // user deposits RAC into a protest pool
+  RAC_POOL_DECAY       // daily decay subtracted from pool
+  RAC_POOL_BONUS       // ranking bonus added to pool as RAC
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -189,20 +209,20 @@ model UserRac {
 
 /// One protest pool per target campaign.
 /// The first depositor becomes the representative in the leaderboard.
-/// Ranked by totalBalance alongside WAC users, but works negatively.
+/// Ranked by totalBalance alongside WAC campaigns, but works negatively (reduces icon size).
 model RacPool {
-  id               String               @id @default(uuid())
-  targetUserId     String               @unique // one pool per campaign/user
-  targetUser       User                 @relation("RacTarget", fields: [targetUserId], references: [id])
-  representativeId String
-  representative   User                 @relation("RacRep", fields: [representativeId], references: [id])
-  totalBalance     BigInt               @default(0)
-  participantCount Int                  @default(0)
-  isActive         Boolean              @default(true)
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-  participants     RacPoolParticipant[]
-  snapshotEntries  RacSnapshotEntry[]
+  id                 String               @id @default(uuid())
+  targetCampaignId   String               @unique // one pool per campaign
+  targetCampaign     Campaign             @relation(fields: [targetCampaignId], references: [id])
+  representativeId   String
+  representative     User                 @relation("RacRep", fields: [representativeId], references: [id])
+  totalBalance       BigInt               @default(0)
+  participantCount   Int                  @default(0)
+  isActive           Boolean              @default(true)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  participants       RacPoolParticipant[]
+  snapshotEntries    RacSnapshotEntry[]
 }
 
 /// Tracks each user's RAC contribution to a pool.
@@ -466,6 +486,11 @@ model Campaign {
   updatedAt    DateTime         @updatedAt
   polls        CampaignPoll[]
   members      CampaignMember[]
+
+  // Tokenomics: WAC staking & RAC protest
+  totalWacStaked     Decimal  @default(0) @db.Decimal(30, 6)  // Total WAC locked by members
+  dailyRankingPoints Decimal  @default(0) @db.Decimal(30, 6)  // Daily reward (offsets RAC decay)
+  racPool            RacPool?                                   // Protest pool against this campaign
 }
 
 /// Campaign membership — tracks who is in a campaign and enables leader succession.
@@ -476,6 +501,7 @@ model CampaignMember {
   campaign   Campaign @relation(fields: [campaignId], references: [id])
   userId     String
   user       User     @relation(fields: [userId], references: [id])
+  stakedWac  Decimal  @default(0) @db.Decimal(30, 6)  // WAC this member staked
   joinedAt   DateTime @default(now())
 
   @@unique([campaignId, userId])

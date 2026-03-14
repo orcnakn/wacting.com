@@ -1,20 +1,142 @@
 /**
- * reward_calculator.ts
- * Pure functions for computing daily WAC rewards based on tier (N = usersBelow).
+ * reward_calculator.ts — Campaign-based Daily Reward System
  *
- * Tier table:
- *   N = 0–99           → bonus 0     → total 1 WAC
- *   N = 100–999        → bonus 0.5   → total 1.5 WAC
- *   N = 1,000–9,999    → bonus 2     → total 3 WAC
- *   N = 10,000–99,999  → bonus 5     → total 6 WAC
- *   N = 100k–999,999   → bonus 15    → total 16 WAC
- *   N ≥ 1,000,000      → bonus 40    → total 41 WAC
+ * Formula (from tokenomics plan):
+ *   dailyPool = √(totalSystemStaked) × 2
+ *   campaignShare = (campaignStaked / totalSystemStaked) × dailyPool
  *
- * Rewards are returned as numbers with 6-decimal precision.
- * MAX_SUPPLY guard is enforced at the snapshot level, not here.
+ * This replaces the old tier-based system. Rewards are proportional
+ * to each campaign's WAC stake relative to the total system.
+ *
+ * RAC Decay formula (-1 Rule):
+ *   dailyDecay = protestorCount × 1
+ *   netDecay = dailyDecay - dailyRankingPoints
+ *   If netDecay ≤ 0, no decay happens (life-water from ranking)
  */
 
-export const BASE_REWARD = 1;  // WAC — every active participant earns this
+export interface CampaignRewardInput {
+    campaignId: string;
+    leaderId: string;
+    totalWacStaked: number;
+}
+
+export interface CampaignRewardEntry {
+    campaignId: string;
+    leaderId: string;
+    totalWacStaked: number;
+    rewardWac: number;
+    sharePercent: number;
+}
+
+/**
+ * Computes the daily reward pool size.
+ * Formula: √(totalSystemStaked) × 2
+ * This provides logarithmic growth — rewards scale with system size
+ * but don't grow linearly (prevents hyperinflation).
+ */
+export function computeDailyPool(totalSystemStaked: number): number {
+    if (totalSystemStaked <= 0) return 0;
+    return Math.sqrt(totalSystemStaked) * 2;
+}
+
+/**
+ * Computes rewards for all active campaigns in one pass.
+ * Each campaign gets a proportional share of the daily pool.
+ *
+ * @param campaigns - Active campaigns with WAC staked
+ * @param circulatingSupply - Current total WAC in circulation
+ * @param maxSupply - Maximum WAC supply guard (default: Infinity for unlimited supply)
+ */
+export function computeAllCampaignRewards(
+    campaigns: CampaignRewardInput[],
+    circulatingSupply = 0,
+    maxSupply = Infinity
+): CampaignRewardEntry[] {
+    if (campaigns.length === 0) return [];
+
+    const totalSystemStaked = campaigns.reduce((s, c) => s + c.totalWacStaked, 0);
+    if (totalSystemStaked <= 0) return campaigns.map((c) => ({
+        ...c,
+        rewardWac: 0,
+        sharePercent: 0,
+    }));
+
+    const dailyPool = computeDailyPool(totalSystemStaked);
+    let runningSupply = circulatingSupply;
+
+    return campaigns.map((c) => {
+        const sharePercent = c.totalWacStaked / totalSystemStaked;
+        const reward = Math.round(sharePercent * dailyPool * 1_000_000) / 1_000_000;
+
+        // Max supply guard
+        const clampedReward = Math.min(reward, maxSupply - runningSupply);
+        if (clampedReward <= 0) {
+            return { ...c, rewardWac: 0, sharePercent };
+        }
+
+        runningSupply += clampedReward;
+        return {
+            ...c,
+            rewardWac: clampedReward,
+            sharePercent,
+        };
+    });
+}
+
+// ─── RAC Decay ───────────────────────────────────────────────────────────────
+
+export interface RacDecayInput {
+    campaignId: string;
+    poolId: string;
+    totalRacBalance: bigint;
+    protestorCount: number;
+    dailyRankingPoints: number;
+}
+
+export interface RacDecayResult {
+    poolId: string;
+    campaignId: string;
+    decayAmount: bigint;
+    bonusAmount: bigint;
+    netDecay: bigint;
+    newBalance: bigint;
+    shouldDeactivate: boolean;
+}
+
+/**
+ * Computes RAC decay for a protest pool.
+ *
+ * -1 Rule: Each protestor causes 1 RAC/day to decay.
+ * Life-Water: Daily ranking points offset the decay.
+ *
+ * Net decay = (protestorCount × 1) - floor(dailyRankingPoints)
+ * If net ≤ 0, no decay (the campaign's ranking bonus saves the pool).
+ */
+export function computeRacDecay(input: RacDecayInput): RacDecayResult {
+    const decayAmount = BigInt(input.protestorCount); // -1 per protestor
+    const bonusAmount = BigInt(Math.floor(input.dailyRankingPoints)); // ranking points as RAC bonus
+
+    const netDecayRaw = decayAmount - bonusAmount;
+    const netDecay = netDecayRaw > 0n ? netDecayRaw : 0n;
+
+    // Can't decay more than what's in the pool
+    const actualDecay = netDecay > input.totalRacBalance ? input.totalRacBalance : netDecay;
+    const newBalance = input.totalRacBalance - actualDecay;
+
+    return {
+        poolId: input.poolId,
+        campaignId: input.campaignId,
+        decayAmount,
+        bonusAmount,
+        netDecay: actualDecay,
+        newBalance,
+        shouldDeactivate: newBalance <= 0n,
+    };
+}
+
+// ─── Legacy exports (backward compat for existing tests) ─────────────────────
+
+export const BASE_REWARD = 1;
 
 export interface TierConfig {
     minUsersBelow: number;
@@ -30,60 +152,13 @@ export const TIERS: TierConfig[] = [
     { minUsersBelow: 0, bonus: 0 },
 ];
 
-/**
- * Returns the tier bonus (not total) for a given usersBelow count.
- */
 export function getTierBonus(usersBelow: number): number {
     for (const tier of TIERS) {
-        if (usersBelow >= tier.minUsersBelow) {
-            return tier.bonus;
-        }
+        if (usersBelow >= tier.minUsersBelow) return tier.bonus;
     }
     return 0;
 }
 
-/**
- * Returns the total daily WAC reward (base + tier bonus) rounded to 6 dp.
- */
 export function computeDailyReward(usersBelow: number): number {
-    const reward = BASE_REWARD + getTierBonus(usersBelow);
-    return Math.round(reward * 1_000_000) / 1_000_000;
-}
-
-export interface RewardEntry {
-    userId: string;
-    rank: number;
-    usersBelow: number;
-    rewardWac: number;
-}
-
-/**
- * Computes rewards for an entire ranked snapshot in one pass.
- *
- * @param rankedUsers - Already ranked list (rank, usersBelow populated)
- * @param circulatingSupply - Current total WAC minted (to enforce max supply)
- * @param maxSupply - Default 85,016,666,666,667 WAC
- */
-export function computeAllRewards(
-    rankedUsers: Array<{ userId: string; rank: number; usersBelow: number }>,
-    circulatingSupply: number,
-    maxSupply = 85_016_666_666_667
-): RewardEntry[] {
-    const entries: RewardEntry[] = [];
-    let runningSupply = circulatingSupply;
-
-    for (const user of rankedUsers) {
-        const reward = computeDailyReward(user.usersBelow);
-        const clampedReward = Math.min(reward, maxSupply - runningSupply);
-
-        if (clampedReward <= 0) {
-            entries.push({ ...user, rewardWac: 0 });
-            continue;
-        }
-
-        runningSupply += clampedReward;
-        entries.push({ ...user, rewardWac: Math.round(clampedReward * 1_000_000) / 1_000_000 });
-    }
-
-    return entries;
+    return Math.round((BASE_REWARD + getTierBonus(usersBelow)) * 1_000_000) / 1_000_000;
 }

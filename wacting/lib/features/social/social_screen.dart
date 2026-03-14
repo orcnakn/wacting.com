@@ -209,22 +209,27 @@ class _CampaignsTabState extends State<_CampaignsTab>
             child: Center(child: Text('Henuz kampanyaniz yok. Yukaridaki butondan olusturun!',
                 style: TextStyle(color: AppColors.textTertiary), textAlign: TextAlign.center)),
           ),
-        ..._myCampaigns.map((c) => Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: _buildDetailedCampaignCard(
-            campaignId: c['id'] ?? '',
-            title: c['title'] ?? 'Kampanya',
-            slogan: '"${c['slogan'] ?? ''}"',
-            participants: 0,
-            area: 0,
-            myRank: 1,
-            totalEarned: 0,
-            dailyPremium: 0,
-            isRac: false,
-            hasActivePoll: _myPolls.any((p) => p['status'] == 'ACTIVE'),
-            isLeader: true,
-          ),
-        )),
+        ..._myCampaigns.map((c) {
+          final myStaked = double.tryParse((c['myStakedWac'] ?? '0').toString()) ?? 0;
+          final totalStaked = double.tryParse((c['totalWacStaked'] ?? '0').toString()) ?? 0;
+          final memberCount = (c['memberCount'] ?? c['_count']?['members'] ?? 0) as int;
+          final isLeader = c['isLeader'] == true;
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _buildDetailedCampaignCard(
+              campaignId: c['id'] ?? '',
+              title: c['title'] ?? 'Kampanya',
+              slogan: '"${c['slogan'] ?? ''}"',
+              participants: memberCount,
+              totalWacStaked: totalStaked,
+              myStakedWac: myStaked,
+              isRac: false,
+              hasActivePoll: _myPolls.any((p) => p['status'] == 'ACTIVE'),
+              isLeader: isLeader,
+            ),
+          );
+        }),
       ],
     );
   }
@@ -366,16 +371,18 @@ class _CampaignsTabState extends State<_CampaignsTab>
     required String title,
     required String slogan,
     required int participants,
-    required int area,
-    required int myRank,
-    required double totalEarned,
-    required double dailyPremium,
+    required double totalWacStaked,
+    required double myStakedWac,
     required bool isRac,
     required bool hasActivePoll,
     required bool isLeader,
   }) {
     final color = isRac ? AppColors.accentRed : AppColors.accentBlue;
     final bgColor = isRac ? AppColors.accentRed.withOpacity(0.06) : AppColors.accentBlue.withOpacity(0.06);
+
+    String _fmtWac(double v) => v >= 1000
+        ? '${(v / 1000).toStringAsFixed(1)}K'
+        : v.toStringAsFixed(1);
 
     return ModernCard(
       padding: const EdgeInsets.all(16),
@@ -392,7 +399,15 @@ class _CampaignsTabState extends State<_CampaignsTab>
                 style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
             Text(slogan, style: TextStyle(color: AppColors.textSecondary, fontStyle: FontStyle.italic)),
           ])),
-          IconButton(icon: Icon(Icons.map, color: AppColors.textTertiary), onPressed: () {}),
+          if (isLeader)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.accentAmber.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text('Lider', style: TextStyle(color: AppColors.accentAmber, fontSize: 11, fontWeight: FontWeight.bold)),
+            ),
         ]),
 
         // Poll badge (if active poll exists)
@@ -431,30 +446,33 @@ class _CampaignsTabState extends State<_CampaignsTab>
         // Metrics
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           _metricCol('Katilimci', '$participants', color),
-          _metricCol('Buyukluk', '$area m\u00B2', color),
-          _metricCol('Siram', '#$myRank', AppColors.accentAmber),
+          _metricCol('Toplam Stake', '${_fmtWac(totalWacStaked)} WAC', color),
+          _metricCol('Benim Stake', '${_fmtWac(myStakedWac)} WAC', AppColors.accentAmber),
         ]),
         const SizedBox(height: 16),
 
-        // Earnings
+        // Staking info
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(8)),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Toplam Kazanilan', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
-              Text('$totalEarned ${isRac ? 'RAC' : 'WAC'}',
-                  style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
+              Text('Stake Oranim', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+              Text(
+                totalWacStaked > 0
+                    ? '%${(myStakedWac / totalWacStaked * 100).toStringAsFixed(1)}'
+                    : '%0.0',
+                style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
             ]),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text('Gunluk Prim (Tahmini)', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
-              Text('${dailyPremium > 0 ? '+' : ''}$dailyPremium',
-                  style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
+              Text('Cikis Cezasi (%30)', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+              Text('${_fmtWac(myStakedWac * 0.30)} WAC',
+                  style: TextStyle(color: AppColors.accentRed, fontWeight: FontWeight.bold, fontSize: 14)),
             ]),
           ]),
         ),
 
-        // Buttons (vote or create poll)
+        // Buttons
         const SizedBox(height: 12),
         Row(children: [
           if (hasActivePoll && !isLeader) Expanded(
@@ -479,7 +497,176 @@ class _CampaignsTabState extends State<_CampaignsTab>
               ),
             ),
           ],
+          const SizedBox(width: 8),
+          // Stake Ekle butonu
+          Expanded(
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.accentTeal.withOpacity(0.1),
+                  foregroundColor: AppColors.accentTeal),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Stake Ekle'),
+              onPressed: () => _showAddStakeModal(context, campaignId),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Ayril butonu
+          SizedBox(
+            width: 48,
+            child: IconButton(
+              style: IconButton.styleFrom(
+                backgroundColor: AppColors.accentRed.withOpacity(0.1),
+              ),
+              icon: Icon(Icons.exit_to_app, color: AppColors.accentRed, size: 20),
+              onPressed: () => _showLeaveConfirmation(context, campaignId, title, myStakedWac),
+            ),
+          ),
         ]),
+      ]),
+    );
+  }
+
+  // ── Add Stake Modal ─────────────────────────────────────────────────────────
+  void _showAddStakeModal(BuildContext context, String campaignId) {
+    final amountCtrl = TextEditingController(text: '1');
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surfaceWhite,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('WAC Stake Ekle', style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text('Kampanyaya ek WAC stake edin. Stake arttikca kampanyanin buyuklugu ve odulleri artar.',
+              style: TextStyle(color: AppColors.textTertiary, fontSize: 13)),
+          const SizedBox(height: 16),
+          TextField(
+            controller: amountCtrl,
+            keyboardType: TextInputType.number,
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 24, fontWeight: FontWeight.bold),
+            decoration: InputDecoration(
+              hintText: 'Miktar',
+              suffixText: 'WAC',
+              suffixStyle: TextStyle(color: AppColors.accentAmber, fontWeight: FontWeight.bold),
+              filled: true,
+              fillColor: AppColors.surfaceLight,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.accentTeal,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              onPressed: () async {
+                final amount = double.tryParse(amountCtrl.text.trim());
+                if (amount == null || amount <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: const Text('Gecerli bir miktar girin.'), backgroundColor: AppColors.accentRed),
+                  );
+                  return;
+                }
+                try {
+                  await apiService.addCampaignStake(campaignId, amount.toStringAsFixed(6));
+                  Navigator.pop(ctx);
+                  _loadData();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('${amount.toStringAsFixed(1)} WAC stake eklendi!'), backgroundColor: AppColors.navyPrimary),
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(_extractError(e, 'Stake eklenemedi.')), backgroundColor: AppColors.accentRed),
+                  );
+                }
+              },
+              child: const Text('STAKE EKLE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  // ── Leave Campaign Confirmation ─────────────────────────────────────────────
+  void _showLeaveConfirmation(BuildContext context, String campaignId, String title, double myStakedWac) {
+    final penalty = myStakedWac * 0.30;
+    final returnAmount = myStakedWac * 0.70;
+    final racReward = (penalty * 2).floor();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceWhite,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Kampanyadan Ayril', style: TextStyle(color: AppColors.textPrimary)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('"$title" kampanyasindan ayrilmak istediginize emin misiniz?',
+              style: TextStyle(color: AppColors.textSecondary)),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.accentRed.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Cikis Detaylari:', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 13)),
+              const SizedBox(height: 8),
+              _penaltyRow('Toplam Stake', '${myStakedWac.toStringAsFixed(1)} WAC', AppColors.textPrimary),
+              _penaltyRow('Iade (%70)', '${returnAmount.toStringAsFixed(1)} WAC', AppColors.accentGreen),
+              _penaltyRow('Yakilacak (%15)', '${(penalty * 0.5).toStringAsFixed(1)} WAC', AppColors.accentRed),
+              _penaltyRow('Dev Fonu (%15)', '${(penalty * 0.5).toStringAsFixed(1)} WAC', AppColors.accentAmber),
+              const Divider(),
+              _penaltyRow('RAC Odulu', '$racReward RAC', AppColors.accentTeal),
+            ]),
+          ),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Iptal', style: TextStyle(color: AppColors.textTertiary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accentRed,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                final result = await apiService.leaveCampaign(campaignId);
+                _loadData();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(result['message'] ?? 'Kampanyadan ayrildiniz.'),
+                    backgroundColor: AppColors.navyPrimary,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(_extractError(e, 'Ayrilma basarisiz.')), backgroundColor: AppColors.accentRed),
+                );
+              }
+            },
+            child: const Text('Ayril'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _penaltyRow(String label, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(label, style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+        Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
       ]),
     );
   }
@@ -617,6 +804,9 @@ class _CampaignsTabState extends State<_CampaignsTab>
     final fbCtrl      = TextEditingController();
     final tiktokCtrl  = TextEditingController();
     final webCtrl     = TextEditingController();
+
+    // WAC stake amount
+    final stakeCtrl = TextEditingController(text: '1');
 
     // Speed state (0.0–1.0; 0.5 = 75% of reference speed)
     double campaignSpeed = 0.5;
@@ -856,6 +1046,18 @@ class _CampaignsTabState extends State<_CampaignsTab>
                     Divider(color: AppColors.borderLight),
                     const SizedBox(height: 16),
 
+                    // ── WAC Stake ───────────────────────────────────────────
+                    Text('WAC Stake', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 14)),
+                    const SizedBox(height: 4),
+                    Text('Kampanyaya stake edilecek WAC miktari (min. 1 WAC)',
+                        style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    _field(stakeCtrl, '1', icon: Icons.account_balance_wallet),
+
+                    const SizedBox(height: 24),
+                    Divider(color: AppColors.borderLight),
+                    const SizedBox(height: 16),
+
                     // ── Hareket Hızı ──────────────────────────────────────────
                     Text('Hareket Hızı',
                         style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 14)),
@@ -918,6 +1120,13 @@ class _CampaignsTabState extends State<_CampaignsTab>
                             return;
                           }
                           try {
+                            final stakeVal = double.tryParse(stakeCtrl.text.trim()) ?? 1.0;
+                            if (stakeVal < 1) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: const Text('En az 1 WAC stake gerekli!'), backgroundColor: AppColors.accentRed),
+                              );
+                              return;
+                            }
                             final colorHex = '#${_iconColors[selectedColorIdx].value.toRadixString(16).substring(2).toUpperCase()}';
                             await apiService.createCampaign(
                               title: sloganCtrl.text.trim().substring(0, sloganCtrl.text.trim().length.clamp(0, 50)),
@@ -927,6 +1136,7 @@ class _CampaignsTabState extends State<_CampaignsTab>
                               iconColor: colorHex,
                               iconShape: selectedShapeIdx,
                               speed: campaignSpeed,
+                              stakeAmount: stakeVal.toStringAsFixed(6),
                               instagramUrl: igCtrl.text.trim().isEmpty ? null : igCtrl.text.trim(),
                               twitterUrl: twCtrl.text.trim().isEmpty ? null : twCtrl.text.trim(),
                               facebookUrl: fbCtrl.text.trim().isEmpty ? null : fbCtrl.text.trim(),
@@ -1319,10 +1529,11 @@ class _GlobalTabState extends State<_GlobalTab> {
 
   /// Compact campaign card for horizontal scrolling lists
   Widget _buildCompactCampaignCard(Map<String, dynamic> campaign) {
+    final campaignId = (campaign['id'] ?? '') as String;
     final title = (campaign['title'] ?? 'Kampanya') as String;
     final slogan = (campaign['slogan'] ?? '') as String;
     final memberCount = (campaign['memberCount'] ?? 0) as int;
-    final totalWac = (campaign['totalWac'] ?? '0.000000') as String;
+    final totalWac = (campaign['totalWacStaked'] ?? campaign['totalWac'] ?? '0.000000').toString();
     final pollCount = (campaign['pollCount'] ?? 0) as int;
 
     // Parse WAC as double for display
@@ -1334,9 +1545,7 @@ class _GlobalTabState extends State<_GlobalTab> {
             : wacValue.toStringAsFixed(0);
 
     return GestureDetector(
-      onTap: () {
-        // TODO: Navigate to campaign detail
-      },
+      onTap: () => _showJoinCampaignModal(campaignId, title),
       child: Container(
         width: 160,
         decoration: BoxDecoration(
@@ -1392,7 +1601,7 @@ class _GlobalTabState extends State<_GlobalTab> {
                       wacDisplay,
                       style: TextStyle(color: AppColors.accentAmber, fontWeight: FontWeight.bold, fontSize: 12),
                     ),
-                    Text('WAC', style: TextStyle(color: AppColors.textTertiary, fontSize: 9)),
+                    Text('Stake', style: TextStyle(color: AppColors.textTertiary, fontSize: 9)),
                   ],
                 ),
                 if (pollCount > 0)
@@ -1410,6 +1619,94 @@ class _GlobalTabState extends State<_GlobalTab> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ── Join Campaign Modal ─────────────────────────────────────────────────────
+  void _showJoinCampaignModal(String campaignId, String title) {
+    if (!apiService.isLoggedIn) return;
+    final stakeCtrl = TextEditingController(text: '1');
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surfaceWhite,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Kampanyaya Katil', style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text('"$title"', style: TextStyle(color: AppColors.accentBlue, fontStyle: FontStyle.italic)),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.accentAmber.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(children: [
+              Icon(Icons.info_outline, color: AppColors.accentAmber, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Kampanyadan ayrilirken %30 ceza kesilir. %70 iade edilir, 2x ceza kadar RAC kazanirsiniz.',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                ),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 16),
+          Text('Stake Miktari (min. 1 WAC)', style: TextStyle(color: AppColors.textTertiary, fontSize: 13)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: stakeCtrl,
+            keyboardType: TextInputType.number,
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 24, fontWeight: FontWeight.bold),
+            decoration: InputDecoration(
+              hintText: '1',
+              suffixText: 'WAC',
+              suffixStyle: TextStyle(color: AppColors.accentAmber, fontWeight: FontWeight.bold),
+              filled: true,
+              fillColor: AppColors.surfaceLight,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.accentBlue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              icon: const Icon(Icons.flag),
+              onPressed: () async {
+                final amount = double.tryParse(stakeCtrl.text.trim()) ?? 0;
+                if (amount < 1) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: const Text('En az 1 WAC stake gerekli!'), backgroundColor: AppColors.accentRed),
+                  );
+                  return;
+                }
+                try {
+                  await apiService.joinCampaign(campaignId, stakeAmount: amount.toStringAsFixed(6));
+                  Navigator.pop(ctx);
+                  _loadCampaigns();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('$title kampanyasina katildiniz!'), backgroundColor: AppColors.navyPrimary),
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(_extractError(e, 'Katilim basarisiz.')), backgroundColor: AppColors.accentRed),
+                  );
+                }
+              },
+              label: const Text('KATIL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+          ),
+        ]),
       ),
     );
   }

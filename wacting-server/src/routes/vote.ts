@@ -67,10 +67,27 @@ export async function voteRoutes(fastify: FastifyInstance) {
     // ─────────────────────────────────────────────────────────────────────────────
     // GET POLLS FOR A CAMPAIGN
     // GET /vote/campaign/:campaignId
+    // Privacy: RAC protestors CANNOT see campaign polls (tokenomics rule)
     // ─────────────────────────────────────────────────────────────────────────────
     fastify.get('/campaign/:campaignId', async (request, reply) => {
         try {
+            const user = (request as any).user;
             const { campaignId } = request.params as { campaignId: string };
+
+            // Privacy check: is this user a protestor against this campaign?
+            const racPool = await (prisma as any).racPool.findUnique({
+                where: { targetCampaignId: campaignId },
+                include: {
+                    participants: { where: { userId: user.id }, take: 1 },
+                },
+            });
+            if (racPool?.participants?.length > 0) {
+                return reply.status(403).send({
+                    success: false,
+                    error: 'Protestocular kampanya oylamalarını göremez.',
+                });
+            }
+
             const polls = await prisma.campaignPoll.findMany({
                 where: { campaignId },
                 orderBy: { createdAt: 'desc' },
@@ -103,6 +120,10 @@ export async function voteRoutes(fastify: FastifyInstance) {
     // CAST A VOTE
     // POST /vote/:pollId/vote
     // Body: { optionId }
+    // Rules:
+    //   - Only WAC stakers (campaign members) can vote
+    //   - RAC protestors CANNOT vote in campaign polls
+    //   - Vote weight = member's stakedWac in that campaign
     // ─────────────────────────────────────────────────────────────────────────────
     fastify.post('/:pollId/vote', async (request, reply) => {
         try {
@@ -118,8 +139,31 @@ export async function voteRoutes(fastify: FastifyInstance) {
                 return reply.status(400).send({ success: false, error: 'Poll has expired' });
             }
 
-            const wacRecord = await prisma.userWac.findUnique({ where: { userId: user.id } });
-            const wacWeight = wacRecord?.wacBalance ?? 1;
+            // Must be a campaign member (WAC staker) to vote
+            const member = await (prisma as any).campaignMember.findUnique({
+                where: { campaignId_userId: { campaignId: poll.campaignId, userId: user.id } },
+            });
+            if (!member) {
+                return reply.status(403).send({
+                    success: false,
+                    error: 'Yalnızca kampanya üyeleri (WAC stake sahipleri) oy kullanabilir.',
+                });
+            }
+
+            // Privacy: protestors cannot vote
+            const racPool = await (prisma as any).racPool.findUnique({
+                where: { targetCampaignId: poll.campaignId },
+                include: { participants: { where: { userId: user.id }, take: 1 } },
+            });
+            if (racPool?.participants?.length > 0) {
+                return reply.status(403).send({
+                    success: false,
+                    error: 'Protestocular kampanya oylamalarına katılamaz.',
+                });
+            }
+
+            // Vote weight = member's staked WAC
+            const wacWeight = member.stakedWac ?? 1;
 
             const vote = await prisma.pollVote.create({
                 data: { pollId, optionId, voterId: user.id, wacWeight }

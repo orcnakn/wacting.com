@@ -1,9 +1,26 @@
+/**
+ * campaign.ts — Campaign Routes with WAC Staking Tokenomics
+ *
+ * POST /campaign/create      — Create campaign (costs 1 WAC stake)
+ * POST /campaign/:id/join     — Join campaign with WAC stake
+ * POST /campaign/:id/leave    — Leave campaign (30% penalty: 15% burn + 15% dev, 2x RAC mint)
+ * POST /campaign/:id/stake    — Add more WAC to existing membership
+ * GET  /campaign/:id          — Get single campaign
+ * GET  /campaign/:id/members  — Get campaign members
+ * GET  /campaign/mine         — List my campaigns
+ * GET  /campaign/all          — List all active campaigns
+ * GET  /campaign/nearby       — List nearby campaigns
+ * GET  /campaign/popular      — List popular campaigns
+ * GET  /campaign/trending     — List trending campaigns
+ */
+
 import { FastifyInstance } from 'fastify';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { authenticateToken } from '../middleware/auth.js';
+import { recordChainedTransaction } from '../engine/chain_engine.js';
 
 const prisma = new PrismaClient();
-const CAMPAIGN_STAKE_COST = new Prisma.Decimal('1.000000');
+const MIN_STAKE = new Prisma.Decimal('1.000000'); // Minimum WAC to join/create
 
 export async function campaignRoutes(fastify: FastifyInstance) {
 
@@ -22,6 +39,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 iconColor: string;
                 iconShape: number;
                 speed?: number;
+                stakeAmount?: string;
                 instagramUrl?: string;
                 twitterUrl?: string;
                 facebookUrl?: string;
@@ -37,36 +55,37 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 return reply.status(400).send({ success: false, error: 'Speed must be between 0 and 1.' });
             }
 
-            // Check WAC balance — need at least 1 WAC to create a campaign
-            const userWac = await prisma.userWac.findUnique({ where: { userId: user.id } });
-            if (!userWac || !userWac.isActive || userWac.wacBalance.lt(CAMPAIGN_STAKE_COST)) {
+            const stakeAmount = new Prisma.Decimal(body.stakeAmount || '1.000000');
+            if (stakeAmount.lt(MIN_STAKE)) {
                 return reply.status(400).send({
                     success: false,
-                    error: 'Kampanya olusturmak icin en az 1 WAC gerekli.',
-                    requiredWac: '1.000000',
+                    error: `Kampanya oluşturmak için en az ${MIN_STAKE} WAC gerekli.`,
+                });
+            }
+
+            // Check WAC balance
+            const userWac = await prisma.userWac.findUnique({ where: { userId: user.id } });
+            if (!userWac || !userWac.isActive || userWac.wacBalance.lt(stakeAmount)) {
+                return reply.status(400).send({
+                    success: false,
+                    error: 'Yetersiz WAC bakiyesi.',
+                    requiredWac: stakeAmount.toFixed(6),
                     currentWac: userWac?.wacBalance.toFixed(6) ?? '0.000000',
                 });
             }
 
-            // Deduct 1 WAC, create campaign, add leader as member — all in one transaction
-            const [campaign] = await prisma.$transaction(async (tx) => {
+            // Atomic: deduct WAC, create campaign, add leader as member with stake
+            const campaign = await prisma.$transaction(async (tx) => {
+                // Deduct WAC from user balance
                 await tx.userWac.update({
                     where: { userId: user.id },
                     data: {
-                        wacBalance: { decrement: CAMPAIGN_STAKE_COST },
+                        wacBalance: { decrement: stakeAmount },
                         balanceUpdatedAt: new Date(),
                     },
                 });
 
-                await tx.transaction.create({
-                    data: {
-                        userId: user.id,
-                        amount: CAMPAIGN_STAKE_COST,
-                        type: 'WAC_DEPOSIT',
-                        note: `Campaign stake: -1 WAC for "${body.title}"`,
-                    },
-                });
-
+                // Create campaign with initial WAC staked
                 const c = await (tx as any).campaign.create({
                     data: {
                         leaderId: user.id,
@@ -82,24 +101,39 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                         facebookUrl: body.facebookUrl ?? null,
                         tiktokUrl: body.tiktokUrl ?? null,
                         websiteUrl: body.websiteUrl ?? null,
-                    }
+                        totalWacStaked: stakeAmount,
+                    },
                 });
 
-                // Leader is automatically the first member
+                // Leader is first member with stake
                 await (tx as any).campaignMember.create({
-                    data: { campaignId: c.id, userId: user.id }
+                    data: {
+                        campaignId: c.id,
+                        userId: user.id,
+                        stakedWac: stakeAmount,
+                    },
                 });
 
+                // Update icon appearance
                 await tx.icon.updateMany({
                     where: { userId: user.id },
                     data: {
                         colorHex: body.iconColor || '#2C3E50',
                         shapeIndex: body.iconShape ?? 0,
                         slogan: body.slogan.substring(0, 50),
-                    }
+                    },
                 });
 
-                return [c];
+                // Chained transaction record
+                await recordChainedTransaction(tx, {
+                    userId: user.id,
+                    amount: stakeAmount,
+                    type: 'WAC_CAMPAIGN_STAKE' as any,
+                    note: `Campaign created: "${body.title}" — staked ${stakeAmount} WAC`,
+                    campaignId: c.id,
+                });
+
+                return c;
             });
 
             const updatedWac = await prisma.userWac.findUnique({ where: { userId: user.id } });
@@ -115,11 +149,20 @@ export async function campaignRoutes(fastify: FastifyInstance) {
         }
     });
 
-    // ── Join Campaign ────────────────────────────────────────────────────────
+    // ── Join Campaign (with WAC stake) ───────────────────────────────────────
     fastify.post('/:id/join', async (request, reply) => {
         try {
             const user = (request as any).user;
             const { id } = request.params as { id: string };
+            const body = request.body as { stakeAmount?: string };
+
+            const stakeAmount = new Prisma.Decimal(body?.stakeAmount || '1.000000');
+            if (stakeAmount.lt(MIN_STAKE)) {
+                return reply.status(400).send({
+                    success: false,
+                    error: `Kampanyaya katılmak için en az ${MIN_STAKE} WAC gerekli.`,
+                });
+            }
 
             const campaign = await prisma.campaign.findUnique({ where: { id } });
             if (!campaign || !campaign.isActive) {
@@ -127,24 +170,129 @@ export async function campaignRoutes(fastify: FastifyInstance) {
             }
 
             const existing = await (prisma as any).campaignMember.findUnique({
-                where: { campaignId_userId: { campaignId: id, userId: user.id } }
+                where: { campaignId_userId: { campaignId: id, userId: user.id } },
             });
             if (existing) {
                 return reply.status(409).send({ success: false, error: 'Already a member of this campaign.' });
             }
 
-            await (prisma as any).campaignMember.create({
-                data: { campaignId: id, userId: user.id }
+            // Check WAC balance
+            const userWac = await prisma.userWac.findUnique({ where: { userId: user.id } });
+            if (!userWac || !userWac.isActive || userWac.wacBalance.lt(stakeAmount)) {
+                return reply.status(400).send({
+                    success: false,
+                    error: 'Yetersiz WAC bakiyesi.',
+                    requiredWac: stakeAmount.toFixed(6),
+                    currentWac: userWac?.wacBalance.toFixed(6) ?? '0.000000',
+                });
+            }
+
+            await prisma.$transaction(async (tx) => {
+                // Deduct WAC from user
+                await tx.userWac.update({
+                    where: { userId: user.id },
+                    data: {
+                        wacBalance: { decrement: stakeAmount },
+                        balanceUpdatedAt: new Date(),
+                    },
+                });
+
+                // Add member with stake
+                await (tx as any).campaignMember.create({
+                    data: {
+                        campaignId: id,
+                        userId: user.id,
+                        stakedWac: stakeAmount,
+                    },
+                });
+
+                // Update campaign total staked
+                await tx.campaign.update({
+                    where: { id },
+                    data: { totalWacStaked: { increment: stakeAmount } },
+                });
+
+                // Chained transaction record
+                await recordChainedTransaction(tx, {
+                    userId: user.id,
+                    amount: stakeAmount,
+                    type: 'WAC_CAMPAIGN_STAKE' as any,
+                    note: `Joined campaign "${campaign.title}" — staked ${stakeAmount} WAC`,
+                    campaignId: id,
+                });
             });
 
-            return reply.send({ success: true, message: 'Joined campaign successfully.' });
+            return reply.send({
+                success: true,
+                message: 'Kampanyaya başarıyla katıldınız.',
+                stakedWac: stakeAmount.toFixed(6),
+            });
         } catch (error: any) {
             fastify.log.error(error);
             return reply.status(500).send({ success: false, error: error.message || 'Failed to join campaign' });
         }
     });
 
-    // ── Leave Campaign (with leader succession) ───────────────────────────────
+    // ── Add More Stake ────────────────────────────────────────────────────────
+    fastify.post('/:id/stake', async (request, reply) => {
+        try {
+            const user = (request as any).user;
+            const { id } = request.params as { id: string };
+            const body = request.body as { amount: string };
+
+            const amount = new Prisma.Decimal(body.amount);
+            if (amount.lte(0)) {
+                return reply.status(400).send({ success: false, error: 'Amount must be > 0' });
+            }
+
+            const member = await (prisma as any).campaignMember.findUnique({
+                where: { campaignId_userId: { campaignId: id, userId: user.id } },
+            });
+            if (!member) {
+                return reply.status(404).send({ success: false, error: 'Bu kampanyanın üyesi değilsiniz.' });
+            }
+
+            const userWac = await prisma.userWac.findUnique({ where: { userId: user.id } });
+            if (!userWac || userWac.wacBalance.lt(amount)) {
+                return reply.status(400).send({ success: false, error: 'Yetersiz WAC bakiyesi.' });
+            }
+
+            await prisma.$transaction(async (tx) => {
+                await tx.userWac.update({
+                    where: { userId: user.id },
+                    data: {
+                        wacBalance: { decrement: amount },
+                        balanceUpdatedAt: new Date(),
+                    },
+                });
+
+                await (tx as any).campaignMember.update({
+                    where: { campaignId_userId: { campaignId: id, userId: user.id } },
+                    data: { stakedWac: { increment: amount } },
+                });
+
+                await tx.campaign.update({
+                    where: { id },
+                    data: { totalWacStaked: { increment: amount } },
+                });
+
+                await recordChainedTransaction(tx, {
+                    userId: user.id,
+                    amount,
+                    type: 'WAC_CAMPAIGN_STAKE' as any,
+                    note: `Added ${amount} WAC stake to campaign`,
+                    campaignId: id,
+                });
+            });
+
+            return reply.send({ success: true, message: 'Stake eklendi.' });
+        } catch (error: any) {
+            fastify.log.error(error);
+            return reply.status(500).send({ success: false, error: error.message || 'Failed to add stake' });
+        }
+    });
+
+    // ── Leave Campaign (with 30% penalty + RAC mint) ─────────────────────────
     fastify.post('/:id/leave', async (request, reply) => {
         try {
             const user = (request as any).user;
@@ -155,38 +303,137 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 include: {
                     members: {
                         orderBy: { joinedAt: 'asc' },
-                        include: { user: true }
-                    }
-                }
+                        include: { user: true },
+                    },
+                },
             });
 
             if (!campaign || !campaign.isActive) {
                 return reply.status(404).send({ success: false, error: 'Campaign not found.' });
             }
 
+            const member = campaign.members.find((m) => m.userId === user.id);
+            if (!member) {
+                return reply.status(404).send({ success: false, error: 'Bu kampanyanın üyesi değilsiniz.' });
+            }
+
+            const stakedWac = member.stakedWac;
             const isLeader = campaign.leaderId === user.id;
             const memberCount = campaign.members.length;
 
+            // Tokenomics: 30% penalty, 70% return, 2x penalty as RAC
+            const penalty = stakedWac.mul('0.30').toDecimalPlaces(6);
+            const returnAmount = stakedWac.mul('0.70').toDecimalPlaces(6);
+            const burnAmount = penalty.mul('0.50').toDecimalPlaces(6);   // 15% of total
+            const devAmount = penalty.sub(burnAmount);                    // 15% of total
+            const racReward = BigInt(penalty.mul('2').floor().toFixed(0)); // 2x penalty as RAC
+
             await prisma.$transaction(async (tx) => {
-                // Remove user from members
+                // 1. Remove member
                 await (tx as any).campaignMember.delete({
-                    where: { campaignId_userId: { campaignId: id, userId: user.id } }
+                    where: { campaignId_userId: { campaignId: id, userId: user.id } },
                 });
 
+                // 2. Decrease campaign staked WAC
+                await tx.campaign.update({
+                    where: { id },
+                    data: { totalWacStaked: { decrement: stakedWac } },
+                });
+
+                // 3. Return 70% WAC to user
+                await tx.userWac.upsert({
+                    where: { userId: user.id },
+                    update: {
+                        wacBalance: { increment: returnAmount },
+                        balanceUpdatedAt: new Date(),
+                        isActive: true,
+                    },
+                    create: {
+                        userId: user.id,
+                        wacBalance: returnAmount,
+                        isActive: true,
+                    },
+                });
+
+                // 4. Burn 15% + Dev 15%
+                await tx.treasury.upsert({
+                    where: { id: 'singleton' },
+                    update: {
+                        burnedTotal: { increment: burnAmount },
+                        devBalance: { increment: devAmount },
+                    },
+                    create: {
+                        id: 'singleton',
+                        burnedTotal: burnAmount,
+                        devBalance: devAmount,
+                    },
+                });
+
+                // 5. Mint RAC to user (2x penalty)
+                if (racReward > 0n) {
+                    await tx.userRac.upsert({
+                        where: { userId: user.id },
+                        update: { racBalance: { increment: racReward } },
+                        create: { userId: user.id, racBalance: racReward },
+                    });
+                }
+
+                // 6. Record chained transactions (4 legs)
+                await recordChainedTransaction(tx, {
+                    userId: user.id,
+                    amount: returnAmount,
+                    type: 'WAC_CAMPAIGN_RETURN' as any,
+                    note: `Campaign exit — 70% of ${stakedWac.toFixed(6)} WAC returned`,
+                    campaignId: id,
+                });
+
+                await recordChainedTransaction(tx, {
+                    userId: user.id,
+                    amount: burnAmount,
+                    type: 'WAC_BURN' as any,
+                    note: `Campaign exit — 15% burned (${burnAmount.toFixed(6)} WAC)`,
+                    campaignId: id,
+                });
+
+                await recordChainedTransaction(tx, {
+                    userId: user.id,
+                    amount: devAmount,
+                    type: 'WAC_DEV_FEE' as any,
+                    note: `Campaign exit — 15% dev fee (${devAmount.toFixed(6)} WAC)`,
+                    campaignId: id,
+                });
+
+                await recordChainedTransaction(tx, {
+                    userId: user.id,
+                    amount: racReward.toString(),
+                    type: 'RAC_MINTED' as any,
+                    note: `Campaign exit — ${racReward} RAC minted (2x penalty)`,
+                    campaignId: id,
+                });
+
+                // 7. Record history
+                await (tx as any).campaignHistory.create({
+                    data: {
+                        userId: user.id,
+                        campaignId: id,
+                        joinedAt: member.joinedAt,
+                        totalEarned: returnAmount,
+                    },
+                });
+
+                // 8. Leader succession
                 if (isLeader) {
                     if (memberCount <= 1) {
-                        // No members left — deactivate campaign
                         await tx.campaign.update({
                             where: { id },
-                            data: { isActive: false }
+                            data: { isActive: false },
                         });
                     } else {
-                        // Successor = earliest member who is not the current leader
-                        const successor = campaign.members.find(m => m.userId !== user.id);
+                        const successor = campaign.members.find((m) => m.userId !== user.id);
                         if (successor) {
                             await tx.campaign.update({
                                 where: { id },
-                                data: { leaderId: successor.userId }
+                                data: { leaderId: successor.userId },
                             });
                             fastify.log.info(`[Campaign] Leader succession: ${user.id} → ${successor.userId} for campaign ${id}`);
                         }
@@ -194,11 +441,24 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 }
             });
 
-            const result = isLeader && memberCount <= 1
-                ? { success: true, message: 'Campaign closed — no members remaining.' }
-                : { success: true, message: isLeader ? 'You left the campaign. Leadership transferred to next member.' : 'You left the campaign.' };
+            fastify.log.info(
+                `[Campaign] ${user.id} left campaign ${id}. ` +
+                `Returned: ${returnAmount}, Burned: ${burnAmount}, Dev: ${devAmount}, RAC: ${racReward}`
+            );
 
-            return reply.send(result);
+            return reply.send({
+                success: true,
+                totalStaked: stakedWac.toFixed(6),
+                returned: returnAmount.toFixed(6),
+                burned: burnAmount.toFixed(6),
+                devFee: devAmount.toFixed(6),
+                racMinted: Number(racReward),
+                message: isLeader && memberCount <= 1
+                    ? 'Kampanya kapatıldı — üye kalmadı.'
+                    : isLeader
+                        ? 'Kampanyadan ayrıldınız. Liderlik devredildi.'
+                        : 'Kampanyadan ayrıldınız. WAC iadeniz ve RAC ödülünüz hesabınıza aktarıldı.',
+            });
         } catch (error: any) {
             fastify.log.error(error);
             return reply.status(500).send({ success: false, error: error.message || 'Failed to leave campaign' });
@@ -217,25 +477,31 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                         orderBy: { joinedAt: 'asc' },
                         include: {
                             user: {
-                                select: { id: true, slogan: true, avatarUrl: true, email: true }
-                            }
-                        }
-                    }
-                }
+                                select: { id: true, slogan: true, avatarUrl: true, email: true },
+                            },
+                        },
+                    },
+                },
             });
 
             if (!campaign) {
                 return reply.status(404).send({ success: false, error: 'Campaign not found.' });
             }
 
-            const members = campaign.members.map(m => ({
+            const members = campaign.members.map((m) => ({
                 userId: m.userId,
                 joinedAt: m.joinedAt,
                 isLeader: m.userId === campaign.leaderId,
+                stakedWac: m.stakedWac.toFixed(6),
                 user: m.user,
             }));
 
-            return reply.send({ success: true, members, leaderUserId: campaign.leaderId });
+            return reply.send({
+                success: true,
+                members,
+                leaderUserId: campaign.leaderId,
+                totalWacStaked: campaign.totalWacStaked.toFixed(6),
+            });
         } catch (error: any) {
             fastify.log.error(error);
             return reply.status(500).send({ success: false, error: 'Failed to fetch members' });
@@ -246,10 +512,28 @@ export async function campaignRoutes(fastify: FastifyInstance) {
     fastify.get('/mine', async (request, reply) => {
         try {
             const user = (request as any).user;
-            const campaigns = await prisma.campaign.findMany({
-                where: { leaderId: user.id },
-                orderBy: { createdAt: 'desc' }
+
+            // Campaigns where I'm a member (not just leader)
+            const memberships = await (prisma as any).campaignMember.findMany({
+                where: { userId: user.id },
+                include: {
+                    campaign: {
+                        include: {
+                            leader: { select: { id: true, slogan: true, avatarUrl: true } },
+                            _count: { select: { members: true, polls: true } },
+                        },
+                    },
+                },
+                orderBy: { joinedAt: 'desc' },
             });
+
+            const campaigns = memberships.map((m: any) => ({
+                ...m.campaign,
+                myStakedWac: m.stakedWac.toFixed(6),
+                isLeader: m.campaign.leaderId === user.id,
+                memberCount: m.campaign._count.members,
+            }));
+
             return reply.send({ success: true, campaigns });
         } catch (error: any) {
             fastify.log.error(error);
@@ -262,14 +546,22 @@ export async function campaignRoutes(fastify: FastifyInstance) {
         try {
             const campaigns = await prisma.campaign.findMany({
                 where: { isActive: true },
-                orderBy: { createdAt: 'desc' },
+                orderBy: { totalWacStaked: 'desc' },
                 take: 50,
                 include: {
                     leader: { select: { id: true, slogan: true, avatarUrl: true } },
-                    _count: { select: { members: true, polls: true } }
-                }
+                    _count: { select: { members: true, polls: true } },
+                },
             });
-            return reply.send({ success: true, campaigns });
+
+            const enriched = campaigns.map((c) => ({
+                ...c,
+                totalWacStaked: c.totalWacStaked.toFixed(6),
+                memberCount: c._count.members,
+                pollCount: c._count.polls,
+            }));
+
+            return reply.send({ success: true, campaigns: enriched });
         } catch (error: any) {
             fastify.log.error(error);
             return reply.status(500).send({ success: false, error: 'Failed to fetch campaigns' });
@@ -284,13 +576,33 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 where: { id },
                 include: {
                     leader: { select: { id: true, slogan: true, avatarUrl: true } },
-                    _count: { select: { members: true, polls: true } }
-                }
+                    racPool: { select: { totalBalance: true, participantCount: true, isActive: true } },
+                    _count: { select: { members: true, polls: true } },
+                },
             });
             if (!campaign) {
                 return reply.status(404).send({ success: false, error: 'Campaign not found' });
             }
-            return reply.send({ success: true, campaign });
+
+            // Icon size = totalWacStaked - racPool
+            const racPoolBalance = campaign.racPool ? Number(campaign.racPool.totalBalance) : 0;
+            const effectiveSize = Math.max(0, Number(campaign.totalWacStaked) - racPoolBalance);
+
+            return reply.send({
+                success: true,
+                campaign: {
+                    ...campaign,
+                    totalWacStaked: campaign.totalWacStaked.toFixed(6),
+                    effectiveSize,
+                    racPool: campaign.racPool
+                        ? {
+                            totalBalance: Number(campaign.racPool.totalBalance),
+                            participantCount: campaign.racPool.participantCount,
+                            isActive: campaign.racPool.isActive,
+                        }
+                        : null,
+                },
+            });
         } catch (error: any) {
             fastify.log.error(error);
             return reply.status(500).send({ success: false, error: 'Server error' });
@@ -299,7 +611,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
 
     // ── Helper: Calculate distance between two points (Haversine formula) ──────
     const calcDistance = (x1: number, y1: number, x2: number, y2: number): number => {
-        const R = 6371; // Earth's radius in km
+        const R = 6371;
         const dLat = (y2 - y1) * (Math.PI / 180);
         const dLon = (x2 - x1) * (Math.PI / 180);
         const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
@@ -307,27 +619,6 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                   Math.sin(dLon / 2) * Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
-    };
-
-    // ── Helper: Get total WAC of campaign members (RAC deducted) ────────────────
-    const getCampaignTotalWac = async (campaignId: string): Promise<string> => {
-        const members = await prisma.campaignMember.findMany({
-            where: { campaignId },
-            include: { user: { include: { wac: true, rac: true } } }
-        });
-
-        let total = new Prisma.Decimal(0);
-        for (const member of members) {
-            const wacBalance = member.user.wac?.wacBalance ?? new Prisma.Decimal(0);
-            const racValue = member.user.rac?.racBalance;
-            const racBalance = racValue ? new Prisma.Decimal(racValue.toString()) : new Prisma.Decimal(0);
-            // Net WAC = WAC - RAC (RAC is borrowed, deducted from WAC)
-            const net = wacBalance.minus(racBalance);
-            if (net.greaterThan(0)) {
-                total = total.plus(net);
-            }
-        }
-        return total.toFixed(6);
     };
 
     // ── List Nearby Campaigns (by user location) ───────────────────────────────
@@ -341,67 +632,59 @@ export async function campaignRoutes(fastify: FastifyInstance) {
 
             const userX = userIcon.lastKnownX;
             const userY = userIcon.lastKnownY;
-            const radiusKm = 100; // 100km radius
+            const radiusKm = 100;
 
-            // Get all active campaigns
             const campaigns = await prisma.campaign.findMany({
                 where: { isActive: true },
                 include: {
                     leader: { select: { id: true, slogan: true, avatarUrl: true } },
                     members: { include: { user: { include: { icon: true } } } },
-                    _count: { select: { polls: true } }
-                }
+                    _count: { select: { polls: true } },
+                },
             });
 
-            // Filter by distance and sort
             const nearby = campaigns
-                .filter(c => {
-                    // Check if any member is within radius
-                    return c.members.some(m => {
+                .filter((c) =>
+                    c.members.some((m) => {
                         const icon = m.user.icon;
                         if (!icon) return false;
-                        const distance = calcDistance(userX, userY, icon.lastKnownX, icon.lastKnownY);
-                        return distance <= radiusKm;
-                    });
-                })
-                .slice(0, 20);
+                        return calcDistance(userX, userY, icon.lastKnownX, icon.lastKnownY) <= radiusKm;
+                    })
+                )
+                .slice(0, 20)
+                .map((c) => ({
+                    ...c,
+                    totalWacStaked: c.totalWacStaked.toFixed(6),
+                    memberCount: c.members.length,
+                    pollCount: c._count.polls,
+                }));
 
-            // Enrich with total WAC
-            const enriched = await Promise.all(nearby.map(async c => ({
-                ...c,
-                totalWac: await getCampaignTotalWac(c.id),
-                memberCount: c.members.length,
-                pollCount: c._count.polls
-            })));
-
-            return reply.send({ success: true, campaigns: enriched });
+            return reply.send({ success: true, campaigns: nearby });
         } catch (error: any) {
             fastify.log.error(error);
             return reply.status(500).send({ success: false, error: 'Failed to fetch nearby campaigns' });
         }
     });
 
-    // ── List Popular Campaigns (by member count) ───────────────────────────────
+    // ── List Popular Campaigns (by total WAC staked) ────────────────────────────
     fastify.get('/popular', async (_request, reply) => {
         try {
             const campaigns = await prisma.campaign.findMany({
                 where: { isActive: true },
                 include: {
                     leader: { select: { id: true, slogan: true, avatarUrl: true } },
-                    members: { include: { user: { include: { wac: true, rac: true } } } },
-                    _count: { select: { polls: true } }
+                    _count: { select: { members: true, polls: true } },
                 },
-                orderBy: [{ members: { _count: 'desc' } }, { createdAt: 'desc' }],
-                take: 20
+                orderBy: { totalWacStaked: 'desc' },
+                take: 20,
             });
 
-            // Enrich with total WAC
-            const enriched = await Promise.all(campaigns.map(async c => ({
+            const enriched = campaigns.map((c) => ({
                 ...c,
-                totalWac: await getCampaignTotalWac(c.id),
-                memberCount: c.members.length,
-                pollCount: c._count.polls
-            })));
+                totalWacStaked: c.totalWacStaked.toFixed(6),
+                memberCount: c._count.members,
+                pollCount: c._count.polls,
+            }));
 
             return reply.send({ success: true, campaigns: enriched });
         } catch (error: any) {
@@ -417,31 +700,27 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 where: { isActive: true },
                 include: {
                     leader: { select: { id: true, slogan: true, avatarUrl: true } },
-                    members: { include: { user: { include: { wac: true, rac: true } } } },
                     polls: { include: { _count: { select: { votes: true } } } },
-                    _count: { select: { polls: true } }
-                }
+                    _count: { select: { members: true, polls: true } },
+                },
             });
 
-            // Filter and sort by total poll votes
             const trending = campaigns
-                .map(c => ({
+                .map((c) => ({
                     campaign: c,
-                    totalVotes: c.polls.reduce((sum, p) => sum + p._count.votes, 0)
+                    totalVotes: c.polls.reduce((sum, p) => sum + p._count.votes, 0),
                 }))
                 .sort((a, b) => b.totalVotes - a.totalVotes)
                 .slice(0, 20)
-                .map(item => item.campaign);
+                .map((item) => ({
+                    ...item.campaign,
+                    totalWacStaked: item.campaign.totalWacStaked.toFixed(6),
+                    memberCount: item.campaign._count.members,
+                    pollCount: item.campaign._count.polls,
+                    totalVotes: item.totalVotes,
+                }));
 
-            // Enrich with total WAC
-            const enriched = await Promise.all(trending.map(async c => ({
-                ...c,
-                totalWac: await getCampaignTotalWac(c.id),
-                memberCount: c.members.length,
-                pollCount: c._count.polls
-            })));
-
-            return reply.send({ success: true, campaigns: enriched });
+            return reply.send({ success: true, campaigns: trending });
         } catch (error: any) {
             fastify.log.error(error);
             return reply.status(500).send({ success: false, error: 'Failed to fetch trending campaigns' });

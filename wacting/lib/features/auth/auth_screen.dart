@@ -1,17 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
-import '../../app/theme.dart';
-import '../../app/widgets/modern_button.dart';
-import '../../app/widgets/modern_card.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/services/api_service.dart';
-import '../../core/models/icon_model.dart';
+import '../../core/services/oauth_web_service.dart';
 import '../../core/config/app_config.dart';
 import '../root_navigation.dart';
-import '../grid/day_night_layer.dart';
+import 'auth_background_animation.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({Key? key}) : super(key: key);
@@ -28,9 +23,7 @@ class _AuthScreenState extends State<AuthScreen> {
   String? _successMessage;
   String? _pendingVerificationEmail;
 
-  final MapController _mapController = MapController();
-  final double _currentZoom = 3.0;
-  final LatLng _initialCenter = const LatLng(41.0082, 28.9784);
+  // unused — text animation is now on the W marker
 
   @override
   void initState() {
@@ -46,19 +39,31 @@ class _AuthScreenState extends State<AuthScreen> {
     super.dispose();
   }
 
-  LatLng _offsetToLatLng(Offset pos) {
-    double lng = (pos.dx / 510) * 360 - 180;
-    double lat = 90 - (pos.dy / 510) * 180;
-    return LatLng(lat, lng);
-  }
-
-  void _handleSocialLogin(String provider) {
-    final names = {'facebook': 'Facebook', 'instagram': 'Instagram', 'tiktok': 'TikTok', 'twitter': 'X (Twitter)'};
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('${names[provider] ?? provider} girişi yakında aktif olacak.'),
-      backgroundColor: const Color(0xFF1a1a2e),
-      duration: const Duration(seconds: 2),
-    ));
+  Future<void> _handleSocialLogin(String provider) async {
+    if (_isLoading) return;
+    setState(() { _isLoading = true; _errorMessage = null; });
+    try {
+      final result = await oauthWebService.startOAuth(provider);
+      final token = result['token'] as String?;
+      final userId = result['userId'] as String?;
+      if (token != null && userId != null) {
+        apiService.handleSocialLoginResult(token, userId);
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const RootNavigation()),
+          );
+        }
+      } else {
+        if (mounted) setState(() { _isLoading = false; _errorMessage = 'Giris basarisiz.'; });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
+        });
+      }
+    }
   }
 
   Future<void> _handleSignUp() async {
@@ -138,29 +143,40 @@ class _AuthScreenState extends State<AuthScreen> {
     return 'Baglanti hatasi.';
   }
 
+  void _onMerge(bool merging) {
+    // merge event handled inside animation widget now
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: const Color(0xFF0F0C29),
       body: Stack(children: [
-        _buildBackgroundMap(),
+        // ── Animated background ──
+        Positioned.fill(
+          child: AuthBackgroundAnimation(onMerge: _onMerge),
+        ),
+
+        // ── Content ──
         Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Icon(Icons.public, size: 80, color: AppColors.navyPrimary),
-                const SizedBox(height: 24),
-                Text('WACTING', textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 4)),
-                const SizedBox(height: 8),
-                Text('Establish your planetary dominance.', textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white70, fontSize: 16)),
-                const SizedBox(height: 48),
-                if (_pendingVerificationEmail != null) _buildVerificationCard() else _buildAuthCard(),
-              ],
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // ── Social login icons (replacing the D logo) ──
+                  _buildSocialIconsRow(),
+                  const SizedBox(height: 32),
+
+                  // ── Login / Verification form ──
+                  if (_pendingVerificationEmail != null)
+                    _buildVerificationCard()
+                  else
+                    _buildLoginCard(),
+                ],
+              ),
             ),
           ),
         ),
@@ -168,153 +184,313 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  Widget _buildAuthCard() {
-    return ModernCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // ── Social login section (FIRST) ───────────────────────────────────
-        Text('Sosyal Hesabınla Giriş Yap',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 16),
-        Row(children: [
-          Expanded(child: _buildSocialBtn('Facebook', const Color(0xFF1877F2), _facebookIcon(), 'facebook')),
-          const SizedBox(width: 12),
-          Expanded(child: _buildSocialBtn('Instagram', const Color(0xFFE4405F), _instagramIcon(), 'instagram')),
-        ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: _buildSocialBtn('TikTok', const Color(0xFF010101), _tiktokIcon(), 'tiktok')),
-          const SizedBox(width: 12),
-          Expanded(child: _buildSocialBtn('X', const Color(0xFF14171A), _xIcon(), 'twitter')),
-        ]),
+  // ─────────────────────────────────────────────────────────────────────────
+  // Social login icon row (circular icons)
+  // ─────────────────────────────────────────────────────────────────────────
 
-        // ── Divider ────────────────────────────────────────────────────────
-        const SizedBox(height: 28),
-        Row(children: [
-          Expanded(child: Divider(color: AppColors.surfaceLight, thickness: 1)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text('veya email ile devam et',
-                style: TextStyle(color: AppColors.textTertiary, fontSize: 11, letterSpacing: 1)),
+  Widget _buildSocialIconsRow() {
+    final socials = [
+      _SocialDef('instagram', const Color(0xFFE4405F), Icons.camera_alt),
+      _SocialDef('facebook', const Color(0xFF1877F2), Icons.facebook),
+      _SocialDef('twitter', const Color(0xFFEEEEEE), null, 'X'),
+      _SocialDef('tiktok', const Color(0xFF69C9D0), Icons.music_note),
+      _SocialDef('linkedin', const Color(0xFF0A66C2), Icons.work),
+      _SocialDef('apple', const Color(0xFFAAAAAA), Icons.apple),
+      _SocialDef('steam', const Color(0xFF66C0F4), Icons.sports_esports),
+    ];
+
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 12,
+      runSpacing: 12,
+      children: socials.map((s) {
+        return GestureDetector(
+          onTap: _isLoading ? null : () => _handleSocialLogin(s.provider),
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: s.color.withOpacity(0.15),
+                border: Border.all(color: s.color.withOpacity(0.5), width: 1.5),
+                boxShadow: [
+                  BoxShadow(color: s.color.withOpacity(0.2), blurRadius: 10),
+                ],
+              ),
+              child: Center(
+                child: s.textLabel != null
+                    ? Text(s.textLabel!,
+                        style: TextStyle(
+                            color: s.color,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900))
+                    : Icon(s.icon, color: s.color, size: 20),
+              ),
+            ),
           ),
-          Expanded(child: Divider(color: AppColors.surfaceLight, thickness: 1)),
-        ]),
-        const SizedBox(height: 20),
+        );
+      }).toList(),
+    );
+  }
 
-        // ── Email form ─────────────────────────────────────────────────────
-        TextField(
+  // ─────────────────────────────────────────────────────────────────────────
+  // Login card (Divi-style: translucent, rounded fields, gradient button)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildLoginCard() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 30,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(children: [
+        // ── Username / Email field ──
+        _buildField(
           controller: _emailController,
+          hint: 'Username',
+          icon: Icons.person_outline,
           keyboardType: TextInputType.emailAddress,
-          style: TextStyle(color: AppColors.textPrimary),
-          decoration: InputDecoration(
-            hintText: 'Email', hintStyle: TextStyle(color: AppColors.textTertiary),
-            filled: true, fillColor: AppColors.surfaceLight,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-          ),
         ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _passwordController, obscureText: true,
-          style: TextStyle(color: AppColors.textPrimary),
-          decoration: InputDecoration(
-            hintText: 'Şifre', hintStyle: TextStyle(color: AppColors.textTertiary),
-            filled: true, fillColor: AppColors.surfaceLight,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-          ),
+        const SizedBox(height: 16),
+
+        // ── Password field ──
+        _buildField(
+          controller: _passwordController,
+          hint: 'Password',
+          icon: Icons.lock_outline,
+          obscure: true,
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
+
+        // ── Error message ──
         if (_errorMessage != null)
           Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: Text(_errorMessage!, style: TextStyle(color: AppColors.accentRed), textAlign: TextAlign.center),
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Text(_errorMessage!,
+                style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 13),
+                textAlign: TextAlign.center),
           ),
-        Row(children: [
-          Expanded(child: ModernButton(text: _isLoading ? '...' : 'GİRİŞ', onPressed: _isLoading ? () {} : _handleSignIn)),
-          const SizedBox(width: 12),
-          Expanded(child: ModernButton(text: _isLoading ? '...' : 'KAYIT OL', onPressed: _isLoading ? () {} : _handleSignUp)),
-        ]),
+
+        // ── Log In button (gradient) ──
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: GestureDetector(
+            onTap: _isLoading ? null : _handleSignIn,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(25),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFF416C), Color(0xFFFF4B2B)],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFF416C).withOpacity(0.4),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Text('Log In',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1,
+                        )),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // ── Sign Up link ──
+        GestureDetector(
+          onTap: _isLoading ? null : _handleSignUp,
+          child: Text('Hesabin yok mu? Kayit Ol',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.5),
+                fontSize: 13,
+              )),
+        ),
+        const SizedBox(height: 8),
+
+        // ── Lost your password ──
+        GestureDetector(
+          onTap: () {},
+          child: Text('Lost your password?',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.35),
+                fontSize: 12,
+              )),
+        ),
       ]),
     );
   }
 
-  Widget _buildSocialBtn(String label, Color color, Widget icon, String provider) {
-    return GestureDetector(
-      onTap: _isLoading ? null : () => _handleSocialLogin(provider),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.4), width: 1.5),
+  Widget _buildField({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
+    bool obscure = false,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(25),
+        border: Border.all(color: Colors.white.withOpacity(0.15)),
+      ),
+      child: TextField(
+        controller: controller,
+        obscureText: obscure,
+        keyboardType: keyboardType,
+        style: const TextStyle(color: Colors.white, fontSize: 15),
+        decoration: InputDecoration(
+          prefixIcon: Icon(icon, color: Colors.white54, size: 20),
+          hintText: hint,
+          hintStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 15),
+          filled: false,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         ),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          icon,
-          const SizedBox(width: 8),
-          Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
-        ]),
       ),
     );
   }
 
-  Widget _facebookIcon() => const Icon(Icons.facebook, color: Color(0xFF1877F2), size: 22);
-  Widget _instagramIcon() => Container(
-    width: 22, height: 22,
-    decoration: BoxDecoration(
-      gradient: const LinearGradient(
-        colors: [Color(0xFFFEDA77), Color(0xFFE4405F), Color(0xFF833AB4)],
-        begin: Alignment.bottomLeft,
-        end: Alignment.topRight,
-      ),
-      borderRadius: BorderRadius.circular(6),
-    ),
-    child: const Icon(Icons.camera_alt, color: Colors.white, size: 14),
-  );
-  Widget _tiktokIcon() => const Text('\u266a', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold));
-  Widget _xIcon() => const Text('X', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold));
+  // ─────────────────────────────────────────────────────────────────────────
+  // Verification card
+  // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildVerificationCard() {
-    return ModernCard(
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 30,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
       child: Column(children: [
-        Icon(Icons.mark_email_read_outlined, size: 48, color: AppColors.navyPrimary),
+        const Icon(Icons.mark_email_read_outlined, size: 48, color: Color(0xFFFF416C)),
         const SizedBox(height: 16),
-        const Text('Email Dogrulama', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+        const Text('Email Dogrulama',
+            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        Text(_pendingVerificationEmail!, style: TextStyle(color: AppColors.navyPrimary, fontSize: 14, fontWeight: FontWeight.w500)),
+        Text(_pendingVerificationEmail!,
+            style: const TextStyle(color: Color(0xFFFF416C), fontSize: 14, fontWeight: FontWeight.w500)),
         const SizedBox(height: 8),
-        const Text('Email adresinize gonderilen 6 haneli kodu girin.',
-            style: TextStyle(color: Colors.white60, fontSize: 13), textAlign: TextAlign.center),
+        Text('Email adresinize gonderilen 6 haneli kodu girin.',
+            style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13),
+            textAlign: TextAlign.center),
         const SizedBox(height: 24),
-        TextField(
-          controller: _codeController,
-          keyboardType: TextInputType.number,
-          textAlign: TextAlign.center,
-          maxLength: 6,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 12),
-          decoration: InputDecoration(
-            counterText: '', hintText: '------',
-            hintStyle: const TextStyle(color: Colors.white24, fontSize: 28, letterSpacing: 12),
-            filled: true, fillColor: AppColors.surfaceLight,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.navyPrimary)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white24)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.navyPrimary, width: 2)),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withOpacity(0.15)),
+          ),
+          child: TextField(
+            controller: _codeController,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            maxLength: 6,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            style: const TextStyle(
+                color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 12),
+            decoration: InputDecoration(
+              counterText: '',
+              hintText: '------',
+              hintStyle: TextStyle(
+                  color: Colors.white.withOpacity(0.2), fontSize: 28, letterSpacing: 12),
+              filled: false,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 16),
+            ),
           ),
         ),
         const SizedBox(height: 24),
         if (_errorMessage != null)
-          Padding(padding: const EdgeInsets.only(bottom: 12),
-              child: Text(_errorMessage!, style: TextStyle(color: AppColors.accentRed, fontSize: 13), textAlign: TextAlign.center)),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(_errorMessage!,
+                style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 13),
+                textAlign: TextAlign.center),
+          ),
         if (_successMessage != null)
-          Padding(padding: const EdgeInsets.only(bottom: 12),
-              child: Text(_successMessage!, style: const TextStyle(color: Colors.green, fontSize: 13), textAlign: TextAlign.center)),
-        ModernButton(text: _isLoading ? '...' : 'DOGRULA', onPressed: _isLoading ? () {} : _handleVerifyCode),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(_successMessage!,
+                style: const TextStyle(color: Colors.greenAccent, fontSize: 13),
+                textAlign: TextAlign.center),
+          ),
+        // Verify button
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: GestureDetector(
+            onTap: _isLoading ? null : _handleVerifyCode,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(25),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFF416C), Color(0xFFFF4B2B)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFF416C).withOpacity(0.4),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 22, height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('DOGRULA',
+                        style: TextStyle(
+                            color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 1)),
+              ),
+            ),
+          ),
+        ),
         const SizedBox(height: 16),
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           TextButton(
             onPressed: _isLoading ? null : _handleResendCode,
-            child: Text('Kodu tekrar gonder', style: TextStyle(color: AppColors.navyPrimary, fontSize: 13)),
+            child: const Text('Kodu tekrar gonder',
+                style: TextStyle(color: Color(0xFFFF416C), fontSize: 13)),
           ),
-          const Text(' | ', style: TextStyle(color: Colors.white24)),
+          Text(' | ', style: TextStyle(color: Colors.white.withOpacity(0.2))),
           TextButton(
             onPressed: () => setState(() {
               _pendingVerificationEmail = null;
@@ -322,39 +498,19 @@ class _AuthScreenState extends State<AuthScreen> {
               _successMessage = null;
               _codeController.clear();
             }),
-            child: const Text('Geri don', style: TextStyle(color: Colors.white54, fontSize: 13)),
+            child: Text('Geri don',
+                style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
           ),
         ]),
       ]),
     );
   }
+}
 
-  Widget _buildBackgroundMap() {
-    return StreamBuilder<List<IconModel>>(
-      stream: socketService.iconStream, initialData: const [],
-      builder: (context, snapshot) {
-        final icons = snapshot.data ?? [];
-        final markers = icons.map((icon) {
-          final latLng = _offsetToLatLng(icon.position);
-          final size = (icon.size * 2).clamp(4.0, 50.0).toDouble();
-          return Marker(point: latLng, width: size, height: size,
-            child: Container(decoration: BoxDecoration(color: icon.color, shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: icon.color.withOpacity(0.5), blurRadius: size / 2.0)])));
-        }).toList();
-        return FlutterMap(
-          mapController: _mapController,
-          options: MapOptions(
-            initialCenter: _initialCenter, initialZoom: _currentZoom,
-            cameraConstraint: CameraConstraint.contain(bounds: LatLngBounds(const LatLng(-90, -180), const LatLng(90, 180))),
-            interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
-          ),
-          children: [
-            TileLayer(urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', subdomains: const ['a', 'b', 'c', 'd'], userAgentPackageName: 'com.wacting.app'),
-            const DayNightLayer(),
-            MarkerLayer(markers: markers),
-          ],
-        );
-      },
-    );
-  }
+class _SocialDef {
+  final String provider;
+  final Color color;
+  final IconData? icon;
+  final String? textLabel;
+  const _SocialDef(this.provider, this.color, this.icon, [this.textLabel]);
 }

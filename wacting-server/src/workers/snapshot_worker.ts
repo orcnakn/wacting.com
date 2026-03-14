@@ -1,39 +1,36 @@
 /**
- * snapshot_worker.ts
+ * snapshot_worker.ts — Campaign-based Daily Snapshot
  * BullMQ repeatable job — runs at midnight UTC every day.
  *
- * WAC Phase:
- *   1. Load all active UserWac rows
- *   2. Build unified ranked list (WAC + RAC pools)
- *   3. Compute WAC rewards by tier
- *   4. Auto-compound WAC (balanceUpdatedAt NOT touched)
- *   5. Build Merkle tree, persist DailySnapshot + SnapshotEntry
+ * Campaign Reward Phase:
+ *   1. Load all active campaigns with totalWacStaked > 0
+ *   2. Compute daily reward pool: √(totalSystemStaked) × 2
+ *   3. Distribute proportionally to campaign leaders
+ *   4. Auto-compound WAC rewards, build Merkle tree
+ *   5. Save dailyRankingPoints on each campaign
  *
- * RAC Phase (after WAC):
- *   6. Load all active RacPools
- *   7. Apply daily decay (−1 RAC per participant)
- *   8. Apply tier bonus (+ RAC based on pool's usersBelow rank)
+ * RAC Decay Phase:
+ *   6. Load all active RacPools (campaign-based)
+ *   7. Apply -1 Rule: protestorCount × 1 RAC daily decay
+ *   8. Offset with dailyRankingPoints (life-water)
  *   9. Deactivate pools where totalBalance ≤ 0
- *  10. Persist RacSnapshotEntry rows
  */
 
 import { Queue, Worker, Job } from 'bullmq';
 import { PrismaClient, Prisma } from '@prisma/client';
 import {
-    buildUnifiedRankedList,
-    computeEffectiveTopNWac,
-    UserWacRow,
-    RacPoolRow,
-    RacPoolRankedEntry,
-} from '../engine/ranking_engine.js';
-import { computeAllRewards, getTierBonus } from '../engine/reward_calculator.js';
+    computeAllCampaignRewards,
+    computeRacDecay,
+    CampaignRewardInput,
+    RacDecayInput,
+} from '../engine/reward_calculator.js';
 import { buildMerkleTree } from '../engine/merkle_builder.js';
+import { recordChainedTransaction } from '../engine/chain_engine.js';
 
 const prisma = new PrismaClient();
 
 const REDIS_HOST = process.env.REDIS_HOST || '127.0.0.1';
 const REDIS_PORT = Number(process.env.REDIS_PORT ?? 6379);
-const WAC_MAX_SUPPLY = 85_016_666_666_667;
 
 const connection = { host: REDIS_HOST, port: REDIS_PORT };
 
@@ -69,132 +66,83 @@ export const snapshotWorker = new Worker(
             return;
         }
 
-        // ── LOAD DATA ────────────────────────────────────────────────────────
+        // ── LOAD CAMPAIGNS ─────────────────────────────────────────────────
 
-        const [activeWacRows, activeRacPools] = await Promise.all([
-            prisma.userWac.findMany({
-                where: { isActive: true },
-                select: { userId: true, wacBalance: true, balanceUpdatedAt: true },
-            }),
-            prisma.racPool.findMany({
-                where: { isActive: true },
-                select: {
-                    id: true,
-                    targetUserId: true,
-                    totalBalance: true,
-                    participantCount: true,
-                    createdAt: true,
-                },
-            }),
-        ]);
+        const activeCampaigns = await prisma.campaign.findMany({
+            where: { isActive: true, totalWacStaked: { gt: 0 } } as any,
+            select: {
+                id: true,
+                leaderId: true,
+                totalWacStaked: true,
+            },
+        });
 
-        if (activeWacRows.length === 0 && activeRacPools.length === 0) {
-            console.log('[Snapshot] No active users or pools. Skipping.');
+        if (activeCampaigns.length === 0) {
+            console.log('[Snapshot] No active campaigns with staked WAC. Skipping.');
             return;
         }
 
-        // ── BUILD UNIFIED RANKING ─────────────────────────────────────────────
+        // ── COMPUTE CAMPAIGN REWARDS ────────────────────────────────────────
 
-        const wacUsers: UserWacRow[] = activeWacRows.map((u) => ({
-            userId: u.userId,
-            wacBalance: Number(u.wacBalance),
-            balanceUpdatedAt: u.balanceUpdatedAt,
+        const campaignInputs: CampaignRewardInput[] = activeCampaigns.map((c) => ({
+            campaignId: c.id,
+            leaderId: c.leaderId,
+            totalWacStaked: Number((c as any).totalWacStaked),
         }));
 
-        const racPools: RacPoolRow[] = activeRacPools.map((p) => ({
-            poolId: p.id,
-            targetUserId: p.targetUserId,
-            totalBalance: Number(p.totalBalance),
-            participantCount: p.participantCount,
-            createdAt: p.createdAt,
-        }));
-
-        const unified = buildUnifiedRankedList(wacUsers, racPools);
-
-        // ── WAC REWARDS ───────────────────────────────────────────────────────
-
-        // Circulating WAC supply
-        const [supplyAgg, exitAgg] = await Promise.all([
-            prisma.transaction.aggregate({
-                _sum: { amount: true },
-                where: { type: { in: ['WAC_DEPOSIT', 'WAC_DAILY_REWARD'] as any } },
-            }),
-            prisma.transaction.aggregate({
-                _sum: { amount: true },
-                where: { type: 'WAC_EXIT_USER' as any },
-            }),
-        ]);
-        const circulatingSupply =
-            Number(supplyAgg._sum?.amount ?? 0) - Number(exitAgg._sum?.amount ?? 0);
-
-        // Only WAC entries participate in WAC rewards
-        const wacRanked = unified
-            .filter((e) => e.type === 'WAC')
-            .map((e) => ({
-                userId: (e as any).userId as string,
-                rank: e.rank,
-                usersBelow: e.usersBelow,
-            }));
-
-        const rewardEntries = computeAllRewards(wacRanked, circulatingSupply, WAC_MAX_SUPPLY);
+        const rewardEntries = computeAllCampaignRewards(campaignInputs);
         const totalRewarded = rewardEntries.reduce((s, e) => s + e.rewardWac, 0);
 
-        // ── MERKLE TREE ───────────────────────────────────────────────────────
+        // ── MERKLE TREE ─────────────────────────────────────────────────────
 
         const merkleInput = rewardEntries
             .filter((e) => e.rewardWac > 0)
-            .map((e) => ({ userId: e.userId, epoch, rewardWac: e.rewardWac }));
+            .map((e) => ({
+                userId: e.leaderId,
+                epoch,
+                rewardWac: e.rewardWac,
+            }));
 
         const { root } = buildMerkleTree(merkleInput);
 
-        // ── TREASURY BALANCE ──────────────────────────────────────────────────
+        // ── TREASURY BALANCE ────────────────────────────────────────────────
 
         const treasury = await prisma.treasury.findUnique({ where: { id: 'singleton' } });
-        const treasuryBalance = Number(treasury?.balance ?? 0);
+        const treasuryBalance = Number((treasury as any)?.devBalance ?? 0);
 
-        // ── RAC POOL MECHANICS ────────────────────────────────────────────────
+        // ── LOAD RAC POOLS ──────────────────────────────────────────────────
 
-        interface RacPoolUpdate {
-            poolId: string;
-            rank: number;
-            usersBelow: number;
-            decayAmount: bigint;
-            bonusAmount: bigint;
-            netChange: bigint;
-            newBalance: bigint;
-            shouldDeactivate: boolean;
+        const activeRacPools = await (prisma as any).racPool.findMany({
+            where: { isActive: true },
+            select: {
+                id: true,
+                targetCampaignId: true,
+                totalBalance: true,
+                participantCount: true,
+            },
+        });
+
+        // ── COMPUTE RAC DECAY ───────────────────────────────────────────────
+
+        // Map campaign rewards to dailyRankingPoints for decay offset
+        const campaignRewardMap = new Map<string, number>();
+        for (const entry of rewardEntries) {
+            campaignRewardMap.set(entry.campaignId, entry.rewardWac);
         }
 
-        const racPoolUpdates: RacPoolUpdate[] = unified
-            .filter((e): e is RacPoolRankedEntry => e.type === 'RAC_POOL')
-            .map((entry) => {
-                const poolRaw = activeRacPools.find((p) => p.id === entry.poolId)!;
-                const currentBalance = BigInt(poolRaw.totalBalance);
-                const participantCount = BigInt(poolRaw.participantCount);
+        const racDecayInputs: RacDecayInput[] = activeRacPools
+            .filter((p: any) => BigInt(p.totalBalance) > 0n)
+            .map((p: any) => ({
+                campaignId: p.targetCampaignId,
+                poolId: p.id,
+                totalRacBalance: BigInt(p.totalBalance),
+                protestorCount: p.participantCount,
+                dailyRankingPoints: campaignRewardMap.get(p.targetCampaignId) ?? 0,
+            }));
 
-                // Decay: −1 RAC per participant
-                const decayAmount = participantCount;
+        const racDecayResults = racDecayInputs.map(computeRacDecay);
 
-                // Tier bonus (same table as WAC, added as integer RAC)
-                const bonusAmount = BigInt(Math.floor(getTierBonus(entry.usersBelow)));
-
-                const netChange = bonusAmount - decayAmount;
-                const rawNewBalance = currentBalance + netChange;
-                const newBalance = rawNewBalance < 0n ? 0n : rawNewBalance;
-
-                return {
-                    poolId: entry.poolId,
-                    rank: entry.rank,
-                    usersBelow: entry.usersBelow,
-                    decayAmount,
-                    bonusAmount,
-                    netChange,
-                    newBalance,
-                    shouldDeactivate: newBalance <= 0n,
-                };
-            });
-
-        // ── PERSIST (ATOMIC) ──────────────────────────────────────────────────
+        // ── PERSIST (ATOMIC) ────────────────────────────────────────────────
 
         await prisma.$transaction(async (tx) => {
             // Create snapshot header
@@ -202,89 +150,110 @@ export const snapshotWorker = new Worker(
                 data: {
                     epoch,
                     merkleRoot: root,
-                    totalUsers: activeWacRows.length,
+                    totalUsers: activeCampaigns.length,
                     totalRewarded: new Prisma.Decimal(totalRewarded.toFixed(6)),
                     treasuryBalance: new Prisma.Decimal(treasuryBalance.toFixed(6)),
                 },
             });
 
-            // WAC snapshot entries
-            await tx.snapshotEntry.createMany({
-                data: rewardEntries.map((e) => ({
+            // WAC snapshot entries (per campaign leader)
+            const snapshotEntries = rewardEntries
+                .filter((e) => e.rewardWac > 0)
+                .map((e, i) => ({
                     snapshotId: snapshot.id,
-                    userId: e.userId,
-                    rank: e.rank,
-                    usersBelow: e.usersBelow,
+                    userId: e.leaderId,
+                    rank: i + 1,
+                    usersBelow: rewardEntries.length - i - 1,
                     rewardWac: new Prisma.Decimal(e.rewardWac.toFixed(6)),
-                })),
-            });
+                }));
 
-            // WAC auto-compound (balanceUpdatedAt NOT touched)
+            if (snapshotEntries.length > 0) {
+                await tx.snapshotEntry.createMany({ data: snapshotEntries });
+            }
+
+            // Auto-compound WAC rewards to campaign leaders
             for (const entry of rewardEntries) {
                 if (entry.rewardWac <= 0) continue;
-                await tx.userWac.update({
-                    where: { userId: entry.userId },
-                    data: {
+
+                // Add reward to leader's liquid WAC balance
+                await tx.userWac.upsert({
+                    where: { userId: entry.leaderId },
+                    update: {
                         wacBalance: { increment: new Prisma.Decimal(entry.rewardWac.toFixed(6)) },
                     },
+                    create: {
+                        userId: entry.leaderId,
+                        wacBalance: new Prisma.Decimal(entry.rewardWac.toFixed(6)),
+                        isActive: true,
+                    },
+                });
+
+                // Update campaign's dailyRankingPoints (for RAC decay offset)
+                await tx.campaign.update({
+                    where: { id: entry.campaignId },
+                    data: { dailyRankingPoints: entry.rewardWac } as any,
+                });
+
+                // Chained tx record
+                await recordChainedTransaction(tx, {
+                    userId: entry.leaderId,
+                    amount: entry.rewardWac.toFixed(6),
+                    type: 'WAC_DAILY_REWARD' as any,
+                    note: `Daily reward — epoch ${epoch}, campaign ${entry.campaignId}`,
+                    campaignId: entry.campaignId,
                 });
             }
 
-            // WAC reward tx log
-            await tx.transaction.createMany({
-                data: rewardEntries
-                    .filter((e) => e.rewardWac > 0)
-                    .map((e) => ({
-                        userId: e.userId,
-                        amount: new Prisma.Decimal(e.rewardWac.toFixed(6)),
-                        type: 'WAC_DAILY_REWARD' as const,
-                        note: `Daily reward — epoch ${epoch}, rank ${e.rank}`,
-                    })),
-            });
-
-            // RAC pool updates
-            for (const update of racPoolUpdates) {
-                // Persist snapshot entry for this pool
+            // RAC pool decay updates
+            for (const result of racDecayResults) {
+                // Persist snapshot entry
                 await tx.racSnapshotEntry.create({
                     data: {
                         snapshotId: snapshot.id,
-                        poolId: update.poolId,
-                        rank: update.rank,
-                        usersBelow: update.usersBelow,
-                        decayAmount: update.decayAmount,
-                        bonusAmount: update.bonusAmount,
-                        netChange: update.netChange,
+                        poolId: result.poolId,
+                        rank: 0,
+                        usersBelow: 0,
+                        decayAmount: result.decayAmount,
+                        bonusAmount: result.bonusAmount,
+                        netChange: -result.netDecay,
                     },
                 });
 
-                // Apply decay + bonus to pool balance
-                await tx.racPool.update({
-                    where: { id: update.poolId },
+                // Apply decay to pool balance
+                await (tx as any).racPool.update({
+                    where: { id: result.poolId },
                     data: {
-                        totalBalance: update.newBalance,
-                        isActive: !update.shouldDeactivate,
+                        totalBalance: result.newBalance,
+                        isActive: !result.shouldDeactivate,
                     },
                 });
 
-                if (update.shouldDeactivate) {
-                    console.log(`[RAC] Pool ${update.poolId} dissolved at epoch ${epoch}`);
+                // Log decay tx if any
+                if (result.netDecay > 0n) {
+                    await recordChainedTransaction(tx, {
+                        userId: 'SYSTEM',
+                        amount: result.netDecay.toString(),
+                        type: 'RAC_POOL_DECAY' as any,
+                        note: `RAC decay — pool ${result.poolId}, epoch ${epoch}`,
+                        campaignId: result.campaignId,
+                    });
+                }
+
+                if (result.shouldDeactivate) {
+                    console.log(`[RAC] Pool ${result.poolId} dissolved at epoch ${epoch}`);
                 }
             }
         });
 
-        // ── LOG ───────────────────────────────────────────────────────────────
+        // ── LOG ─────────────────────────────────────────────────────────────
 
-        const effectiveWac = computeEffectiveTopNWac(unified);
         console.log(
             `[Snapshot] Epoch ${epoch} done. ` +
-            `WAC users: ${activeWacRows.length}, RAC pools: ${activeRacPools.length}, ` +
+            `Campaigns: ${activeCampaigns.length}, ` +
             `Rewarded: ${totalRewarded.toFixed(6)} WAC, ` +
-            `Effective top-100 WAC: ${effectiveWac.toFixed(6)}, ` +
-            `Icon area: ${(effectiveWac * 6).toFixed(0)} m², ` +
+            `RAC pools processed: ${racDecayResults.length}, ` +
             `Merkle root: ${root}`
         );
-
-        // Future: await anchorRootOnChain(root, epoch);
     },
     { connection }
 );

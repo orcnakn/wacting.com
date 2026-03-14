@@ -79,6 +79,18 @@ class ApiService {
     return data;
   }
 
+  // ── Social Login ───────────────────────────────────────────────────────────
+
+  /// Social login — accepts token + userId from OAuth callback
+  void handleSocialLoginResult(String token, String usrId) {
+    setAuth(token, usrId);
+  }
+
+  /// Get the OAuth start URL for a given provider
+  String getOAuthStartUrl(String provider) {
+    return '${AppConfig.apiBaseUrl}/auth/oauth/start/$provider';
+  }
+
   // ── Campaigns ───────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> createCampaign({
@@ -89,6 +101,7 @@ class ApiService {
     required String iconColor,
     required int iconShape,
     double speed = 0.5,
+    String stakeAmount = '1.000000',
     String? instagramUrl,
     String? twitterUrl,
     String? facebookUrl,
@@ -103,12 +116,42 @@ class ApiService {
       'iconColor': iconColor,
       'iconShape': iconShape,
       'speed': speed,
+      'stakeAmount': stakeAmount,
       if (instagramUrl != null && instagramUrl.isNotEmpty) 'instagramUrl': instagramUrl,
       if (twitterUrl != null && twitterUrl.isNotEmpty) 'twitterUrl': twitterUrl,
       if (facebookUrl != null && facebookUrl.isNotEmpty) 'facebookUrl': facebookUrl,
       if (tiktokUrl != null && tiktokUrl.isNotEmpty) 'tiktokUrl': tiktokUrl,
       if (websiteUrl != null && websiteUrl.isNotEmpty) 'websiteUrl': websiteUrl,
     });
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> joinCampaign(String campaignId, {String stakeAmount = '1.000000'}) async {
+    final res = await _dio.post('/campaign/$campaignId/join', data: {
+      'stakeAmount': stakeAmount,
+    });
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> leaveCampaign(String campaignId) async {
+    final res = await _dio.post('/campaign/$campaignId/leave');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> addCampaignStake(String campaignId, String amount) async {
+    final res = await _dio.post('/campaign/$campaignId/stake', data: {
+      'amount': amount,
+    });
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getCampaign(String campaignId) async {
+    final res = await _dio.get('/campaign/$campaignId');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getCampaignMembers(String campaignId) async {
+    final res = await _dio.get('/campaign/$campaignId/members');
     return res.data as Map<String, dynamic>;
   }
 

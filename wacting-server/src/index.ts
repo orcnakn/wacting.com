@@ -23,6 +23,7 @@ import { feedRoutes } from './routes/feed.js';
 import { voteRoutes } from './routes/vote.js';
 import { profileRoutes } from './routes/profile.js';
 import { campaignRoutes } from './routes/campaign.js';
+import { oauthRoutes } from './routes/oauth.js';
 // import { registerSnapshotCron } from './workers/snapshot_worker.js';
 // import './services/notification_worker.js';
 
@@ -128,6 +129,7 @@ async function start() {
         // 7. HTTP routing
         fastify.register(webhookRoutes);
         fastify.register(authRoutes);
+        fastify.register(oauthRoutes);
         fastify.register(adminRoutes);
         fastify.register(iconRoutes);
         fastify.register(socialRoutes);

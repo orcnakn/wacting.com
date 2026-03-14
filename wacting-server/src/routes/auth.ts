@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { sendVerificationCode, sendWelcomeEmail } from '../services/email_service.js';
+import { recordChainedTransaction } from '../engine/chain_engine.js';
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_dev_key';
@@ -24,7 +25,7 @@ const loginSchema = z.object({
 });
 
 const socialSchema = z.object({
-    provider: z.enum(['google', 'facebook', 'instagram']),
+    provider: z.enum(['google', 'facebook', 'instagram', 'twitter', 'tiktok', 'linkedin', 'apple', 'steam']),
     providerId: z.string().min(3),
     email: z.string().email().optional(),
     username: z.string().min(3).max(20).optional(),
@@ -101,13 +102,13 @@ export async function authRoutes(fastify: FastifyInstance) {
                     },
                 });
 
-                await prisma.transaction.create({
-                    data: {
+                await prisma.$transaction(async (tx) => {
+                    await recordChainedTransaction(tx, {
                         userId: user.id,
-                        amount: new Prisma.Decimal('1.000000'),
-                        type: 'WAC_DEPOSIT',
+                        amount: '1.000000',
+                        type: 'WAC_WELCOME_BONUS' as any,
                         note: 'Welcome bonus: 1 WAC on registration',
-                    },
+                    });
                 });
             }
 
@@ -291,7 +292,23 @@ export async function authRoutes(fastify: FastifyInstance) {
                             lastKnownY: 350.0,
                         },
                     },
+                    wac: {
+                        create: {
+                            wacBalance: new Prisma.Decimal('1.000000'),
+                            isActive: true,
+                        },
+                    },
                 },
+            });
+
+            // Welcome bonus: 1 WAC (chained tx)
+            await prisma.$transaction(async (tx) => {
+                await recordChainedTransaction(tx, {
+                    userId: user.id,
+                    amount: '1.000000',
+                    type: 'WAC_WELCOME_BONUS' as any,
+                    note: 'Welcome bonus: 1 WAC on device registration',
+                });
             });
 
             const token = jwt.sign({ userId: user.id, deviceId }, JWT_SECRET, { expiresIn: '30d' });
@@ -324,9 +341,12 @@ export async function authRoutes(fastify: FastifyInstance) {
         try {
             const { provider, providerId, email, username } = socialSchema.parse(request.body);
 
-            const providerField = provider === 'google' ? 'googleId'
-                : provider === 'facebook' ? 'facebookId'
-                    : 'instagramId';
+            const providerFieldMap: Record<string, string> = {
+                google: 'googleId', facebook: 'facebookId', instagram: 'instagramId',
+                twitter: 'twitterId', tiktok: 'tiktokId', linkedin: 'linkedinId',
+                apple: 'appleId', steam: 'steamId',
+            };
+            const providerField = providerFieldMap[provider] || 'googleId';
 
             let user = await prisma.user.findUnique({
                 where: { [providerField]: providerId } as any,
@@ -347,7 +367,23 @@ export async function authRoutes(fastify: FastifyInstance) {
                                 lastKnownY: 350.0,
                             },
                         },
+                        wac: {
+                            create: {
+                                wacBalance: new Prisma.Decimal('1.000000'),
+                                isActive: true,
+                            },
+                        },
                     },
+                });
+
+                // Welcome bonus: 1 WAC (chained tx)
+                await prisma.$transaction(async (tx) => {
+                    await recordChainedTransaction(tx, {
+                        userId: user!.id,
+                        amount: '1.000000',
+                        type: 'WAC_WELCOME_BONUS' as any,
+                        note: 'Welcome bonus: 1 WAC on social registration',
+                    });
                 });
             }
 
