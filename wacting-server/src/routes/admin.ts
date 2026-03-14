@@ -79,6 +79,12 @@ export async function adminRoutes(fastify: FastifyInstance) {
             prisma.devNote.count({ where: { isRead: false } }),
         ]);
 
+        // WAC/RAC circulation totals
+        const wacAgg = await prisma.userWac.aggregate({ _sum: { wacBalance: true } });
+        const racAgg = await prisma.userRac.aggregate({ _sum: { racBalance: true } });
+        const totalWacCirculation = wacAgg._sum.wacBalance?.toString() ?? '0';
+        const totalRacCirculation = racAgg._sum.racBalance?.toString() ?? '0';
+
         return reply.send({
             totalUsers,
             verifiedUsers,
@@ -92,6 +98,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
             botUsers,
             devNotesTotal,
             devNotesUnread,
+            totalWacCirculation,
+            totalRacCirculation,
         });
     });
 
@@ -296,5 +304,65 @@ export async function adminRoutes(fastify: FastifyInstance) {
         });
 
         return reply.send({ success: true });
+    });
+
+    // ── GET /admin/wallets ──────────────────────────────────────────────────
+    fastify.get('/admin/wallets', async (request, reply) => {
+        const query = request.query as {
+            page?: string;
+            limit?: string;
+            search?: string;
+            sortBy?: string;
+            sortDir?: string;
+        };
+
+        const page  = Math.max(1, Number(query.page || '1'));
+        const limit = Math.min(100, Math.max(1, Number(query.limit || '20')));
+        const skip  = (page - 1) * limit;
+        const sortBy = query.sortBy === 'racBalance' ? 'racBalance' : 'wacBalance';
+        const sortDir = query.sortDir === 'asc' ? 'asc' as const : 'desc' as const;
+
+        const where: any = {};
+        if (query.search) {
+            where.OR = [
+                { email:  { contains: query.search, mode: 'insensitive' } },
+                { slogan: { contains: query.search, mode: 'insensitive' } },
+            ];
+        }
+
+        const users = await prisma.user.findMany({
+            where,
+            skip,
+            take: limit,
+            orderBy: sortBy === 'wacBalance'
+                ? { wac: { wacBalance: sortDir } }
+                : { rac: { racBalance: sortDir } },
+            select: {
+                id: true,
+                email: true,
+                slogan: true,
+                isBot: true,
+                wac: { select: { wacBalance: true, isActive: true } },
+                rac: { select: { racBalance: true } },
+            },
+        });
+
+        const total = await prisma.user.count({ where });
+
+        return reply.send({
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+            wallets: users.map((u: any) => ({
+                id: u.id,
+                email: u.email,
+                slogan: u.slogan,
+                isBot: u.isBot,
+                wacBalance: u.wac?.wacBalance?.toString() ?? '0',
+                wacActive: u.wac?.isActive ?? false,
+                racBalance: u.rac?.racBalance?.toString() ?? '0',
+            })),
+        });
     });
 }

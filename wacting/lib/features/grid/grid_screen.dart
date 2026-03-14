@@ -474,66 +474,111 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                  );
               }).where((c) => c.radius > 0).toList();
 
-              // zoom >= 7 (regions): 3:2 dikdörtgen ikon + slogan etiketi
-              // zoom  < 7         : yuvarlak daire ikon
-              final bool useRect = _currentZoom >= 7;
+              // ── LOD (Level of Detail) harita sistemi ──
+              // Icon boyutu (size, WAC-driven) ve zoom seviyesine göre:
+              // - Büyük icon'lar uzaktan görünür, küçükler yakından
+              // - Yakınlaştıkça nokta → dikdörtgen + slogan'a dönüşür
 
-              final markerDots = icons.map((icon) {
+              double _visibilityZoom(double s) {
+                if (s >= 500) return 2.0;  // Giant: her zaman
+                if (s >= 100) return 3.0;  // Large
+                if (s >= 25)  return 5.0;  // Medium
+                if (s >= 5)   return 7.0;  // Small
+                return 9.0;                // Micro: sadece yakın
+              }
+
+              final zoom = _currentZoom;
+
+              final markerDots = icons.where((icon) {
+                // LOD visibility filter: icon görünür mü?
+                return zoom >= _visibilityZoom(icon.size);
+              }).map((icon) {
                   final latLng = _offsetToLatLng(icon.position);
                   final Color displayColor = icon.displayColor;
+                  final double iconSize = icon.size;
+                  final double minZoom = _visibilityZoom(iconSize);
+
+                  // Zoom farkı: ne kadar yakınlaştık?
+                  final double zoomDelta = (zoom - minZoom).clamp(0.0, 12.0);
+
+                  // Opacity: ilk göründüğünde %40, yakınlaştıkça %100
+                  final double opacity = (0.4 + (zoomDelta / 8.0) * 0.6).clamp(0.4, 1.0);
+
+                  // Dikdörtgen modu: minZoom + 4 zoom seviyesinden sonra
+                  final bool useRect = zoom >= minZoom + 4;
 
                   if (useRect) {
-                    // 3:2 dikdörtgen ikon + kampanya sloganı
+                    // 3:2 dikdörtgen ikon + slogan
                     final String? slogan = icon.campaignSlogan;
+
+                    // Dikdörtgen boyutu: büyük icon → büyük dikdörtgen
+                    final double rectW = (12.0 + (iconSize / 50.0).clamp(0.0, 18.0)) * (1.0 + zoomDelta * 0.05);
+                    final double rectH = rectW * (2.0 / 3.0);
+
                     return Marker(
                         point: latLng,
-                        width: slogan != null ? 90.0 : 15.0,
-                        height: slogan != null ? 26.0 : 10.0,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 15.0,
-                              height: 10.0,
-                              decoration: BoxDecoration(
-                                color: displayColor,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                            if (slogan != null)
+                        width: slogan != null ? 100.0 : rectW + 4,
+                        height: slogan != null ? rectH + 18.0 : rectH + 4,
+                        child: Opacity(
+                          opacity: opacity,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                width: rectW,
+                                height: rectH,
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.65),
-                                  borderRadius: BorderRadius.circular(3),
-                                ),
-                                child: Text(
-                                  slogan,
-                                  style: TextStyle(
-                                    color: displayColor,
-                                    fontSize: 7,
-                                    fontWeight: FontWeight.w600,
-                                    height: 1.2,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                  color: displayColor,
+                                  borderRadius: BorderRadius.circular(2),
+                                  boxShadow: iconSize >= 100 ? [
+                                    BoxShadow(color: displayColor.withOpacity(0.5), blurRadius: 6, spreadRadius: 1),
+                                  ] : null,
                                 ),
                               ),
-                          ],
+                              if (slogan != null)
+                                Container(
+                                  margin: const EdgeInsets.only(top: 1),
+                                  padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.7),
+                                    borderRadius: BorderRadius.circular(3),
+                                  ),
+                                  child: Text(
+                                    slogan,
+                                    style: TextStyle(
+                                      color: displayColor,
+                                      fontSize: 7,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.2,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                     );
                   } else {
-                    // Daire ikon
+                    // Nokta modu: boyutu zoom ve size'a bağlı
+                    final double dotSize = (4.0 + (iconSize / 30.0).clamp(0.0, 8.0) + zoomDelta * 0.8).clamp(4.0, 16.0);
+
                     return Marker(
                         point: latLng,
-                        width: 10.0,
-                        height: 10.0,
-                        child: Container(
+                        width: dotSize,
+                        height: dotSize,
+                        child: Opacity(
+                          opacity: opacity,
+                          child: Container(
                             decoration: BoxDecoration(
-                                color: displayColor,
-                                shape: BoxShape.circle,
+                              color: displayColor,
+                              shape: BoxShape.circle,
+                              boxShadow: iconSize >= 100 ? [
+                                BoxShadow(color: displayColor.withOpacity(0.6), blurRadius: 4, spreadRadius: 1),
+                              ] : null,
                             ),
-                        )
+                          ),
+                        ),
                     );
                   }
               }).toList();

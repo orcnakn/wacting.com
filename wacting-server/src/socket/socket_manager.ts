@@ -83,8 +83,8 @@ export class SocketManager {
                 // RBush fast spatial query! O(log N) instead of O(N). Extremely crucial for scalability.
                 let nearbyIcons = this.engine.spatialIndex.search(minX, minY, maxX, maxY);
 
-                // Token Mechanics: If a user gives away all tokens, they disappear from the map.
-                nearbyIcons = nearbyIcons.filter((i: any) => i.tokens && i.tokens > 0);
+                // Visibility: icons with zero size (no WAC) disappear from the map.
+                nearbyIcons = nearbyIcons.filter((i: any) => i.size > 0);
 
                 // Emit just the subset
                 socket.volatile.emit('tick', nearbyIcons);

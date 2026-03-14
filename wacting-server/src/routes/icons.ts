@@ -104,12 +104,18 @@ export async function iconRoutes(fastify: FastifyInstance) {
         }
 
         try {
-            // Search by slogan or email
+            // Search by slogan, email, or campaign title/slogan
             const icons = await prisma.icon.findMany({
                 where: {
                     OR: [
                         { slogan: { contains: query, mode: 'insensitive' } },
-                        { user: { email: { contains: query, mode: 'insensitive' } } }
+                        { user: { email: { contains: query, mode: 'insensitive' } } },
+                        { user: { campaignMemberships: { some: { campaign: {
+                            OR: [
+                                { title: { contains: query, mode: 'insensitive' } },
+                                { slogan: { contains: query, mode: 'insensitive' } }
+                            ]
+                        } } } } }
                     ]
                 },
                 take: 20,
@@ -118,7 +124,15 @@ export async function iconRoutes(fastify: FastifyInstance) {
                         select: {
                             id: true,
                             email: true,
-                            wac: { select: { wacBalance: true } }
+                            wac: { select: { wacBalance: true } },
+                            campaignMemberships: {
+                                select: {
+                                    campaign: {
+                                        select: { id: true, title: true, slogan: true, iconColor: true, isActive: true }
+                                    }
+                                },
+                                take: 3
+                            }
                         }
                     }
                 }
@@ -128,7 +142,8 @@ export async function iconRoutes(fastify: FastifyInstance) {
                 ...icon,
                 user: {
                     ...icon.user,
-                    wacBalance: icon.user.wac?.wacBalance?.toString() ?? '0'
+                    wacBalance: icon.user.wac?.wacBalance?.toString() ?? '0',
+                    campaigns: icon.user.campaignMemberships?.map((cm: any) => cm.campaign) ?? []
                 }
             }));
             return reply.send({ results: formatted });
