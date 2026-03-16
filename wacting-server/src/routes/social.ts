@@ -161,7 +161,7 @@ export async function socialRoutes(fastify: FastifyInstance) {
             const userId = (request as any).userId;
             const follows = await prisma.follow.findMany({
                 where: { followingId: userId, status: 'APPROVED' },
-                include: { follower: { select: { id: true, avatarUrl: true, slogan: true } } }
+                include: { follower: { select: { id: true, avatarUrl: true, slogan: true, displayName: true } } }
             });
             return reply.send({ followers: follows });
         } catch (err) {
@@ -174,7 +174,7 @@ export async function socialRoutes(fastify: FastifyInstance) {
             const userId = (request as any).userId;
             const follows = await prisma.follow.findMany({
                 where: { followerId: userId, status: 'APPROVED' },
-                include: { following: { select: { id: true, avatarUrl: true, slogan: true } } }
+                include: { following: { select: { id: true, avatarUrl: true, slogan: true, displayName: true } } }
             });
             return reply.send({ following: follows });
         } catch (err) {

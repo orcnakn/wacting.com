@@ -22,6 +22,13 @@ import { recordChainedTransaction } from '../engine/chain_engine.js';
 const prisma = new PrismaClient();
 const MIN_STAKE = new Prisma.Decimal('1.000000'); // Minimum WAC to join/create
 
+const STANCE_COLORS: Record<string, string> = {
+    PROTEST: '#FF4444',
+    SUPPORT: '#4CAF50',
+    REFORM: '#2196F3',
+    EMERGENCY: '#FF9800',
+};
+
 export async function campaignRoutes(fastify: FastifyInstance) {
 
     // All campaign routes require authentication
@@ -45,10 +52,19 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 facebookUrl?: string;
                 tiktokUrl?: string;
                 websiteUrl?: string;
+                stanceType: string;
+                categoryType: string;
             };
 
             if (!body.title || !body.slogan) {
                 return reply.status(400).send({ success: false, error: 'Title and slogan are required.' });
+            }
+
+            if (!body.stanceType || !['PROTEST', 'SUPPORT', 'REFORM', 'EMERGENCY'].includes(body.stanceType)) {
+                return reply.status(400).send({ success: false, error: 'Valid stanceType required.' });
+            }
+            if (!body.categoryType || !['GLOBAL_PEACE', 'JUSTICE_RIGHTS', 'ECOLOGY_NATURE', 'TECH_FUTURE', 'SOLIDARITY_RELIEF', 'ECONOMY_LABOR', 'AWARENESS', 'ENTERTAINMENT'].includes(body.categoryType)) {
+                return reply.status(400).send({ success: false, error: 'Valid categoryType required.' });
             }
 
             if (body.speed !== undefined && (body.speed < 0 || body.speed > 1)) {
@@ -93,7 +109,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                         slogan: body.slogan,
                         description: body.description ?? null,
                         videoUrl: body.videoUrl ?? null,
-                        iconColor: body.iconColor || '#2C3E50',
+                        iconColor: STANCE_COLORS[body.stanceType] || body.iconColor || '#2C3E50',
                         iconShape: body.iconShape ?? 0,
                         speed: body.speed ?? 0.5,
                         instagramUrl: body.instagramUrl ?? null,
@@ -101,6 +117,8 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                         facebookUrl: body.facebookUrl ?? null,
                         tiktokUrl: body.tiktokUrl ?? null,
                         websiteUrl: body.websiteUrl ?? null,
+                        stanceType: body.stanceType as any,
+                        categoryType: body.categoryType as any,
                         totalWacStaked: stakeAmount,
                     },
                 });
@@ -118,7 +136,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 await tx.icon.updateMany({
                     where: { userId: user.id },
                     data: {
-                        colorHex: body.iconColor || '#2C3E50',
+                        colorHex: STANCE_COLORS[body.stanceType] || body.iconColor || '#2C3E50',
                         shapeIndex: body.iconShape ?? 0,
                         slogan: body.slogan.substring(0, 50),
                     },
@@ -724,6 +742,68 @@ export async function campaignRoutes(fastify: FastifyInstance) {
         } catch (error: any) {
             fastify.log.error(error);
             return reply.status(500).send({ success: false, error: 'Failed to fetch trending campaigns' });
+        }
+    });
+
+    // ── List Lynched Campaigns (highest RAC protest pool) ────────────────────
+    fastify.get('/lynched', async (_request, reply) => {
+        try {
+            const pools = await (prisma as any).racPool.findMany({
+                where: { isActive: true },
+                orderBy: { totalBalance: 'desc' },
+                take: 20,
+                include: {
+                    targetCampaign: {
+                        include: {
+                            leader: { select: { id: true, slogan: true, avatarUrl: true } },
+                            _count: { select: { members: true, polls: true } },
+                        },
+                    },
+                },
+            });
+
+            const campaigns = pools
+                .filter((p: any) => p.targetCampaign?.isActive)
+                .map((p: any) => ({
+                    ...p.targetCampaign,
+                    totalWacStaked: p.targetCampaign.totalWacStaked.toFixed(6),
+                    memberCount: p.targetCampaign._count.members,
+                    pollCount: p.targetCampaign._count.polls,
+                    racPoolBalance: Number(p.totalBalance),
+                    racParticipantCount: p.participantCount,
+                }));
+
+            return reply.send({ success: true, campaigns });
+        } catch (error: any) {
+            fastify.log.error(error);
+            return reply.status(500).send({ success: false, error: 'Failed to fetch lynched campaigns' });
+        }
+    });
+
+    // ── List Newest Campaigns ────────────────────────────────────────────────
+    fastify.get('/newest', async (_request, reply) => {
+        try {
+            const campaigns = await prisma.campaign.findMany({
+                where: { isActive: true },
+                orderBy: { createdAt: 'desc' },
+                take: 20,
+                include: {
+                    leader: { select: { id: true, slogan: true, avatarUrl: true } },
+                    _count: { select: { members: true, polls: true } },
+                },
+            });
+
+            const enriched = campaigns.map((c) => ({
+                ...c,
+                totalWacStaked: c.totalWacStaked.toFixed(6),
+                memberCount: c._count.members,
+                pollCount: c._count.polls,
+            }));
+
+            return reply.send({ success: true, campaigns: enriched });
+        } catch (error: any) {
+            fastify.log.error(error);
+            return reply.status(500).send({ success: false, error: 'Failed to fetch newest campaigns' });
         }
     });
 }

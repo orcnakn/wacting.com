@@ -37,16 +37,15 @@ class _AuthBackgroundAnimationState extends State<AuthBackgroundAnimation>
 
   // Rotating text phrases
   static const List<String> _phrases = [
-    'WE ACTING',
-    'WORK ACTING',
-    'WORLD ACTING',
-    'WISH ACTING',
-    'WHITE ACTING',
-    'WHOLE ACTING',
-    'WHOSE ACTING',
-    'WHO ACTING',
-    'WHICH ACTING',
-    'WEAK ACTING',
+    'WE ACTING', 'WORLD ACTING', 'WHOLE ACTING', 'WITH ACTING',
+    'WAKE ACTING', 'WHITE ACTING', 'WHY ACTING', 'WORTH ACTING',
+    'WILL ACTING', 'WORD ACTING', 'WATCH ACTING', 'WILD ACTING',
+    'WEATHER ACTING', 'WELL ACTING', 'WEALTH ACTING', 'WRAP ACTING',
+    'WAY ACTING', 'WISE ACTING', 'WORK ACTING', 'WARN ACTING',
+    'WIN ACTING', 'WARM ACTING', 'WORD ACTING', 'WOW ACTING',
+    'WEAR ACTING', 'WINDOW ACTING', 'WAVE ACTING', 'WHISPEAR ACTING',
+    'WEEKEND ACTING', 'WHISTLE ACTING', 'WALTZ ACTING',
+    'WHOOP ACTING', 'WHIRL ACTING',
   ];
   int _phraseIndex = 0;
   String _currentText = 'WACTING';

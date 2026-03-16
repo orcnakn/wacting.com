@@ -86,6 +86,9 @@ export interface ChainedTxParams {
     note?: string;
     campaignId?: string | null;
     ipHash?: string | null;
+    walletId?: string | null;
+    toWalletId?: string | null;
+    epochDay?: number | null;
 }
 
 /**
@@ -125,6 +128,9 @@ export async function recordChainedTransaction(
             prevTxHash: prevHash,
             campaignId: params.campaignId ?? null,
             ipHash: params.ipHash ?? null,
+            walletId: params.walletId ?? null,
+            toWalletId: params.toWalletId ?? null,
+            epochDay: params.epochDay ?? null,
         },
     });
 

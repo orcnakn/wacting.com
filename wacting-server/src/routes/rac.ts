@@ -173,6 +173,62 @@ export async function racRoutes(fastify: FastifyInstance) {
             return reply.code(500).send({ error: 'Failed to fetch RAC balance' });
         }
     });
+
+    // ── POST /rac/transfer ────────────────────────────────────────────────────
+    fastify.post('/rac/transfer', async (request, reply) => {
+        try {
+            const userId = (request as any).userId as string;
+            const { toWalletId, amount } = request.body as { toWalletId: string; amount: number };
+
+            if (!toWalletId || !amount || !Number.isInteger(amount) || amount < 1) {
+                return reply.code(400).send({ error: 'toWalletId and positive integer amount required' });
+            }
+
+            const recipient = await prisma.user.findUnique({
+                where: { walletId: toWalletId },
+                select: { id: true },
+            });
+            if (!recipient) {
+                return reply.code(404).send({ error: 'Cuzdan bulunamadi.' });
+            }
+            if (recipient.id === userId) {
+                return reply.code(400).send({ error: 'Kendi cuzdaniniza transfer yapamazsiniz.' });
+            }
+
+            const senderRac = await prisma.userRac.findUnique({ where: { userId } });
+            const amountBig = BigInt(amount);
+            if (!senderRac || senderRac.racBalance < amountBig) {
+                return reply.code(400).send({ error: 'Yetersiz RAC bakiyesi.' });
+            }
+
+            await prisma.$transaction(async (tx) => {
+                await tx.userRac.update({
+                    where: { userId },
+                    data: { racBalance: { decrement: amountBig } },
+                });
+
+                await tx.userRac.upsert({
+                    where: { userId: recipient.id },
+                    update: { racBalance: { increment: amountBig } },
+                    create: { userId: recipient.id, racBalance: amountBig },
+                });
+
+                await recordChainedTransaction(tx, {
+                    userId,
+                    amount: String(amount),
+                    type: 'RAC_TRANSFER' as any,
+                    note: `RAC transfer to ${toWalletId}: ${amount} RAC`,
+                    campaignId: null,
+                });
+            });
+
+            fastify.log.info(`[RAC] Transfer ${amount} RAC from ${userId} to ${recipient.id}`);
+            return reply.send({ success: true, transferred: amount });
+        } catch (err: any) {
+            fastify.log.error(`[RAC] Transfer error: ${err}`);
+            return reply.code(400).send({ error: err.message ?? 'Transfer failed' });
+        }
+    });
 }
 
 // ─── Public Routes ────────────────────────────────────────────────────────────

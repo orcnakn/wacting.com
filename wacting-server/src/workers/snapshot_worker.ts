@@ -41,10 +41,10 @@ export const snapshotQueue = new Queue('wac-snapshot', { connection });
 export async function registerSnapshotCron() {
     await snapshotQueue.upsertJobScheduler(
         'midnight-snapshot',
-        { pattern: '0 0 * * *', tz: 'UTC' },
+        { pattern: '0 1 * * *', tz: 'UTC' },
         { name: 'wac-snapshot' }
     );
-    console.log('[WAC Snapshot] Cron registered: 0 0 * * * UTC');
+    console.log('[WAC Snapshot] Cron registered: 0 1 * * * UTC');
 }
 
 // ─── Worker ──────────────────────────────────────────────────────────────────
@@ -201,6 +201,7 @@ export const snapshotWorker = new Worker(
                     type: 'WAC_DAILY_REWARD' as any,
                     note: `Daily reward — epoch ${epoch}, campaign ${entry.campaignId}`,
                     campaignId: entry.campaignId,
+                    epochDay: epoch,
                 });
             }
 
@@ -236,6 +237,7 @@ export const snapshotWorker = new Worker(
                         type: 'RAC_POOL_DECAY' as any,
                         note: `RAC decay — pool ${result.poolId}, epoch ${epoch}`,
                         campaignId: result.campaignId,
+                        epochDay: epoch,
                     });
                 }
 

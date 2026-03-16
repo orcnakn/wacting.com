@@ -947,6 +947,9 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                 } else {
                   _mapController.move(_initialCenter, 4.0);
                 }
+                if (_paused) {
+                  setState(() => _paused = false);
+                }
               },
             ),
           ),

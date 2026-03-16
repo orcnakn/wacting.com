@@ -288,6 +288,73 @@ export async function wacRoutes(fastify: FastifyInstance) {
             return reply.code(500).send({ error: 'Failed to fetch claim proof' });
         }
     });
+
+    // ── POST /wac/transfer ────────────────────────────────────────────────────
+    fastify.post('/wac/transfer', async (request, reply) => {
+        try {
+            const userId = (request as any).userId as string;
+            const { toWalletId, amount } = request.body as { toWalletId: string; amount: string };
+
+            if (!toWalletId || !amount) {
+                return reply.code(400).send({ error: 'toWalletId and amount are required' });
+            }
+
+            const amountDecimal = new Prisma.Decimal(amount);
+            if (amountDecimal.lt('1.000000')) {
+                return reply.code(400).send({ error: 'Minimum transfer: 1 WAC' });
+            }
+
+            const recipient = await prisma.user.findUnique({
+                where: { walletId: toWalletId },
+                select: { id: true },
+            });
+            if (!recipient) {
+                return reply.code(404).send({ error: 'Cuzdan bulunamadi.' });
+            }
+            if (recipient.id === userId) {
+                return reply.code(400).send({ error: 'Kendi cuzdaniniza transfer yapamazsiniz.' });
+            }
+
+            const senderWac = await prisma.userWac.findUnique({ where: { userId } });
+            if (!senderWac || !senderWac.isActive || senderWac.wacBalance.lt(amountDecimal)) {
+                return reply.code(400).send({ error: 'Yetersiz WAC bakiyesi.' });
+            }
+
+            const dailyLimit = senderWac.wacBalance.mul('0.50');
+            if (amountDecimal.gt(dailyLimit)) {
+                return reply.code(400).send({ error: `Gunluk transfer limiti: ${dailyLimit.toFixed(6)} WAC (bakiyenin %50si)` });
+            }
+
+            const sender = await prisma.user.findUnique({ where: { id: userId }, select: { walletId: true } });
+
+            await prisma.$transaction(async (tx) => {
+                await tx.userWac.update({
+                    where: { userId },
+                    data: { wacBalance: { decrement: amountDecimal } },
+                });
+
+                await tx.userWac.upsert({
+                    where: { userId: recipient.id },
+                    update: { wacBalance: { increment: amountDecimal } },
+                    create: { userId: recipient.id, wacBalance: amountDecimal, isActive: true },
+                });
+
+                await recordChainedTransaction(tx, {
+                    userId,
+                    amount: amountDecimal,
+                    type: 'WAC_TRANSFER' as any,
+                    note: `WAC transfer to ${toWalletId}: ${amount} WAC`,
+                    campaignId: null,
+                });
+            });
+
+            fastify.log.info(`[WAC] Transfer ${amount} WAC from ${userId} to ${recipient.id}`);
+            return reply.send({ success: true, transferred: amount });
+        } catch (err: any) {
+            fastify.log.error(`[WAC] Transfer error: ${err}`);
+            return reply.code(400).send({ error: err.message ?? 'Transfer failed' });
+        }
+    });
 }
 
 // ─── Public Leaderboard (no auth) ────────────────────────────────────────────

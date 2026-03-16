@@ -24,21 +24,51 @@ export async function profileRoutes(fastify: FastifyInstance) {
     fastify.put('/', async (request, reply) => {
         try {
             const userId = (request as any).userId;
-            const { avatarUrl, slogan, description, displayName } = request.body as any;
+            const { avatarUrl, slogan, description, displayName,
+                    twitterUrl, facebookUrl, instagramUrl, tiktokUrl, linkedinUrl } = request.body as any;
 
-            // Validate displayName
             if (displayName !== undefined) {
                 if (typeof displayName !== 'string' || displayName.length > 16 || !/^[a-zA-ZçÇğĞıİöÖşŞüÜ\s]+$/.test(displayName)) {
                     return reply.code(400).send({ error: 'Gecersiz isim. Sadece harf ve bosluk, en fazla 16 karakter.' });
                 }
             }
 
-            // Optional updates
             const userUpdate: any = {};
             if (avatarUrl !== undefined) userUpdate.avatarUrl = avatarUrl;
             if (slogan !== undefined) userUpdate.slogan = slogan;
             if (description !== undefined) userUpdate.description = description;
             if (displayName !== undefined) userUpdate.displayName = displayName;
+            if (twitterUrl !== undefined) userUpdate.twitterUrl = twitterUrl;
+            if (facebookUrl !== undefined) userUpdate.facebookUrl = facebookUrl;
+            if (instagramUrl !== undefined) userUpdate.instagramUrl = instagramUrl;
+            if (tiktokUrl !== undefined) userUpdate.tiktokUrl = tiktokUrl;
+            if (linkedinUrl !== undefined) userUpdate.linkedinUrl = linkedinUrl;
+
+            // Update socialLinksOrder when any social URL changes
+            const socialFields = ['twitterUrl', 'facebookUrl', 'instagramUrl', 'tiktokUrl', 'linkedinUrl'];
+            const hasSocialUpdate = socialFields.some(f => (request.body as any)[f] !== undefined);
+            if (hasSocialUpdate) {
+                const currentUser = await prisma.user.findUnique({
+                    where: { id: userId },
+                    select: { socialLinksOrder: true, twitterUrl: true, facebookUrl: true, instagramUrl: true, tiktokUrl: true, linkedinUrl: true },
+                });
+                const currentOrder: string[] = currentUser?.socialLinksOrder ? JSON.parse(currentUser.socialLinksOrder) : [];
+                const platformMap: Record<string, string> = {
+                    twitterUrl: 'twitter', facebookUrl: 'facebook', instagramUrl: 'instagram',
+                    tiktokUrl: 'tiktok', linkedinUrl: 'linkedin',
+                };
+                for (const field of socialFields) {
+                    const val = (request.body as any)[field];
+                    const platform = platformMap[field] ?? field;
+                    if (val && typeof val === 'string' && val.trim() !== '') {
+                        if (!currentOrder.includes(platform)) currentOrder.push(platform);
+                    } else if (val === '' || val === null) {
+                        const idx = currentOrder.indexOf(platform);
+                        if (idx !== -1) currentOrder.splice(idx, 1);
+                    }
+                }
+                userUpdate.socialLinksOrder = JSON.stringify(currentOrder);
+            }
 
             if (Object.keys(userUpdate).length > 0) {
                 await prisma.user.update({
@@ -109,6 +139,13 @@ export async function profileRoutes(fastify: FastifyInstance) {
                     avatarUrl: true,
                     slogan: true,
                     description: true,
+                    twitterUrl: true,
+                    facebookUrl: true,
+                    instagramUrl: true,
+                    tiktokUrl: true,
+                    linkedinUrl: true,
+                    socialLinksOrder: true,
+                    walletId: true,
                     icon: { select: { lastKnownX: true, lastKnownY: true, auraRadius: true, exploreMode: true } },
                     campaignMemberships: {
                         select: {
@@ -134,10 +171,20 @@ export async function profileRoutes(fastify: FastifyInstance) {
                 prisma.follow.count({ where: { followerId: id, status: 'APPROVED' } }),
             ]);
 
+            const viewerId = (request as any).userId;
+            let isFollowedByViewer = false;
+            if (viewerId && viewerId !== id) {
+                const followRecord = await prisma.follow.findUnique({
+                    where: { followerId_followingId: { followerId: id, followingId: viewerId } },
+                });
+                isFollowedByViewer = followRecord?.status === 'APPROVED';
+            }
+
             return reply.send({
                 ...profile,
                 followerCount,
-                followingCount
+                followingCount,
+                isFollowedByViewer,
             });
 
         } catch (err: any) {
@@ -195,5 +242,44 @@ export async function profileRoutes(fastify: FastifyInstance) {
         });
 
         return { campaigns };
+    });
+
+    fastify.get('/wallet/history', async (request, reply) => {
+        try {
+            const userId = (request as any).userId;
+            const { page = '1', limit = '20', type } = request.query as any;
+            const pageNum = Math.max(1, Number(page));
+            const limitNum = Math.min(50, Math.max(1, Number(limit)));
+            const skip = (pageNum - 1) * limitNum;
+
+            const where: any = { userId };
+            if (type) where.type = type;
+
+            const [transactions, total] = await Promise.all([
+                prisma.transaction.findMany({
+                    where,
+                    orderBy: { createdAt: 'desc' },
+                    skip,
+                    take: limitNum,
+                    select: {
+                        id: true, amount: true, type: true, note: true,
+                        createdAt: true, campaignId: true, walletId: true, toWalletId: true,
+                    },
+                }),
+                prisma.transaction.count({ where }),
+            ]);
+
+            return reply.send({
+                page: pageNum,
+                limit: limitNum,
+                total,
+                transactions: transactions.map(t => ({
+                    ...t,
+                    amount: t.amount.toFixed(6),
+                })),
+            });
+        } catch (err: any) {
+            return reply.code(500).send({ error: 'Failed to fetch wallet history' });
+        }
     });
 }

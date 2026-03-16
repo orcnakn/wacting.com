@@ -107,6 +107,8 @@ class ApiService {
     String? facebookUrl,
     String? tiktokUrl,
     String? websiteUrl,
+    String? stanceType,
+    String? categoryType,
   }) async {
     final res = await _dio.post('/campaign/create', data: {
       'title': title,
@@ -122,6 +124,8 @@ class ApiService {
       if (facebookUrl != null && facebookUrl.isNotEmpty) 'facebookUrl': facebookUrl,
       if (tiktokUrl != null && tiktokUrl.isNotEmpty) 'tiktokUrl': tiktokUrl,
       if (websiteUrl != null && websiteUrl.isNotEmpty) 'websiteUrl': websiteUrl,
+      if (stanceType != null) 'stanceType': stanceType,
+      if (categoryType != null) 'categoryType': categoryType,
     });
     return res.data as Map<String, dynamic>;
   }
@@ -259,6 +263,91 @@ class ApiService {
     if (slogan != null) body['slogan'] = slogan;
     if (description != null) body['description'] = description;
     await _dio.put('/api/profile', data: body);
+  }
+
+  Future<void> updateProfileSocialUrls({
+    String? twitterUrl,
+    String? facebookUrl,
+    String? instagramUrl,
+    String? tiktokUrl,
+    String? linkedinUrl,
+  }) async {
+    final body = <String, dynamic>{};
+    if (twitterUrl != null) body['twitterUrl'] = twitterUrl;
+    if (facebookUrl != null) body['facebookUrl'] = facebookUrl;
+    if (instagramUrl != null) body['instagramUrl'] = instagramUrl;
+    if (tiktokUrl != null) body['tiktokUrl'] = tiktokUrl;
+    if (linkedinUrl != null) body['linkedinUrl'] = linkedinUrl;
+    await _dio.put('/api/profile', data: body);
+  }
+
+  // ── Follow / Social ──────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> followUser(String followingId) async {
+    final res = await _dio.post('/follow', data: {'followingId': followingId});
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> unfollowUser(String followingId) async {
+    final res = await _dio.post('/unfollow', data: {'followingId': followingId});
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<List<dynamic>> getFollowers() async {
+    final res = await _dio.get('/followers');
+    return (res.data as Map<String, dynamic>)['followers'] as List<dynamic>;
+  }
+
+  Future<List<dynamic>> getFollowing() async {
+    final res = await _dio.get('/following');
+    return (res.data as Map<String, dynamic>)['following'] as List<dynamic>;
+  }
+
+  // ── Campaign Filters ─────────────────────────────────────────────────────
+
+  Future<List<dynamic>> getLynchedCampaigns() async {
+    final res = await _dio.get('/campaign/lynched');
+    return (res.data as Map<String, dynamic>)['campaigns'] as List<dynamic>;
+  }
+
+  Future<List<dynamic>> getNewestCampaigns() async {
+    final res = await _dio.get('/campaign/newest');
+    return (res.data as Map<String, dynamic>)['campaigns'] as List<dynamic>;
+  }
+
+  // ── Wallet ───────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getWacStatus() async {
+    final res = await _dio.get('/wac/status');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getRacBalance() async {
+    final res = await _dio.get('/rac/balance');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getWalletHistory({int page = 1, int limit = 20, String? type}) async {
+    final params = <String, dynamic>{'page': page, 'limit': limit};
+    if (type != null) params['type'] = type;
+    final res = await _dio.get('/api/profile/wallet/history', queryParameters: params);
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> transferWac(String toWalletId, String amount) async {
+    final res = await _dio.post('/wac/transfer', data: {
+      'toWalletId': toWalletId,
+      'amount': amount,
+    });
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> transferRac(String toWalletId, int amount) async {
+    final res = await _dio.post('/rac/transfer', data: {
+      'toWalletId': toWalletId,
+      'amount': amount,
+    });
+    return res.data as Map<String, dynamic>;
   }
 }
 

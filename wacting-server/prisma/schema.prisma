@@ -29,6 +29,10 @@ model User {
   // User profile URLs
   facebookUrl  String?
   instagramUrl String?
+  tiktokUrl    String?
+  linkedinUrl  String?
+  socialLinksOrder String?  @db.Text
+  walletId     String?   @unique @default(cuid())
 
   role   String @default("USER") // USER, ADMIN
   status String @default("ACTIVE") // ACTIVE, BANNED
@@ -178,6 +182,9 @@ model Transaction {
   prevTxHash   String?
   campaignId   String?
   ipHash       String?
+  walletId    String?
+  toWalletId  String?
+  epochDay    Int?
 }
 
 enum TxType {
@@ -197,6 +204,8 @@ enum TxType {
   RAC_POOL_DEPOSIT     // user deposits RAC into a protest pool
   RAC_POOL_DECAY       // daily decay subtracted from pool
   RAC_POOL_BONUS       // ranking bonus added to pool as RAC
+  WAC_TRANSFER
+  RAC_TRANSFER
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -479,6 +488,24 @@ model CampaignHistory {
   totalEarned Decimal  @default(0) @db.Decimal(30, 6)
 }
 
+enum StanceType {
+  PROTEST
+  SUPPORT
+  REFORM
+  EMERGENCY
+}
+
+enum CategoryType {
+  GLOBAL_PEACE
+  JUSTICE_RIGHTS
+  ECOLOGY_NATURE
+  TECH_FUTURE
+  SOLIDARITY_RELIEF
+  ECONOMY_LABOR
+  AWARENESS
+  ENTERTAINMENT
+}
+
 model Campaign {
   id           String           @id @default(uuid())
   leaderId     String
@@ -494,6 +521,8 @@ model Campaign {
   facebookUrl  String?
   tiktokUrl    String?
   websiteUrl   String?
+  stanceType   StanceType  @default(SUPPORT)
+  categoryType CategoryType @default(AWARENESS)
   speed        Float            @default(0.5)
   isActive     Boolean          @default(true)
   createdAt    DateTime         @default(now())
