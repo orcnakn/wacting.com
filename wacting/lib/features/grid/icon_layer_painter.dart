@@ -2,7 +2,6 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../core/models/icon_model.dart';
 import 'providers/grid_state.dart';
-import 'lod_manager.dart';
 
 class IconLayerPainter extends CustomPainter {
   final ViewportState viewport;
@@ -23,13 +22,7 @@ class IconLayerPainter extends CustomPainter {
     canvas.scale(viewport.zoom, viewport.zoom);
     canvas.translate(-viewport.position.dx, -viewport.position.dy);
 
-    final bool drawMicro = LodManager.shouldDrawMicroIcons(viewport.zoom);
-    final bool drawGiantsOnly = LodManager.shouldDrawGiantsOnly(viewport.zoom);
-
     for (final icon in icons) {
-      if (drawGiantsOnly && !icon.isGiant) continue;
-      if (!drawMicro && icon.isMicro) continue;
-
       // Ensure it is inside the viewport via bounding rect checking
       // (Assuming icons have already been filtered roughly by a spatial index, 
       //  but double checking exact intersection here is safe)

@@ -22,6 +22,8 @@ double _effectiveStep(double mock95BaseStep, double campaignSpeed) {
 class SocketService {
   final _iconStreamController = StreamController<List<IconModel>>.broadcast();
   Stream<List<IconModel>> get iconStream => _iconStreamController.stream;
+  final _notificationController = StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get notificationStream => _notificationController.stream;
   Timer? _mockPhysicsTimer;
   List<IconModel> _mockIcons = [];
   IO.Socket? _socket;
@@ -52,6 +54,14 @@ class SocketService {
         _iconStreamController.add(icons);
       } catch (e) {
         print('[SOCKET] Error parsing tick: $e');
+      }
+    });
+
+    _socket!.on('notification', (data) {
+      try {
+        _notificationController.add(data as Map<String, dynamic>);
+      } catch (e) {
+        print('[SOCKET] Error parsing notification: $e');
       }
     });
 
@@ -149,6 +159,7 @@ class SocketService {
     _socket?.dispose();
     _mockPhysicsTimer?.cancel();
     _iconStreamController.close();
+    _notificationController.close();
   }
 }
 

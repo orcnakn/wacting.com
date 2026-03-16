@@ -6,8 +6,6 @@ class LodManager {
 
   static const double _baseDotSize = 3.0;
   static const double _maxDotSize = 6.0;
-  static const double _sloganReadableSize = 28.0;
-
   static bool shouldDrawGridLines(double currentZoom) {
     return currentZoom >= gridLineThreshold;
   }
