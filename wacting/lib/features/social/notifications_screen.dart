@@ -1,161 +1,173 @@
 import 'package:flutter/material.dart';
 import '../../app/theme.dart';
-import '../../app/widgets/modern_card.dart';
+import '../../core/services/api_service.dart';
 
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({Key? key}) : super(key: key);
+  @override
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  List<dynamic> _notifications = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
+  }
+
+  Future<void> _loadNotifications() async {
+    setState(() => _loading = true);
+    try {
+      final data = await apiService.getNotifications(limit: 50);
+      if (mounted) {
+        setState(() {
+          _notifications = (data['notifications'] as List?) ?? [];
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  IconData _iconForType(String type) {
+    switch (type) {
+      case 'FOLLOW_REQUEST': return Icons.person_add;
+      case 'FOLLOW_ACCEPTED': return Icons.person;
+      case 'POLL_CREATED': return Icons.how_to_vote;
+      case 'POLL_CLOSED': return Icons.check_circle;
+      case 'DAILY_WAC_REWARD': return Icons.monetization_on;
+      case 'RAC_PROTEST_STARTED': return Icons.warning;
+      case 'DIRECT_MESSAGE': return Icons.message;
+      case 'CAMPAIGN_CHANGE': return Icons.edit;
+      default: return Icons.info;
+    }
+  }
+
+  Color _colorForType(String type) {
+    switch (type) {
+      case 'FOLLOW_REQUEST': return AppColors.accentBlue;
+      case 'FOLLOW_ACCEPTED': return AppColors.accentGreen;
+      case 'POLL_CREATED': return AppColors.accentAmber;
+      case 'POLL_CLOSED': return AppColors.accentTeal;
+      case 'DAILY_WAC_REWARD': return AppColors.accentAmber;
+      case 'RAC_PROTEST_STARTED': return AppColors.accentRed;
+      case 'DIRECT_MESSAGE': return AppColors.accentBlue;
+      case 'CAMPAIGN_CHANGE': return AppColors.accentTeal;
+      default: return AppColors.textTertiary;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Mock notifications for UI demonstration
-    final notifications = [
-      {
-        'id': '1',
-        'type': 'new_follower',
-        'title': 'New Follow Request',
-        'message': 'CypherPunk99 wants to follow you and pledged 500 WAC.',
-        'time': '2 mins ago',
-        'read': false,
-        'actionable': true,
-      },
-      {
-        'id': '2',
-        'type': 'token_received',
-        'title': 'Tokens Received',
-        'message': 'You received 150 tokens from EliteSniper.',
-        'time': '1 hour ago',
-        'read': true,
-        'actionable': false,
-      },
-      {
-        'id': '3',
-        'type': 'request_approved',
-        'title': 'Request Approved',
-        'message': 'Your follow request to NeonRider was approved! Tokens deducted.',
-        'time': 'Yesterday',
-        'read': true,
-        'actionable': false,
-      },
-    ];
-
     return Scaffold(
       backgroundColor: AppColors.pageBackground,
       appBar: AppBar(
-        title: Text('Alerts & Intel', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.textPrimary)),
+        title: Text('Bildirimler', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        centerTitle: true,
+        iconTheme: IconThemeData(color: AppColors.textPrimary),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await apiService.markAllNotificationsRead();
+              _loadNotifications();
+            },
+            child: Text('Tumunu Oku', style: TextStyle(color: AppColors.accentTeal, fontSize: 12)),
+          ),
+        ],
       ),
-      body: notifications.isEmpty
-          ? Center(child: Text('No intel received.', style: TextStyle(color: AppColors.textTertiary)))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: notifications.length,
-              itemBuilder: (context, index) {
-                final n = notifications[index];
-                final isRead = n['read'] as bool;
-                final isActionable = n['actionable'] as bool;
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
-                  child: ModernCard(
+      body: _loading
+          ? Center(child: CircularProgressIndicator(color: AppColors.accentBlue))
+          : _notifications.isEmpty
+              ? Center(child: Text('Bildirim yok', style: TextStyle(color: AppColors.textTertiary)))
+              : RefreshIndicator(
+                  onRefresh: _loadNotifications,
+                  child: ListView.separated(
                     padding: const EdgeInsets.all(16),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CircleAvatar(
-                          backgroundColor: _getIconColor(n['type'] as String).withOpacity(0.08),
-                          child: Icon(_getIconData(n['type'] as String), color: _getIconColor(n['type'] as String)),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                    itemCount: _notifications.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final notif = _notifications[index] as Map<String, dynamic>;
+                      final type = (notif['type'] ?? 'SYSTEM') as String;
+                      final title = (notif['title'] ?? '') as String;
+                      final body = (notif['body'] ?? '') as String;
+                      final isRead = notif['read'] == true;
+                      final createdAt = DateTime.tryParse((notif['createdAt'] ?? '').toString());
+                      final timeAgo = createdAt != null
+                          ? _timeAgo(createdAt)
+                          : '';
+
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () async {
+                          if (!isRead && notif['id'] != null) {
+                            await apiService.markNotificationRead(notif['id']);
+                            setState(() => notif['read'] = true);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isRead ? AppColors.surfaceLight : AppColors.accentBlue.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isRead ? AppColors.borderLight : AppColors.accentBlue.withOpacity(0.2),
+                              width: 0.5,
+                            ),
+                          ),
+                          child: Row(
                             children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    n['title'] as String,
-                                    style: TextStyle(
-                                      color: isRead ? AppColors.textSecondary : AppColors.textPrimary,
-                                      fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  Text(
-                                    n['time'] as String,
-                                    style: TextStyle(color: AppColors.accentBlue, fontSize: 12),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                n['message'] as String,
-                                style: TextStyle(color: AppColors.textTertiary, fontSize: 14),
-                              ),
-                              if (isActionable) ...[
-                                const SizedBox(height: 12),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
+                              Icon(_iconForType(type), color: _colorForType(type), size: 22),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    OutlinedButton(
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: AppColors.accentRed,
-                                        side: BorderSide(color: AppColors.accentRed),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                      ),
-                                      onPressed: () {},
-                                      child: const Text('Deny'),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppColors.accentTeal,
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                      ),
-                                      onPressed: () {},
-                                      child: const Text('Accept', style: TextStyle(fontWeight: FontWeight.bold)),
-                                    ),
+                                    Text(title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: AppColors.textPrimary,
+                                        fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
+                                        fontSize: 13,
+                                      )),
+                                    if (body.isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(body,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
+                                    ],
                                   ],
                                 ),
-                              ]
+                              ),
+                              const SizedBox(width: 8),
+                              Text(timeAgo, style: TextStyle(color: AppColors.textTertiary, fontSize: 10)),
+                              if (!isRead) ...[
+                                const SizedBox(width: 6),
+                                Container(width: 6, height: 6,
+                                  decoration: BoxDecoration(color: AppColors.accentBlue, shape: BoxShape.circle)),
+                              ],
                             ],
                           ),
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
+                ),
     );
   }
 
-  IconData _getIconData(String type) {
-    switch (type) {
-      case 'new_follower':
-        return Icons.person_add;
-      case 'token_received':
-        return Icons.monetization_on;
-      case 'request_approved':
-        return Icons.check_circle;
-      default:
-        return Icons.notifications;
-    }
-  }
-
-  Color _getIconColor(String type) {
-    switch (type) {
-      case 'new_follower':
-        return AppColors.accentBlue;
-      case 'token_received':
-        return AppColors.accentAmber;
-      case 'request_approved':
-        return AppColors.accentGreen;
-      default:
-        return AppColors.textTertiary;
-    }
+  String _timeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'simdi';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}dk';
+    if (diff.inHours < 24) return '${diff.inHours}sa';
+    if (diff.inDays < 7) return '${diff.inDays}g';
+    return '${(diff.inDays / 7).floor()}h';
   }
 }

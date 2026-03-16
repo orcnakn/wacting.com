@@ -1,34 +1,105 @@
 import 'package:flutter/material.dart';
 import '../../app/theme.dart';
-import '../../app/widgets/modern_card.dart';
-import '../../app/widgets/modern_button.dart';
-import '../economy/economy_screen.dart';
+import '../../core/services/api_service.dart';
+import '../../core/utils/format_utils.dart';
+import '../social/notifications_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({Key? key}) : super(key: key);
+  final String? viewUserId; // null = own profile
+  const ProfileScreen({Key? key, this.viewUserId}) : super(key: key);
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen>
-    with SingleTickerProviderStateMixin {
+class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  Map<String, dynamic>? _profile;
+  List<dynamic> _dailyRewards = [];
+  bool _loading = true;
+  bool _editingName = false;
+  final _nameController = TextEditingController();
+
+  bool get _isOwnProfile => widget.viewUserId == null || widget.viewUserId == apiService.userId;
+  String get _targetUserId => widget.viewUserId ?? apiService.userId ?? '';
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadProfile();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _nameController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadProfile() async {
+    if (!apiService.isLoggedIn) {
+      setState(() => _loading = false);
+      return;
+    }
+    try {
+      final profileRes = await apiService.getProfileById(_targetUserId);
+      List<dynamic> rewards = [];
+      try {
+        final rewardsRes = await apiService.getDailyRewards(_targetUserId);
+        rewards = (rewardsRes['campaigns'] as List?) ?? [];
+      } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _profile = profileRes;
+          _dailyRewards = rewards;
+          _nameController.text = (_profile?['displayName'] ?? '') as String;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _updateName() async {
+    final newName = _nameController.text.trim();
+    if (newName.isEmpty || newName.length > 16) return;
+    // Only letters (including Turkish) and spaces
+    if (!RegExp(r'^[a-zA-ZçÇğĞıİöÖşŞüÜ\s]+$').hasMatch(newName)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: const Text('Sadece harf ve bosluk kullanin.'), backgroundColor: AppColors.accentRed),
+      );
+      return;
+    }
+    try {
+      await apiService.updateProfile(displayName: newName);
+      setState(() {
+        _editingName = false;
+        _profile?['displayName'] = newName;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: const Text('Isim guncellenemedi.'), backgroundColor: AppColors.accentRed),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        backgroundColor: AppColors.pageBackground,
+        body: Center(child: CircularProgressIndicator(color: AppColors.accentBlue)),
+      );
+    }
+
+    final displayName = (_profile?['displayName'] ?? 'Kullanici') as String;
+    final followerCount = (_profile?['followerCount'] ?? 0) as int;
+    final followingCount = (_profile?['followingCount'] ?? 0) as int;
+    final avatarUrl = _profile?['avatarUrl'] as String?;
+    final sloganText = (_profile?['slogan'] ?? '') as String;
+
     return Scaffold(
       backgroundColor: AppColors.pageBackground,
       appBar: AppBar(
@@ -43,116 +114,163 @@ class _ProfileScreenState extends State<ProfileScreen>
           unselectedLabelColor: AppColors.textTertiary,
           indicatorWeight: 3,
           tabs: const [
-            Tab(text: 'PROFİL', icon: Icon(Icons.account_circle, size: 18)),
-            Tab(text: 'KİŞİSEL', icon: Icon(Icons.people, size: 18)),
-            Tab(text: 'BİLDİRİMLER', icon: Icon(Icons.notifications, size: 18)),
+            Tab(text: 'PROFIL'),
+            Tab(text: 'KISISEL'),
+            Tab(text: 'BILDIRIMLER'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          _ProfileTab(),
-          _PersonalTab(),
-          _NotificationsTab(),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PROFİL TAB — Avatar, Cüzdan
-// ─────────────────────────────────────────────────────────────────────────────
-class _ProfileTab extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Avatar & Kullanıcı Adı
-          ModernCard(
-            child: Column(
+          // ── PROFIL Tab ──
+          RefreshIndicator(
+            onRefresh: _loadProfile,
+            child: ListView(
+              padding: const EdgeInsets.all(20),
               children: [
-                Stack(
-                  alignment: Alignment.bottomRight,
-                  children: [
-                    const CircleAvatar(
-                      radius: 50,
-                      backgroundColor: Colors.grey,
-                      backgroundImage: NetworkImage('https://via.placeholder.com/150'),
-                    ),
-                    Container(
-                      decoration: BoxDecoration(color: AppColors.accentBlue, shape: BoxShape.circle),
-                      child: IconButton(
-                        icon: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
-                        onPressed: () {},
-                      ),
-                    ),
-                  ],
+                // Avatar
+                Center(
+                  child: CircleAvatar(
+                    radius: 40,
+                    backgroundColor: AppColors.accentBlue.withOpacity(0.1),
+                    backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                    child: avatarUrl == null ? Icon(Icons.person, size: 40, color: AppColors.accentBlue) : null,
+                  ),
                 ),
+                const SizedBox(height: 12),
+
+                // Display Name (editable for own profile)
+                Center(
+                  child: _editingName && _isOwnProfile
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 180,
+                              child: TextField(
+                                controller: _nameController,
+                                autofocus: true,
+                                maxLength: 16,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                                decoration: InputDecoration(
+                                  counterText: '',
+                                  isDense: true,
+                                  border: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.accentBlue)),
+                                ),
+                                onSubmitted: (_) => _updateName(),
+                              ),
+                            ),
+                            IconButton(
+                              icon: Icon(Icons.check, color: AppColors.accentGreen, size: 20),
+                              onPressed: _updateName,
+                            ),
+                          ],
+                        )
+                      : GestureDetector(
+                          onTap: _isOwnProfile ? () => setState(() => _editingName = true) : null,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                displayName,
+                                style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold),
+                              ),
+                              if (_isOwnProfile) ...[
+                                const SizedBox(width: 6),
+                                Icon(Icons.edit, color: AppColors.textTertiary, size: 14),
+                              ],
+                            ],
+                          ),
+                        ),
+                ),
+
+                if (sloganText.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Center(
+                    child: Text('"$sloganText"',
+                        style: TextStyle(color: AppColors.accentTeal, fontStyle: FontStyle.italic, fontSize: 13)),
+                  ),
+                ],
                 const SizedBox(height: 16),
-                Text(
-                  'CypherPunk99',
-                  style: TextStyle(color: AppColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
 
-          // Cüzdan
-          Text(
-            'Cüzdan',
-            style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 14),
-          ),
-          const SizedBox(height: 12),
-          ModernCard(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                // Follower / Following
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('Toplam Bakiye', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
-                    const SizedBox(height: 4),
-                    Text('12,450 WAC', style: TextStyle(color: AppColors.textPrimary, fontSize: 24, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(Icons.auto_graph, color: AppColors.accentTeal, size: 14),
-                        const SizedBox(width: 4),
-                        Text('Pasif Kazanç: +350 WAC',
-                            style: TextStyle(color: AppColors.accentTeal, fontSize: 13, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
+                    _statCol('Takipci', '$followerCount'),
+                    const SizedBox(width: 32),
+                    _statCol('Takip', '$followingCount'),
                   ],
                 ),
-                ModernButton(
-                  text: 'Token Al',
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const EconomyScreen()),
+                const SizedBox(height: 24),
+
+                // Active Campaigns with Daily Rewards
+                Text('Aktif Kampanyalar',
+                    style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 8),
+                if (_dailyRewards.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Center(child: Text('Aktif kampanya yok', style: TextStyle(color: AppColors.textTertiary))),
+                  )
+                else
+                  ..._dailyRewards.map((r) {
+                    final title = (r['title'] ?? '') as String;
+                    final slogan = (r['slogan'] ?? '') as String;
+                    final reward = (r['dailyReward'] ?? '0') as String;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceLight,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.borderLight, width: 0.5),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(width: 8, height: 8,
+                              decoration: BoxDecoration(color: AppColors.accentBlue, shape: BoxShape.circle)),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text('$title — $slogan',
+                                maxLines: 1, overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: AppColors.textPrimary, fontSize: 13)),
+                            ),
+                            const SizedBox(width: 8),
+                            Text('+$reward WAC',
+                              style: TextStyle(color: AppColors.accentGreen, fontWeight: FontWeight.bold, fontSize: 12)),
+                          ],
+                        ),
+                      ),
                     );
-                  },
-                ),
+                  }),
               ],
             ),
           ),
+
+          // ── KISISEL Tab ──
+          _buildPersonalTab(),
+
+          // ── BILDIRIMLER Tab ──
+          const NotificationsScreen(),
         ],
       ),
     );
   }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// KİŞİSEL TAB — Takipçiler / Takip Edilenler
-// ─────────────────────────────────────────────────────────────────────────────
-class _PersonalTab extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
+  Widget _statCol(String label, String value) {
+    return Column(
+      children: [
+        Text(value, style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(label, style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+      ],
+    );
+  }
+
+  Widget _buildPersonalTab() {
     return DefaultTabController(
       length: 2,
       child: Column(
@@ -162,15 +280,15 @@ class _PersonalTab extends StatelessWidget {
             labelColor: AppColors.navyLight,
             unselectedLabelColor: AppColors.textTertiary,
             tabs: const [
-              Tab(text: 'Takipçilerim'),
+              Tab(text: 'Takipcilerim'),
               Tab(text: 'Takip Ettiklerim'),
             ],
           ),
           Expanded(
             child: TabBarView(
               children: [
-                _buildSocialList(isFollower: true),
-                _buildSocialList(isFollower: false),
+                _buildFollowerList(isFollower: true),
+                _buildFollowerList(isFollower: false),
               ],
             ),
           ),
@@ -179,201 +297,12 @@ class _PersonalTab extends StatelessWidget {
     );
   }
 
-  Widget _buildSocialList({required bool isFollower}) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: 3,
-      itemBuilder: (context, index) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: ModernCard(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: AppColors.surfaceLight,
-                  child: Icon(Icons.person, color: AppColors.textSecondary),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('User_$index',
-                          style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
-                      Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.camera_alt, size: 16, color: Colors.pinkAccent),
-                            onPressed: () {},
-                            constraints: const BoxConstraints(),
-                            padding: EdgeInsets.zero,
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(Icons.facebook, size: 16, color: Colors.blue),
-                            onPressed: () {},
-                            constraints: const BoxConstraints(),
-                            padding: EdgeInsets.zero,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(Icons.message, color: AppColors.navyLight),
-                  onPressed: () {},
-                ),
-                if (!isFollower)
-                  TextButton(
-                    onPressed: () {},
-                    child: Text('Bırak', style: TextStyle(color: AppColors.accentRed)),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
+  Widget _buildFollowerList({required bool isFollower}) {
+    return Center(
+      child: Text(
+        isFollower ? 'Takipci listesi yaklasimda...' : 'Takip listesi yaklasimda...',
+        style: TextStyle(color: AppColors.textTertiary),
+      ),
     );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// BİLDİRİMLER TAB
-// ─────────────────────────────────────────────────────────────────────────────
-class _NotificationsTab extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final notifications = [
-      {
-        'id': '1',
-        'type': 'new_follower',
-        'title': 'Yeni Takip İsteği',
-        'message': 'CypherPunk99 seni takip etmek istiyor ve 500 WAC teklif etti.',
-        'time': '2 dk önce',
-        'read': false,
-        'actionable': true,
-      },
-      {
-        'id': '2',
-        'type': 'token_received',
-        'title': 'Token Alındı',
-        'message': 'EliteSniper\'dan 150 token aldın.',
-        'time': '1 saat önce',
-        'read': true,
-        'actionable': false,
-      },
-      {
-        'id': '3',
-        'type': 'request_approved',
-        'title': 'İstek Onaylandı',
-        'message': 'NeonRider\'a gönderdiğin takip isteği onaylandı! Tokenlar düşüldü.',
-        'time': 'Dün',
-        'read': true,
-        'actionable': false,
-      },
-    ];
-
-    if (notifications.isEmpty) {
-      return Center(child: Text('Bildirim yok.', style: TextStyle(color: AppColors.textTertiary)));
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: notifications.length,
-      itemBuilder: (context, index) {
-        final n = notifications[index];
-        final isRead = n['read'] as bool;
-        final isActionable = n['actionable'] as bool;
-
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: ModernCard(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  backgroundColor: _iconColor(n['type'] as String).withOpacity(0.1),
-                  child: Icon(_iconData(n['type'] as String), color: _iconColor(n['type'] as String)),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            n['title'] as String,
-                            style: TextStyle(
-                              color: isRead ? AppColors.textSecondary : AppColors.textPrimary,
-                              fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
-                              fontSize: 15,
-                            ),
-                          ),
-                          Text(n['time'] as String,
-                              style: TextStyle(color: AppColors.accentBlue, fontSize: 11)),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(n['message'] as String,
-                          style: TextStyle(color: AppColors.textTertiary, fontSize: 13)),
-                      if (isActionable) ...[
-                        const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: AppColors.accentRed,
-                                side: BorderSide(color: AppColors.accentRed),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                              onPressed: () {},
-                              child: const Text('Reddet'),
-                            ),
-                            const SizedBox(width: 12),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.accentTeal,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                              onPressed: () {},
-                              child: const Text('Kabul Et', style: TextStyle(fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  IconData _iconData(String type) {
-    switch (type) {
-      case 'new_follower': return Icons.person_add;
-      case 'token_received': return Icons.monetization_on;
-      case 'request_approved': return Icons.check_circle;
-      default: return Icons.notifications;
-    }
-  }
-
-  Color _iconColor(String type) {
-    switch (type) {
-      case 'new_follower': return AppColors.accentBlue;
-      case 'token_received': return AppColors.accentAmber;
-      case 'request_approved': return AppColors.accentGreen;
-      default: return AppColors.textTertiary;
-    }
   }
 }

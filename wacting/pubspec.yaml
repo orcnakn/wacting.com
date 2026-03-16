@@ -75,6 +75,8 @@ flutter:
   assets:
     - assets/map/ne_110m_countries.geojson
     - assets/map/ne_50m_admin1.geojson
+    - assets/map/ocean_regions.geojson
+    - assets/map/major_cities.geojson
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

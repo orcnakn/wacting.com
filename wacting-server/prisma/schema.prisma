@@ -41,6 +41,7 @@ model User {
   avatarUrl   String?
   slogan      String? @db.VarChar(100)
   description String? @db.Text
+  displayName String? @db.VarChar(16)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -340,7 +341,10 @@ model Notification {
   type      NotifType
   title     String
   message   String    @db.Text
+  body      String?   @db.Text
+  data      String?   @db.Text
   isRead    Boolean   @default(false)
+  read      Boolean   @default(false)
   createdAt DateTime  @default(now())
 }
 
@@ -350,6 +354,10 @@ enum NotifType {
   POLL_CREATED
   POLL_CLOSED
   SYSTEM
+  DAILY_WAC_REWARD
+  RAC_PROTEST_STARTED
+  DIRECT_MESSAGE
+  CAMPAIGN_CHANGE
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

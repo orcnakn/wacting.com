@@ -14,6 +14,16 @@
  *   If netDecay ≤ 0, no decay happens (life-water from ranking)
  */
 
+export function formatWac(value: number): string {
+  // Floor at 6th decimal place
+  const floored = Math.floor(value * 1000000) / 1000000;
+  // Format to 6 decimal places then remove trailing zeros
+  let str = floored.toFixed(6);
+  // Remove trailing zeros after decimal point
+  str = str.replace(/\.?0+$/, '');
+  return str;
+}
+
 export interface CampaignRewardInput {
     campaignId: string;
     leaderId: string;

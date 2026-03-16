@@ -57,6 +57,34 @@ export async function voteRoutes(fastify: FastifyInstance) {
 
             fastify.log.info(`Poll created: ${poll.id} for campaign ${campaignId}`);
 
+            // Notify all campaign members and followers
+            const members = await prisma.campaignMember.findMany({
+                where: { campaignId },
+                select: { userId: true },
+            });
+            const followers = await prisma.campaignFollow.findMany({
+                where: { campaignId },
+                select: { userId: true },
+            } as any);
+            const recipientIds = new Set([
+                ...members.map((m: any) => m.userId),
+                ...followers.map((f: any) => f.userId),
+            ]);
+            recipientIds.delete(user.id); // Don't notify the creator
+
+            const notifData = Array.from(recipientIds).map((recipientId: any) => ({
+                userId: recipientId,
+                type: 'POLL_CREATED' as any,
+                title: 'Yeni Oylama',
+                message: `${campaign.title} kampanyasinda yeni oylama baslatildi`,
+                body: `${campaign.title} kampanyasinda yeni oylama baslatildi`,
+                data: JSON.stringify({ pollId: poll.id, campaignId }),
+            }));
+
+            if (notifData.length > 0) {
+                await prisma.notification.createMany({ data: notifData });
+            }
+
             return reply.send({ success: true, poll });
         } catch (error: any) {
             fastify.log.error(error);
@@ -214,6 +242,23 @@ export async function voteRoutes(fastify: FastifyInstance) {
                 where: { id: pollId },
                 data: { status: 'COMPLETED', winnerOption: winnerOption?.text ?? null }
             });
+
+            // Notify all voters of poll result
+            const voterIds = await prisma.pollVote.findMany({
+                where: { pollId },
+                select: { voterId: true },
+            });
+            const closeNotifData = voterIds.map((v: any) => ({
+                userId: v.voterId,
+                type: 'POLL_CLOSED' as any,
+                title: 'Oylama Sonuclandi',
+                message: `${poll.title} oylamasi tamamlandi. Kazanan: ${winnerOption?.text ?? '-'}`,
+                body: `${poll.title} oylamasi tamamlandi. Kazanan: ${winnerOption?.text ?? '-'}`,
+                data: JSON.stringify({ pollId, campaignId: poll.campaignId, winner: winnerOption?.text }),
+            }));
+            if (closeNotifData.length > 0) {
+                await prisma.notification.createMany({ data: closeNotifData });
+            }
 
             return reply.send({ success: true, winner: winnerOption?.text, poll: updated });
         } catch (error: any) {

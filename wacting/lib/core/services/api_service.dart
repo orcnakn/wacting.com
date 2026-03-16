@@ -215,6 +215,51 @@ class ApiService {
     final res = await _dio.get('/campaign/trending');
     return (res.data as Map<String, dynamic>)['campaigns'] as List<dynamic>;
   }
+
+  // ── Notifications ────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getNotifications({int page = 1, int limit = 20}) async {
+    final res = await _dio.get('/api/notifications', queryParameters: {'page': page, 'limit': limit});
+    return res.data;
+  }
+
+  Future<int> getUnreadNotificationCount() async {
+    try {
+      final res = await _dio.get('/api/notifications/unread-count');
+      return (res.data['count'] ?? 0) as int;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<void> markNotificationRead(String id) async {
+    await _dio.put('/api/notifications/$id/read');
+  }
+
+  Future<void> markAllNotificationsRead() async {
+    await _dio.put('/api/notifications/read-all');
+  }
+
+  // ── Profile ──────────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getProfileById(String userId) async {
+    final res = await _dio.get('/api/profile/$userId');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getDailyRewards(String userId) async {
+    final res = await _dio.get('/api/profile/$userId/daily-rewards');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> updateProfile({String? displayName, String? avatarUrl, String? slogan, String? description}) async {
+    final body = <String, dynamic>{};
+    if (displayName != null) body['displayName'] = displayName;
+    if (avatarUrl != null) body['avatarUrl'] = avatarUrl;
+    if (slogan != null) body['slogan'] = slogan;
+    if (description != null) body['description'] = description;
+    await _dio.put('/api/profile', data: body);
+  }
 }
 
 final apiService = ApiService();

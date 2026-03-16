@@ -25,6 +25,7 @@ import { profileRoutes } from './routes/profile.js';
 import { campaignRoutes } from './routes/campaign.js';
 import { oauthRoutes } from './routes/oauth.js';
 import { devNotesRoutes } from './routes/devnotes.js';
+import notificationRoutes from './routes/notifications.js';
 // import { registerSnapshotCron } from './workers/snapshot_worker.js';
 // import './services/notification_worker.js';
 
@@ -143,6 +144,7 @@ async function start() {
         fastify.register(profileRoutes, { prefix: '/api/profile' });
         fastify.register(devNotesRoutes, { prefix: '/api/devnotes' });
         fastify.register(campaignRoutes, { prefix: '/campaign' });
+        fastify.register(notificationRoutes, { prefix: '/api/notifications' });
 
         fastify.get('/ping', async (request, reply) => {
             return { status: 'ok', time: Date.now(), total_icons: engine.icons.size };

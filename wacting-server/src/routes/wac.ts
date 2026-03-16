@@ -14,6 +14,7 @@ import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import { buildRankedList } from '../engine/ranking_engine.js';
 import { recordChainedTransaction } from '../engine/chain_engine.js';
+import { formatWac } from '../engine/reward_calculator.js';
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_dev_key';
@@ -239,7 +240,7 @@ export async function wacRoutes(fastify: FastifyInstance) {
 
             return reply.send({
                 isActive: true,
-                wacBalance: userWac.wacBalance.toFixed(6),
+                wacBalance: formatWac(Number(userWac.wacBalance)),
                 rank: myRank?.rank ?? null,
                 usersBelow: myRank?.usersBelow ?? null,
                 totalActive: allActive.length,
@@ -318,7 +319,7 @@ export async function wacPublicRoutes(fastify: FastifyInstance) {
             const page_data = ranked.slice(skip, skip + limit).map((u) => ({
                 rank: u.rank,
                 userId: u.userId,
-                wacBalance: u.wacBalance.toFixed(6),
+                wacBalance: formatWac(u.wacBalance),
                 usersBelow: u.usersBelow,
             }));
 

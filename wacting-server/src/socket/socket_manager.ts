@@ -8,6 +8,7 @@ const JWT_SECRET: string = process.env.JWT_SECRET || 'super_secret_dev_key';
 export class SocketManager {
     private io: Server;
     private engine: MovementEngine;
+    private static instance: SocketManager | null = null;
 
     constructor(server: any, engine: MovementEngine) {
         const allowedOrigins = process.env.NODE_ENV === 'production'
@@ -17,6 +18,7 @@ export class SocketManager {
             cors: { origin: allowedOrigins }
         });
         this.engine = engine;
+        SocketManager.instance = this;
     }
 
     public init() {
@@ -88,6 +90,16 @@ export class SocketManager {
 
                 // Emit just the subset
                 socket.volatile.emit('tick', nearbyIcons);
+            }
+        }
+    }
+
+    static notifyUser(userId: string, notification: any) {
+        const io = SocketManager.instance?.io;
+        if (!io) return;
+        for (const [, socket] of io.sockets.sockets) {
+            if ((socket as any).data.userId === userId) {
+                socket.emit('notification', notification);
             }
         }
     }

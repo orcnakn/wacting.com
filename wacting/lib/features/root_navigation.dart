@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../app/theme.dart';
+import '../core/services/api_service.dart';
+import '../core/services/socket_service.dart';
 import 'grid/grid_screen.dart';
 import 'social/social_screen.dart';
+import 'social/notifications_screen.dart';
 import 'profile/profile_screen.dart';
 
 class RootNavigation extends StatefulWidget {
@@ -13,6 +17,9 @@ class RootNavigation extends StatefulWidget {
 
 class _RootNavigationState extends State<RootNavigation> {
   int _currentIndex = 0;
+  int _unreadCount = 0;
+  Timer? _pollTimer;
+  StreamSubscription? _notificationSub;
 
   final List<Widget> _screens = [
     const GridScreen(),
@@ -21,46 +28,137 @@ class _RootNavigationState extends State<RootNavigation> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _fetchUnreadCount();
+    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _fetchUnreadCount();
+    });
+    _notificationSub = socketService.notificationStream.listen((_) {
+      _fetchUnreadCount();
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    _notificationSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetchUnreadCount() async {
+    if (!apiService.isLoggedIn) return;
+    try {
+      final count = await apiService.getUnreadNotificationCount();
+      if (mounted) {
+        setState(() {
+          _unreadCount = count;
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _openNotifications() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+    );
+    _fetchUnreadCount();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: AppColors.navyDark, width: 1)),
+    return Stack(
+      children: [
+        Scaffold(
+          body: IndexedStack(
+            index: _currentIndex,
+            children: _screens,
+          ),
+          bottomNavigationBar: Container(
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: AppColors.navyDark, width: 1)),
+            ),
+            child: BottomNavigationBar(
+              backgroundColor: AppColors.navyPrimary,
+              selectedItemColor: AppColors.navSelected,
+              unselectedItemColor: AppColors.navUnselected,
+              showSelectedLabels: true,
+              showUnselectedLabels: true,
+              type: BottomNavigationBarType.fixed,
+              elevation: 0,
+              currentIndex: _currentIndex,
+              onTap: (index) {
+                setState(() {
+                  _currentIndex = index;
+                });
+              },
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.public),
+                  label: 'WORLD',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.people_alt),
+                  label: 'FEED',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.account_circle),
+                  label: 'PROFILE',
+                ),
+              ],
+            ),
+          ),
         ),
-        child: BottomNavigationBar(
-          backgroundColor: AppColors.navyPrimary,
-          selectedItemColor: AppColors.navSelected,
-          unselectedItemColor: AppColors.navUnselected,
-          showSelectedLabels: true,
-          showUnselectedLabels: true,
-          type: BottomNavigationBarType.fixed,
-          elevation: 0,
-          currentIndex: _currentIndex,
-          onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-          },
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.public),
-              label: 'WORLD',
+        if (_unreadCount > 0)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            left: 12,
+            child: GestureDetector(
+              onTap: _openNotifications,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.navyPrimary.withOpacity(0.85),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.star,
+                      color: AppColors.accentAmber,
+                      size: 24,
+                    ),
+                  ),
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    child: Container(
+                      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: const BoxDecoration(
+                        color: AppColors.accentRed,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          _unreadCount > 99 ? '99+' : '$_unreadCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.people_alt),
-              label: 'FEED',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.account_circle),
-              label: 'PROFILE',
-            ),
-          ],
-        ),
-      ),
+          ),
+      ],
     );
   }
 }

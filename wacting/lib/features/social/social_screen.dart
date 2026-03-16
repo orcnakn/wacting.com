@@ -122,7 +122,7 @@ class _CampaignsTabState extends State<_CampaignsTab>
   }
 
   void _navigateToVotingHistory() {
-    _tabController.animateTo(3); // 4th tab (index 3)
+    _tabController.animateTo(2); // Oylama tab (index 2)
   }
 
   @override
@@ -138,9 +138,9 @@ class _CampaignsTabState extends State<_CampaignsTab>
           tabAlignment: TabAlignment.center,
           tabs: const [
             Tab(text: 'Aktif'),
-            Tab(text: 'Pasif'),
             Tab(text: 'Takip Edilenler'),
             Tab(text: 'Oylama'),
+            Tab(text: 'Gecmis'),
           ],
         ),
         Expanded(
@@ -148,9 +148,9 @@ class _CampaignsTabState extends State<_CampaignsTab>
             controller: _tabController,
             children: [
               _buildActiveCampaigns(),
-              _buildPassiveCampaigns(),
               _buildFollowedCampaigns(),
               _buildVotingHistory(),
+              _buildPassiveCampaigns(),
             ],
           ),
         ),
@@ -209,27 +209,33 @@ class _CampaignsTabState extends State<_CampaignsTab>
             child: Center(child: Text('Henuz kampanyaniz yok. Yukaridaki butondan olusturun!',
                 style: TextStyle(color: AppColors.textTertiary), textAlign: TextAlign.center)),
           ),
-        ..._myCampaigns.map((c) {
-          final myStaked = double.tryParse((c['myStakedWac'] ?? '0').toString()) ?? 0;
-          final totalStaked = double.tryParse((c['totalWacStaked'] ?? '0').toString()) ?? 0;
-          final memberCount = (c['memberCount'] ?? c['_count']?['members'] ?? 0) as int;
-          final isLeader = c['isLeader'] == true;
+        ...(() {
+          final sorted = [..._myCampaigns];
+          sorted.sort((a, b) {
+            final aDate = DateTime.tryParse((a['createdAt'] ?? '').toString()) ?? DateTime(0);
+            final bDate = DateTime.tryParse((b['createdAt'] ?? '').toString()) ?? DateTime(0);
+            return bDate.compareTo(aDate);
+          });
+          return sorted.map((c) {
+            final myStaked = double.tryParse((c['myStakedWac'] ?? '0').toString()) ?? 0;
+            final totalStaked = double.tryParse((c['totalWacStaked'] ?? '0').toString()) ?? 0;
+            final memberCount = (c['memberCount'] ?? c['_count']?['members'] ?? 0) as int;
+            final isLeader = c['isLeader'] == true;
 
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _buildDetailedCampaignCard(
-              campaignId: c['id'] ?? '',
-              title: c['title'] ?? 'Kampanya',
-              slogan: '"${c['slogan'] ?? ''}"',
-              participants: memberCount,
-              totalWacStaked: totalStaked,
-              myStakedWac: myStaked,
-              isRac: false,
-              hasActivePoll: _myPolls.any((p) => p['status'] == 'ACTIVE'),
-              isLeader: isLeader,
-            ),
-          );
-        }),
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _buildCompactMyCampaignRow(
+                campaignId: c['id'] ?? '',
+                title: c['title'] ?? 'Kampanya',
+                slogan: c['slogan'] ?? '',
+                participants: memberCount,
+                totalWacStaked: totalStaked,
+                myStakedWac: myStaked,
+                isLeader: isLeader,
+              ),
+            );
+          });
+        })(),
       ],
     );
   }
@@ -362,6 +368,106 @@ class _CampaignsTabState extends State<_CampaignsTab>
           );
         }),
       ],
+    );
+  }
+
+  // ── Compact Single-Line Campaign Row ───────────────────────────────────────
+  Widget _buildCompactMyCampaignRow({
+    required String campaignId,
+    required String title,
+    required String slogan,
+    required int participants,
+    required double totalWacStaked,
+    required double myStakedWac,
+    required bool isLeader,
+  }) {
+    String fmtWac(double v) => v >= 1000
+        ? '${(v / 1000).toStringAsFixed(1)}K'
+        : v.toStringAsFixed(1);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => _showCampaignDetailSheet(
+        campaignId: campaignId,
+        title: title,
+        slogan: slogan,
+        participants: participants,
+        totalWacStaked: totalWacStaked,
+        myStakedWac: myStakedWac,
+        isLeader: isLeader,
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.borderLight, width: 0.5),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 10, height: 10,
+              decoration: BoxDecoration(
+                color: isLeader ? AppColors.accentAmber : AppColors.accentBlue,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '$title — $slogan',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w500),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${fmtWac(totalWacStaked)} WAC',
+              style: TextStyle(color: AppColors.accentAmber, fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '$participants',
+              style: TextStyle(color: AppColors.textTertiary, fontSize: 11),
+            ),
+            Icon(Icons.people_alt_outlined, color: AppColors.textTertiary, size: 14),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right, color: AppColors.textTertiary, size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCampaignDetailSheet({
+    required String campaignId,
+    required String title,
+    required String slogan,
+    required int participants,
+    required double totalWacStaked,
+    required double myStakedWac,
+    required bool isLeader,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surfaceWhite,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+        child: _buildDetailedCampaignCard(
+          campaignId: campaignId,
+          title: title,
+          slogan: slogan,
+          participants: participants,
+          totalWacStaked: totalWacStaked,
+          myStakedWac: myStakedWac,
+          isRac: false,
+          hasActivePoll: _myPolls.isNotEmpty,
+          isLeader: isLeader,
+        ),
+      ),
     );
   }
 
@@ -855,9 +961,9 @@ class _CampaignsTabState extends State<_CampaignsTab>
 
           return DraggableScrollableSheet(
             expand: false,
-            initialChildSize: 0.9,
-            minChildSize: 0.5,
-            maxChildSize: 0.95,
+            initialChildSize: 0.7,
+            minChildSize: 0.4,
+            maxChildSize: 0.85,
             builder: (ctx2, scrollCtrl) => Column(children: [
               // Handle
               Container(
@@ -868,11 +974,11 @@ class _CampaignsTabState extends State<_CampaignsTab>
               Expanded(
                 child: ListView(
                   controller: scrollCtrl,
-                  padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.of(ctx).viewInsets.bottom + 24),
                   children: [
                     // ── Baslik ──────────────────────────────────────────────
                     Text('Kampanya Olustur',
-                        style: TextStyle(color: AppColors.textPrimary, fontSize: 22, fontWeight: FontWeight.bold)),
+                        style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
                     Text('Ikon, slogan ve sosyal medya baglantilari gir.',
                         style: TextStyle(color: AppColors.textTertiary, fontSize: 13)),
@@ -1464,17 +1570,10 @@ class _GlobalTabState extends State<_GlobalTab> {
         if (_nearby.isEmpty)
           Text('Bolgemdeki kampanya bulunamadi', style: TextStyle(color: AppColors.textTertiary))
         else
-          SizedBox(
-            height: 140,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: _nearby.length,
-              itemBuilder: (ctx, idx) => Padding(
-                padding: EdgeInsets.only(right: idx == _nearby.length - 1 ? 0 : 12),
-                child: _buildCompactCampaignCard(_nearby[idx]),
-              ),
-            ),
-          ),
+          ...(_nearby.map((c) => Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _buildCompactCampaignRow(c),
+          ))),
 
         const SizedBox(height: 24),
         Row(
@@ -1488,17 +1587,10 @@ class _GlobalTabState extends State<_GlobalTab> {
         if (_popular.isEmpty)
           Text('Populer kampanya bulunamadi', style: TextStyle(color: AppColors.textTertiary))
         else
-          SizedBox(
-            height: 140,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: _popular.length,
-              itemBuilder: (ctx, idx) => Padding(
-                padding: EdgeInsets.only(right: idx == _popular.length - 1 ? 0 : 12),
-                child: _buildCompactCampaignCard(_popular[idx]),
-              ),
-            ),
-          ),
+          ...(_popular.map((c) => Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _buildCompactCampaignRow(c),
+          ))),
 
         const SizedBox(height: 24),
         Row(
@@ -1512,18 +1604,56 @@ class _GlobalTabState extends State<_GlobalTab> {
         if (_trending.isEmpty)
           Text('Trending kampanya bulunamadi', style: TextStyle(color: AppColors.textTertiary))
         else
-          SizedBox(
-            height: 140,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: _trending.length,
-              itemBuilder: (ctx, idx) => Padding(
-                padding: EdgeInsets.only(right: idx == _trending.length - 1 ? 0 : 12),
-                child: _buildCompactCampaignCard(_trending[idx]),
-              ),
-            ),
-          ),
+          ...(_trending.map((c) => Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _buildCompactCampaignRow(c),
+          ))),
       ],
+    );
+  }
+
+  Widget _buildCompactCampaignRow(Map<String, dynamic> campaign) {
+    final campaignId = (campaign['id'] ?? '') as String;
+    final title = (campaign['title'] ?? 'Kampanya') as String;
+    final slogan = (campaign['slogan'] ?? '') as String;
+    final memberCount = (campaign['memberCount'] ?? 0) as int;
+    final totalWac = (campaign['totalWacStaked'] ?? campaign['totalWac'] ?? '0').toString();
+    final wacValue = double.tryParse(totalWac) ?? 0.0;
+    final wacDisplay = wacValue >= 1000
+        ? '${(wacValue / 1000).toStringAsFixed(1)}K'
+        : wacValue.toStringAsFixed(0);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => _showJoinCampaignModal(campaignId, title),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.borderLight, width: 0.5),
+        ),
+        child: Row(
+          children: [
+            Container(width: 10, height: 10,
+              decoration: BoxDecoration(color: AppColors.accentBlue, shape: BoxShape.circle)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text('$title — $slogan',
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w500)),
+            ),
+            const SizedBox(width: 8),
+            Text('$wacDisplay WAC',
+              style: TextStyle(color: AppColors.accentAmber, fontSize: 11, fontWeight: FontWeight.bold)),
+            const SizedBox(width: 6),
+            Text('$memberCount', style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
+            Icon(Icons.people_alt_outlined, color: AppColors.textTertiary, size: 14),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right, color: AppColors.textTertiary, size: 16),
+          ],
+        ),
+      ),
     );
   }
 

@@ -96,6 +96,7 @@ export async function authRoutes(fastify: FastifyInstance) {
                         email,
                         passwordHash,
                         slogan: displayName,
+                        displayName: email.split('@')[0].substring(0, 16),
                         emailVerified: false,
                         emailVerifyToken: code,
                         icon: {

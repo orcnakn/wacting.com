@@ -12,6 +12,7 @@ import '../../core/models/icon_model.dart';
 import '../../app/constants.dart';
 import '../../app/theme.dart';
 import 'day_night_layer.dart';
+import 'lod_manager.dart';
 
 // ─── Continent → Country mapping ─────────────────────────────────────────────
 const Map<String, List<String>> _continentCountries = {
@@ -89,16 +90,23 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   bool _regionSelectMode = false;       // toggle: show/hide polygon overlay
   List<_CountryPolygon> _countryPolygons = [];  // 110m countries
   List<_CountryPolygon> _admin1Polygons = [];   // 50m admin-1 (states/provinces)
+  List<_CountryPolygon> _oceanPolygons = [];    // ocean/sea regions
+  List<_CityPoint> _cityPoints = [];            // major cities
   final Set<String> _selectedCountries = {};    // individual country names
   final Set<String> _selectedContinents = {};   // whole-continent selections
   final Set<String> _excludedCountries = {};    // countries excluded from continent selection
   final Set<String> _selectedRegions = {};      // admin-1 regions ("state|country")
+  final Set<String> _selectedOceans = {};       // ocean/sea names
+  final Set<String> _selectedCities = {};       // city names ("city|country")
   bool _isCountriesLoaded = false;
   bool _isAdmin1Loaded = false;
+  bool _isOceansLoaded = false;
+  bool _isCitiesLoaded = false;
 
   // ── Pause/Resume state ──
   bool _paused = false;
-  List<IconModel> _pausedSnapshot = [];  // frozen icons when paused
+  List<IconModel> _pausedSnapshot = [];
+  List<IconModel>? _lastIcons;
 
   @override
   void initState() {
@@ -212,6 +220,63 @@ class _GridScreenState extends ConsumerState<GridScreen> {
     }
   }
 
+  Future<void> _ensureOceansLoaded() async {
+    if (_isOceansLoaded) return;
+    try {
+      final raw = await rootBundle.loadString('assets/map/ocean_regions.geojson');
+      final Map<String, dynamic> geoJson = jsonDecode(raw);
+      final List features = geoJson['features'] as List;
+      final List<_CountryPolygon> parsed = [];
+      for (final feature in features) {
+        final props = feature['properties'] as Map<String, dynamic>;
+        final name = (props['name'] ?? 'Unknown') as String;
+        final geometry = feature['geometry'];
+        final type = geometry['type'] as String;
+        if (type == 'Polygon') {
+          final coords = geometry['coordinates'] as List;
+          parsed.add(_CountryPolygon(
+            name: name, continent: null, parentCountry: null,
+            outerRing: _parseRing(coords[0] as List),
+            holes: coords.length > 1
+                ? coords.sublist(1).map((h) => _parseRing(h as List)).toList()
+                : <List<LatLng>>[],
+          ));
+        }
+      }
+      if (mounted) {
+        setState(() { _oceanPolygons = parsed; _isOceansLoaded = true; });
+      }
+    } catch (e) {
+      debugPrint("Failed to load ocean regions: $e");
+    }
+  }
+
+  Future<void> _ensureCitiesLoaded() async {
+    if (_isCitiesLoaded) return;
+    try {
+      final raw = await rootBundle.loadString('assets/map/major_cities.geojson');
+      final Map<String, dynamic> geoJson = jsonDecode(raw);
+      final List features = geoJson['features'] as List;
+      final List<_CityPoint> parsed = [];
+      for (final feature in features) {
+        final props = feature['properties'] as Map<String, dynamic>;
+        final coords = feature['geometry']['coordinates'] as List;
+        parsed.add(_CityPoint(
+          name: (props['name'] ?? '') as String,
+          country: (props['country'] ?? '') as String,
+          continent: (props['continent'] ?? '') as String,
+          point: LatLng((coords[1] as num).toDouble(), (coords[0] as num).toDouble()),
+          population: (props['population'] as num?)?.toInt() ?? 0,
+        ));
+      }
+      if (mounted) {
+        setState(() { _cityPoints = parsed; _isCitiesLoaded = true; });
+      }
+    } catch (e) {
+      debugPrint("Failed to load cities: $e");
+    }
+  }
+
   List<LatLng> _parseRing(List coords) {
     return coords.map<LatLng>((c) => LatLng((c as List)[1].toDouble(), c[0].toDouble())).toList();
   }
@@ -225,7 +290,10 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   LatLng _offsetToLatLng(Offset pos) {
     double lng = (pos.dx / 510) * 360 - 180;
     double lat = 90 - (pos.dy / 510) * 180;
-    return LatLng(lat, lng);
+    // Normalize longitude to -180..180
+    while (lng > 180) lng -= 360;
+    while (lng < -180) lng += 360;
+    return LatLng(lat.clamp(-90, 90), lng);
   }
 
   // ── Ray-casting point-in-polygon ──
@@ -249,19 +317,34 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   String? _findCountryAtPoint(LatLng point) {
     for (final cp in _countryPolygons) {
       if (_pointInPolygon(point, cp.outerRing)) {
-        // Check holes — if point is inside a hole, skip this polygon
         bool inHole = false;
         for (final hole in cp.holes) {
           if (_pointInPolygon(point, hole)) { inHole = true; break; }
         }
-        if (!inHole) {
-          debugPrint('🗺️ Found country: ${cp.name} at ${point.latitude}, ${point.longitude}');
-          return cp.name;
-        }
+        if (!inHole) return cp.name;
       }
     }
-    debugPrint('❌ No country found at ${point.latitude}, ${point.longitude}');
     return null;
+  }
+
+  String? _findOceanAtPoint(LatLng point) {
+    for (final cp in _oceanPolygons) {
+      if (_pointInPolygon(point, cp.outerRing)) return cp.name;
+    }
+    return null;
+  }
+
+  _CityPoint? _findNearestCity(LatLng point, {double maxDistKm = 50.0}) {
+    _CityPoint? nearest;
+    double minDist = double.infinity;
+    for (final city in _cityPoints) {
+      final dist = const Distance().as(LengthUnit.Kilometer, point, city.point);
+      if (dist < minDist && dist <= maxDistKm) {
+        minDist = dist;
+        nearest = city;
+      }
+    }
+    return nearest;
   }
 
   // Find admin-1 region at a point
@@ -285,7 +368,8 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   String get _zoomLevel {
     if (_currentZoom < 4) return 'continents';
     if (_currentZoom < 7) return 'countries';
-    return 'regions';  // admin-1 states/provinces
+    if (_currentZoom < 10) return 'regions';
+    return 'cities';
   }
 
   // ── Check if a country polygon is selected (directly or via continent) ──
@@ -313,7 +397,22 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
     if (level == 'continents') {
       final country = _findCountryAtPoint(point);
-      if (country == null) return;
+      if (country == null) {
+        if (_isOceansLoaded) {
+          final ocean = _findOceanAtPoint(point);
+          if (ocean != null) {
+            setState(() {
+              if (_selectedOceans.contains(ocean)) {
+                _selectedOceans.remove(ocean);
+              } else {
+                _selectedOceans.add(ocean);
+              }
+            });
+            _showSelectionSnackbar(ocean);
+          }
+        }
+        return;
+      }
       final continent = _continentForCountry(country);
       if (continent == null) return;
 
@@ -334,30 +433,55 @@ class _GridScreenState extends ConsumerState<GridScreen> {
       _showSelectionSnackbar('🌍 $continent');
     } else if (level == 'countries') {
       final country = _findCountryAtPoint(point);
-      if (country == null) return;
+      if (country == null) {
+        if (_isOceansLoaded) {
+          final ocean = _findOceanAtPoint(point);
+          if (ocean != null) {
+            setState(() {
+              if (_selectedOceans.contains(ocean)) {
+                _selectedOceans.remove(ocean);
+              } else {
+                _selectedOceans.add(ocean);
+              }
+            });
+            _showSelectionSnackbar(ocean);
+          }
+        }
+        return;
+      }
 
       final cont = _continentForCountry(country);
       final isViaContinent = cont != null && _selectedContinents.contains(cont);
 
       setState(() {
         if (_excludedCountries.contains(country)) {
-          // Re-include: remove from exclusions
           _excludedCountries.remove(country);
         } else if (isViaContinent) {
-          // Country is selected via continent → exclude it
           _excludedCountries.add(country);
         } else if (_selectedCountries.contains(country)) {
-          // Directly selected → remove
           _selectedCountries.remove(country);
         } else {
-          // Not selected → add directly
           _selectedCountries.add(country);
         }
       });
       final excluded = _excludedCountries.contains(country);
-      _showSelectionSnackbar(excluded ? '❌ $country (çıkarıldı)' : '🗺️ $country');
-    } else {
-      // Regions zoom (≥7) — select admin-1 state/province
+      _showSelectionSnackbar(excluded ? '$country (cikarildi)' : country);
+    } else if (level == 'cities') {
+      if (_isCitiesLoaded) {
+        final city = _findNearestCity(point);
+        if (city != null) {
+          final key = '${city.name}|${city.country}';
+          setState(() {
+            if (_selectedCities.contains(key)) {
+              _selectedCities.remove(key);
+            } else {
+              _selectedCities.add(key);
+            }
+          });
+          _showSelectionSnackbar('${city.name} (${city.country})');
+          return;
+        }
+      }
       if (_isAdmin1Loaded) {
         final region = _findAdmin1AtPoint(point);
         if (region != null) {
@@ -369,7 +493,30 @@ class _GridScreenState extends ConsumerState<GridScreen> {
               _selectedRegions.add(key);
             }
           });
-          _showSelectionSnackbar('🏙️ ${region.name} (${region.parentCountry})');
+          _showSelectionSnackbar('${region.name} (${region.parentCountry})');
+          return;
+        }
+      }
+    } else {
+      // Regions zoom (>=7) — select admin-1 state/province
+      if (_isAdmin1Loaded) {
+        final region = _findAdmin1AtPoint(point);
+        if (region != null) {
+          final key = '${region.name}|${region.parentCountry}';
+          final parentCountry = region.parentCountry;
+
+          setState(() {
+            if (_selectedRegions.contains(key)) {
+              _selectedRegions.remove(key);
+            } else if (parentCountry != null && _excludedCountries.contains(parentCountry)) {
+              _selectedRegions.add(key);
+            } else if (parentCountry != null && _isCountrySelected(parentCountry)) {
+              _selectedRegions.add(key);
+            } else {
+              _selectedRegions.add(key);
+            }
+          });
+          _showSelectionSnackbar('${region.name} (${region.parentCountry})');
           return;
         }
       }
@@ -388,15 +535,14 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   }
 
   void _showSelectionSnackbar(String label) {
-    final allSelected = <String>{..._selectedCountries};
-    for (final cont in _selectedContinents) {
-      allSelected.addAll(_continentCountries[cont] ?? []);
-    }
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Toggled: $label\nTotal regions: ${allSelected.length}'),
+      content: Text('$label | Toplam: $_totalSelectionCount bolge',
+          style: const TextStyle(color: Colors.white, fontSize: 12)),
       backgroundColor: AppColors.accentBlue,
       duration: const Duration(seconds: 2),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ));
   }
 
@@ -404,18 +550,49 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   String get _selectionSummary {
     final parts = <String>[];
     for (final c in _selectedContinents) {
-      parts.add('$c (all)');
+      final excluded = _excludedCountries.where((cc) {
+        final cont = _continentForCountry(cc);
+        return cont == c;
+      }).toList();
+      final reIncludedRegions = _selectedRegions.where((r) {
+        final split = r.split('|');
+        if (split.length < 2) return false;
+        return excluded.contains(split[1]);
+      }).toList();
+      if (excluded.isEmpty) {
+        parts.add(c);
+      } else {
+        final excStr = excluded.join(', ');
+        if (reIncludedRegions.isEmpty) {
+          parts.add('$c ($excStr haric)');
+        } else {
+          final reStr = reIncludedRegions.map((r) => r.split('|')[0]).join(', ');
+          parts.add('$c ($excStr haric, $reStr dahil)');
+        }
+      }
     }
     for (final c in _selectedCountries) {
       final cont = _continentForCountry(c);
       if (cont != null && _selectedContinents.contains(cont)) continue;
-      parts.add(c);
+      final regionExclusions = _selectedRegions.where((r) {
+        final split = r.split('|');
+        return split.length >= 2 && split[1] == c;
+      }).toList();
+      if (regionExclusions.isEmpty) {
+        parts.add(c);
+      } else {
+        final regStr = regionExclusions.map((r) => r.split('|')[0]).join(', ');
+        parts.add('$c ($regStr dahil)');
+      }
     }
     for (final r in _selectedRegions) {
       final split = r.split('|');
-      parts.add('${split[0]} (${split[1]})');
+      final parent = split.length >= 2 ? split[1] : null;
+      if (parent != null && _isCountrySelected(parent)) continue;
+      if (parent != null && _excludedCountries.contains(parent)) continue;
+      parts.add('${split[0]}${parent != null ? ' ($parent)' : ''}');
     }
-    return parts.join(', ');
+    return parts.isEmpty ? 'Seçim yok' : parts.join(', ');
   }
 
   int get _totalSelectionCount {
@@ -424,12 +601,13 @@ class _GridScreenState extends ConsumerState<GridScreen> {
       all.addAll(_continentCountries[c] ?? []);
     }
     all.removeAll(_excludedCountries);
-    return all.length + _selectedRegions.length;
+    return all.length + _selectedRegions.length + _selectedOceans.length + _selectedCities.length;
   }
 
   // Active polygons based on zoom level
   bool get _isGeoJsonLoaded => _isCountriesLoaded;
   List<_CountryPolygon> get _activePolygons {
+    if (_currentZoom >= 10 && _isAdmin1Loaded) return _admin1Polygons;
     if (_currentZoom >= 7 && _isAdmin1Loaded) return _admin1Polygons;
     return _countryPolygons;
   }
@@ -448,12 +626,11 @@ class _GridScreenState extends ConsumerState<GridScreen> {
             builder: (context, snapshot) {
               final liveIcons = snapshot.data ?? [];
 
-              // When paused, keep using the frozen snapshot; when live, use stream data
-              // Also update the snapshot whenever we get new data (so resume shows latest)
               if (!_paused) {
                 _pausedSnapshot = liveIcons;
               }
-              final icons = _paused ? _pausedSnapshot : liveIcons;
+              _lastIcons = _paused ? _pausedSnapshot : liveIcons;
+              final icons = _lastIcons!;
 
               // Sort Auras so large ones don't cover small ones
               final sortedAuraIcons = List<IconModel>.from(icons)
@@ -474,53 +651,29 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                  );
               }).where((c) => c.radius > 0).toList();
 
-              // ── LOD (Level of Detail) harita sistemi ──
-              // Icon boyutu (size, WAC-driven) ve zoom seviyesine göre:
-              // - Büyük icon'lar uzaktan görünür, küçükler yakından
-              // - Yakınlaştıkça nokta → dikdörtgen + slogan'a dönüşür
-
-              double _visibilityZoom(double s) {
-                if (s >= 500) return 2.0;  // Giant: her zaman
-                if (s >= 100) return 3.0;  // Large
-                if (s >= 25)  return 5.0;  // Medium
-                if (s >= 5)   return 7.0;  // Small
-                return 9.0;                // Micro: sadece yakın
-              }
-
               final zoom = _currentZoom;
 
-              final markerDots = icons.where((icon) {
-                // LOD visibility filter: icon görünür mü?
-                return zoom >= _visibilityZoom(icon.size);
-              }).map((icon) {
+              final markerDots = icons.map((icon) {
                   final latLng = _offsetToLatLng(icon.position);
                   final Color displayColor = icon.displayColor;
-                  final double iconSize = icon.size;
-                  final double minZoom = _visibilityZoom(iconSize);
+                  final double wacSize = icon.size;
 
-                  // Zoom farkı: ne kadar yakınlaştık?
-                  final double zoomDelta = (zoom - minZoom).clamp(0.0, 12.0);
+                  final double baseOpacity = LodManager.opacityForWac(wacSize);
 
-                  // Opacity: ilk göründüğünde %40, yakınlaştıkça %100
-                  final double opacity = (0.4 + (zoomDelta / 8.0) * 0.6).clamp(0.4, 1.0);
-
-                  // Dikdörtgen modu: minZoom + 4 zoom seviyesinden sonra
-                  final bool useRect = zoom >= minZoom + 4;
-
-                  if (useRect) {
-                    // 3:2 dikdörtgen ikon + slogan
+                  if (LodManager.isFullDetail(zoom, wacSize)) {
                     final String? slogan = icon.campaignSlogan;
-
-                    // Dikdörtgen boyutu: büyük icon → büyük dikdörtgen
-                    final double rectW = (12.0 + (iconSize / 50.0).clamp(0.0, 18.0)) * (1.0 + zoomDelta * 0.05);
-                    final double rectH = rectW * (2.0 / 3.0);
+                    final double rectW = LodManager.rectWidth(wacSize, zoom);
+                    final double rectH = LodManager.rectHeight(wacSize, zoom);
+                    final double fontSize = LodManager.sloganFontSize(wacSize, zoom);
+                    final double markerW = slogan != null ? (rectW + 40).clamp(rectW, 140.0) : rectW + 4;
+                    final double markerH = slogan != null ? rectH + fontSize + 8 : rectH + 4;
 
                     return Marker(
                         point: latLng,
-                        width: slogan != null ? 100.0 : rectW + 4,
-                        height: slogan != null ? rectH + 18.0 : rectH + 4,
+                        width: markerW,
+                        height: markerH,
                         child: Opacity(
-                          opacity: opacity,
+                          opacity: baseOpacity,
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -530,7 +683,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                                 decoration: BoxDecoration(
                                   color: displayColor,
                                   borderRadius: BorderRadius.circular(2),
-                                  boxShadow: iconSize >= 100 ? [
+                                  boxShadow: wacSize >= 100 ? [
                                     BoxShadow(color: displayColor.withOpacity(0.5), blurRadius: 6, spreadRadius: 1),
                                   ] : null,
                                 ),
@@ -547,7 +700,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                                     slogan,
                                     style: TextStyle(
                                       color: displayColor,
-                                      fontSize: 7,
+                                      fontSize: fontSize,
                                       fontWeight: FontWeight.w600,
                                       height: 1.2,
                                     ),
@@ -560,20 +713,19 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                         ),
                     );
                   } else {
-                    // Nokta modu: boyutu zoom ve size'a bağlı
-                    final double dotSize = (4.0 + (iconSize / 30.0).clamp(0.0, 8.0) + zoomDelta * 0.8).clamp(4.0, 16.0);
+                    final double dotSize = LodManager.dotSizeAtZoom(zoom, wacSize);
 
                     return Marker(
                         point: latLng,
                         width: dotSize,
                         height: dotSize,
                         child: Opacity(
-                          opacity: opacity,
+                          opacity: baseOpacity,
                           child: Container(
                             decoration: BoxDecoration(
                               color: displayColor,
                               shape: BoxShape.circle,
-                              boxShadow: iconSize >= 100 ? [
+                              boxShadow: wacSize >= 100 ? [
                                 BoxShadow(color: displayColor.withOpacity(0.6), blurRadius: 4, spreadRadius: 1),
                               ] : null,
                             ),
@@ -646,6 +798,24 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                     }
                   }
                 }
+
+                if (_isOceansLoaded) {
+                  for (final cp in _oceanPolygons) {
+                    final bool selected = _selectedOceans.contains(cp.name);
+                    polygonWidgets.add(Polygon(
+                      points: cp.outerRing,
+                      holePointsList: cp.holes,
+                      color: selected
+                          ? Colors.blue.withOpacity(0.3)
+                          : Colors.blue.withOpacity(0.05),
+                      borderColor: selected
+                          ? Colors.lightBlueAccent
+                          : Colors.blue.withOpacity(0.3),
+                      borderStrokeWidth: selected ? 2.5 : 0.8,
+                      isFilled: true,
+                    ));
+                  }
+                }
               }
 
               return FlutterMap(
@@ -655,12 +825,6 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   initialZoom: _currentZoom,
                   minZoom: 2.0,
                   maxZoom: 18.0,
-                  cameraConstraint: CameraConstraint.contain(
-                    bounds: LatLngBounds(
-                      const LatLng(-90, -180),
-                      const LatLng(90, 180),
-                    ),
-                  ),
                   onPositionChanged: (position, hasGesture) {
                     if (position.zoom != null) {
                       if (mounted) setState(() => _currentZoom = position.zoom!);
@@ -736,15 +900,19 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                     child: Text(
                       _regionSelectMode
                           ? (_zoomLevel == 'continents'
-                              ? '🌍 SELECT CONTINENTS'
+                              ? 'SELECT CONTINENTS'
                               : _zoomLevel == 'countries'
-                                  ? '🗺️ SELECT COUNTRIES'
-                           : '🏙️ SELECT REGIONS')
+                                  ? 'SELECT COUNTRIES'
+                                  : _zoomLevel == 'cities'
+                                      ? 'SELECT CITIES'
+                                      : 'SELECT REGIONS')
                           : (_currentZoom < 4
-                              ? '🌍 CONTINENTS'
+                              ? 'CONTINENTS'
                               : _currentZoom < 7
-                                  ? '🗺️ COUNTRIES'
-                                  : '🏙️ REGIONS'),
+                                  ? 'COUNTRIES'
+                                  : _currentZoom < 10
+                                      ? 'REGIONS'
+                                      : 'CITIES'),
                       style: TextStyle(
                         color: _regionSelectMode ? Colors.orangeAccent : AppColors.accentBlue,
                         fontWeight: FontWeight.bold,
@@ -757,7 +925,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
             ),
           ),
 
-          // ── Center Button ──
+          // ── Focus Button ──
           Positioned(
             bottom: 30,
             left: 20,
@@ -769,7 +937,17 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                 side: BorderSide(color: AppColors.accentTeal, width: 2)
               ),
               child: Icon(Icons.center_focus_strong, color: AppColors.accentTeal),
-              onPressed: () => _mapController.move(_initialCenter, 4.0),
+              onPressed: () {
+                final displayIcons = _paused ? _pausedSnapshot : (_lastIcons ?? []);
+                if (displayIcons.isNotEmpty) {
+                  final myIcon = displayIcons.first;
+                  final focusZoom = LodManager.focusZoom(myIcon.size);
+                  final latLng = _offsetToLatLng(myIcon.position);
+                  _mapController.move(latLng, focusZoom);
+                } else {
+                  _mapController.move(_initialCenter, 4.0);
+                }
+              },
             ),
           ),
 
@@ -797,14 +975,30 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                 setState(() => _paused = !_paused);
                 ScaffoldMessenger.of(context).clearSnackBars();
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text(
-                    _paused
-                        ? '⏸ Paused — icons frozen, tap to inspect'
-                        : '▶ Resumed — live positions',
-                    style: const TextStyle(color: Colors.white),
+                  content: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _paused ? Icons.pause_circle_filled : Icons.play_circle_filled,
+                        color: Colors.white, size: 16,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _paused ? 'Paused' : 'Resumed',
+                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                      ),
+                    ],
                   ),
-                  backgroundColor: _paused ? Colors.amber.shade800 : Colors.cyan,
-                  duration: const Duration(seconds: 2),
+                  backgroundColor: (_paused ? Colors.amber.shade800 : Colors.cyan).withOpacity(0.85),
+                  duration: const Duration(seconds: 1),
+                  behavior: SnackBarBehavior.floating,
+                  margin: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).size.height - 120,
+                    left: MediaQuery.of(context).size.width / 2 - 60,
+                    right: MediaQuery.of(context).size.width / 2 - 60,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 ));
               },
             ),
@@ -872,6 +1066,8 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   // Entering region-select mode — lazy-load GeoJSON layers + auto-pause
                   await _ensureCountriesLoaded();
                   await _ensureAdmin1Loaded();
+                  await _ensureOceansLoaded();
+                  await _ensureCitiesLoaded();
                   setState(() {
                     _regionSelectMode = true;
                     _paused = true;  // Auto-pause icons for inspection
@@ -1054,4 +1250,14 @@ class _CountryPolygon {
   final List<List<LatLng>> holes;
 
   _CountryPolygon({required this.name, this.continent, this.parentCountry, required this.outerRing, required this.holes});
+}
+
+class _CityPoint {
+  final String name;
+  final String country;
+  final String continent;
+  final LatLng point;
+  final int population;
+
+  _CityPoint({required this.name, required this.country, required this.continent, required this.point, required this.population});
 }
