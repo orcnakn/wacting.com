@@ -14,7 +14,7 @@ class LodManager {
   static const double heatmapThreshold = 0.1;
 
   // All icons render as this uniform dot size when zoomed out
-  static const double _uniformDotSize = 4.0;
+  static const double _uniformDotSize = 10.0;
 
   static bool shouldDrawGridLines(double currentZoom) {
     return currentZoom >= gridLineThreshold;
@@ -28,10 +28,10 @@ class LodManager {
   static double opacityForWac(double wacSize, double zoom) {
     // At very low zoom, large WAC icons are slightly more visible
     if (zoom < 3.0) {
-      if (wacSize >= 500) return 0.9;
-      if (wacSize >= 100) return 0.7;
-      if (wacSize >= 10) return 0.5;
-      return 0.35;
+      if (wacSize >= 500) return 1.0;
+      if (wacSize >= 100) return 0.9;
+      if (wacSize >= 10) return 0.75;
+      return 0.6;
     }
     return 1.0;
   }
@@ -62,7 +62,7 @@ class LodManager {
     // During transition: grow from dot to full marker
     final fullZoom = zoomForFullDetail(wacSize);
     final t = ((zoom - transZoom) / (fullZoom - transZoom)).clamp(0.0, 1.0);
-    return _uniformDotSize + (8.0 - _uniformDotSize) * t;
+    return _uniformDotSize + (16.0 - _uniformDotSize) * t;
   }
 
   /// Whether to show full detail (rectangle + slogan)
@@ -77,9 +77,9 @@ class LodManager {
 
   /// Rectangle width for full-detail mode
   static double rectWidth(double wacSize, double zoom) {
-    final base = 20.0 + (log(wacSize.clamp(1, 10000)) / ln10) * 8.0;
+    final base = 30.0 + (log(wacSize.clamp(1, 10000)) / ln10) * 12.0;
     final fullZoom = zoomForFullDetail(wacSize);
-    final extra = (zoom - fullZoom).clamp(0.0, 6.0) * 3.0;
+    final extra = (zoom - fullZoom).clamp(0.0, 6.0) * 4.0;
     return base + extra;
   }
 
@@ -92,7 +92,7 @@ class LodManager {
   static double sloganFontSize(double wacSize, double zoom) {
     final fullZoom = zoomForFullDetail(wacSize);
     final extra = (zoom - fullZoom).clamp(0.0, 6.0);
-    return 7.0 + extra * 0.8;
+    return 9.0 + extra * 1.0;
   }
 
   /// Focus zoom: enough to see the icon's slogan clearly

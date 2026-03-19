@@ -116,6 +116,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
             status?: string;
             createdAfter?: string;
             isBot?: string;
+            hasActiveSession?: string;
         };
 
         const page  = Math.max(1, Number(query.page  || '1'));
@@ -132,6 +133,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
         }
         if (query.createdAfter) {
             where.createdAt = { gte: new Date(query.createdAfter) };
+        }
+        if (query.hasActiveSession === 'true') {
+            where.loginSessions = { some: { logoutAt: null } };
         }
         if (query.search) {
             where.OR = [
@@ -402,6 +406,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
             search?: string;
             sortBy?: string;
             sortDir?: string;
+            wacActive?: string;
         };
 
         const page  = Math.max(1, Number(query.page || '1'));
@@ -416,6 +421,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
                 { email:  { contains: query.search, mode: 'insensitive' } },
                 { slogan: { contains: query.search, mode: 'insensitive' } },
             ];
+        }
+        if (query.wacActive === 'true') {
+            where.wac = { isActive: true };
         }
 
         const users = await prisma.user.findMany({

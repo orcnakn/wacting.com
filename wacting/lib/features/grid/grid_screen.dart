@@ -333,10 +333,27 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   }
 
   String? _findOceanAtPoint(LatLng point) {
+    // First try specific sea/ocean polygons from GeoJSON
     for (final cp in _oceanPolygons) {
       if (_pointInPolygon(point, cp.outerRing)) return cp.name;
     }
-    return null;
+    // Fallback: determine ocean by coordinates (covers gaps in polygons)
+    final lat = point.latitude;
+    final lng = point.longitude;
+    // Southern Ocean
+    if (lat < -60) return 'Southern Ocean';
+    // Arctic Ocean
+    if (lat > 65) return 'Arctic Ocean';
+    // Indian Ocean: roughly between Africa, Asia and Australia
+    if (lat < 30 && lat > -60 && lng > 20 && lng < 120) return 'Indian Ocean';
+    // South Pacific: southern hemisphere, east of Australia to Americas
+    if (lat < 0 && (lng >= 120 || lng < -60)) return 'South Pacific Ocean';
+    // North Pacific: northern hemisphere, Asia to Americas (wide)
+    if (lat >= 0 && lat <= 65 && (lng >= 120 || lng <= -80)) return 'North Pacific Ocean';
+    // South Atlantic: southern hemisphere, between Americas and Africa
+    if (lat < 0 && lng >= -60 && lng <= 20) return 'South Atlantic Ocean';
+    // North Atlantic: default for remaining northern water
+    return 'North Atlantic Ocean';
   }
 
   _CityPoint? _findNearestCity(LatLng point, {double maxDistKm = 50.0}) {
@@ -397,7 +414,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   }
 
   // ── World offsets for multi-copy rendering ──
-  static const List<double> _worldOffsets = [-360, 0, 360];
+  static const List<double> _worldOffsets = [-720, -360, 0, 360, 720];
 
   // ── Create polygon copies at each world offset ──
   List<Polygon> _multiWorldPolygon(_CountryPolygon cp, Color fillColor, Color borderColor, double borderWidth) {
@@ -499,70 +516,97 @@ class _GridScreenState extends ConsumerState<GridScreen> {
       final excluded = _excludedCountries.contains(country);
       _showSelectionSnackbar(excluded ? '$country (cikarildi)' : country);
     } else if (level == 'cities') {
-      if (_isCitiesLoaded) {
-        final city = _findNearestCity(point);
-        if (city != null) {
-          final key = '${city.name}|${city.country}';
-          setState(() {
-            if (_selectedCities.contains(key)) {
-              _selectedCities.remove(key);
-            } else {
-              _selectedCities.add(key);
-            }
-          });
-          _showSelectionSnackbar('${city.name} (${city.country})');
-          return;
+      // First check if tap is on land
+      final country = _findCountryAtPoint(point);
+      if (country != null) {
+        if (_isCitiesLoaded) {
+          final city = _findNearestCity(point);
+          if (city != null) {
+            final key = '${city.name}|${city.country}';
+            setState(() {
+              if (_selectedCities.contains(key)) {
+                _selectedCities.remove(key);
+              } else {
+                _selectedCities.add(key);
+              }
+            });
+            _showSelectionSnackbar('${city.name} (${city.country})');
+            return;
+          }
         }
-      }
-      if (_isAdmin1Loaded) {
-        final region = _findAdmin1AtPoint(point);
-        if (region != null) {
-          final key = '${region.name}|${region.parentCountry}';
-          setState(() {
-            if (_selectedRegions.contains(key)) {
-              _selectedRegions.remove(key);
-            } else {
-              _selectedRegions.add(key);
-            }
-          });
-          _showSelectionSnackbar('${region.name} (${region.parentCountry})');
-          return;
+        if (_isAdmin1Loaded) {
+          final region = _findAdmin1AtPoint(point);
+          if (region != null) {
+            final key = '${region.name}|${region.parentCountry}';
+            setState(() {
+              if (_selectedRegions.contains(key)) {
+                _selectedRegions.remove(key);
+              } else {
+                _selectedRegions.add(key);
+              }
+            });
+            _showSelectionSnackbar('${region.name} (${region.parentCountry})');
+            return;
+          }
         }
+      } else {
+        // Water area - try ocean selection
+        _trySelectOcean(point);
       }
     } else {
       // Regions zoom (>=7) — select admin-1 state/province
-      if (_isAdmin1Loaded) {
-        final region = _findAdmin1AtPoint(point);
-        if (region != null) {
-          final key = '${region.name}|${region.parentCountry}';
-          final parentCountry = region.parentCountry;
-
-          setState(() {
-            if (_selectedRegions.contains(key)) {
-              _selectedRegions.remove(key);
-            } else if (parentCountry != null && _excludedCountries.contains(parentCountry)) {
-              _selectedRegions.add(key);
-            } else if (parentCountry != null && _isCountrySelected(parentCountry)) {
-              _selectedRegions.add(key);
-            } else {
-              _selectedRegions.add(key);
-            }
-          });
-          _showSelectionSnackbar('${region.name} (${region.parentCountry})');
-          return;
-        }
-      }
-      // Fallback: use country-level selection
+      // First check if on land
       final country = _findCountryAtPoint(point);
-      if (country == null) return;
+      if (country != null) {
+        if (_isAdmin1Loaded) {
+          final region = _findAdmin1AtPoint(point);
+          if (region != null) {
+            final key = '${region.name}|${region.parentCountry}';
+            final parentCountry = region.parentCountry;
+
+            setState(() {
+              if (_selectedRegions.contains(key)) {
+                _selectedRegions.remove(key);
+              } else if (parentCountry != null && _excludedCountries.contains(parentCountry)) {
+                _selectedRegions.add(key);
+              } else if (parentCountry != null && _isCountrySelected(parentCountry)) {
+                _selectedRegions.add(key);
+              } else {
+                _selectedRegions.add(key);
+              }
+            });
+            _showSelectionSnackbar('${region.name} (${region.parentCountry})');
+            return;
+          }
+        }
+        // Fallback: country-level selection
+        setState(() {
+          if (_selectedCountries.contains(country)) {
+            _selectedCountries.remove(country);
+          } else {
+            _selectedCountries.add(country);
+          }
+        });
+        _showSelectionSnackbar(country);
+      } else {
+        // Water area - try ocean selection
+        _trySelectOcean(point);
+      }
+    }
+  }
+
+  void _trySelectOcean(LatLng point) {
+    if (!_isOceansLoaded) return;
+    final ocean = _findOceanAtPoint(point);
+    if (ocean != null) {
       setState(() {
-        if (_selectedCountries.contains(country)) {
-          _selectedCountries.remove(country);
+        if (_selectedOceans.contains(ocean)) {
+          _selectedOceans.remove(ocean);
         } else {
-          _selectedCountries.add(country);
+          _selectedOceans.add(ocean);
         }
       });
-      _showSelectionSnackbar('🗺️ $country');
+      _showSelectionSnackbar(ocean);
     }
   }
 
@@ -722,9 +766,9 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                                   decoration: BoxDecoration(
                                     color: displayColor,
                                     borderRadius: BorderRadius.circular(2),
-                                    boxShadow: wacSize >= 100 ? [
-                                      BoxShadow(color: displayColor.withOpacity(0.5), blurRadius: 6, spreadRadius: 1),
-                                    ] : null,
+                                    boxShadow: [
+                                      BoxShadow(color: displayColor.withOpacity(0.6), blurRadius: wacSize >= 100 ? 10 : 5, spreadRadius: wacSize >= 100 ? 2 : 1),
+                                    ],
                                   ),
                                 ),
                                 if (slogan != null)
@@ -756,17 +800,21 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
                       markerDots.add(Marker(
                           point: offsetPoint,
-                          width: dotSize,
-                          height: dotSize,
+                          width: dotSize + 6,
+                          height: dotSize + 6,
                           child: Opacity(
                             opacity: baseOpacity,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: displayColor,
-                                shape: BoxShape.circle,
-                                boxShadow: wacSize >= 100 ? [
-                                  BoxShadow(color: displayColor.withOpacity(0.6), blurRadius: 4, spreadRadius: 1),
-                                ] : null,
+                            child: Center(
+                              child: Container(
+                                width: dotSize,
+                                height: dotSize,
+                                decoration: BoxDecoration(
+                                  color: displayColor,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(color: displayColor.withOpacity(0.7), blurRadius: wacSize >= 100 ? 8 : 4, spreadRadius: wacSize >= 100 ? 2 : 1),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -855,18 +903,18 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   // Constrain latitude to Mercator bounds, longitude free for wrapping
                   cameraConstraint: CameraConstraint.contain(
                     bounds: LatLngBounds(
-                      const LatLng(-85.0, -540.0),  // allow ~1.5 extra worlds each side
-                      const LatLng(85.0, 540.0),
+                      const LatLng(-85.0, -900.0),  // allow 2.5 extra worlds each side
+                      const LatLng(85.0, 900.0),
                     ),
                   ),
                   onPositionChanged: (position, hasGesture) {
                     if (position.zoom != null) {
                       if (mounted) setState(() => _currentZoom = position.zoom!);
                     }
-                    // Snap-back: normalize longitude to [-360, 360] range
+                    // Snap-back: when user scrolls beyond 2 worlds, snap to center
                     if (position.center != null && hasGesture) {
                       final lng = position.center!.longitude;
-                      if (lng > 360 || lng < -360) {
+                      if (lng > 540 || lng < -540) {
                         final normalizedLng = ((lng + 180) % 360) - 180;
                         _mapController.move(
                           LatLng(position.center!.latitude, normalizedLng),
