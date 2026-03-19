@@ -259,7 +259,10 @@ let searchTimer = null;
 let refreshTimer = null;
 let refreshCountdown = 30;
 let activeFilter = null;
-let campaignFilterActive = null; // null | 'active' | 'all'
+let activeFilterTab = null;
+let campaignFilterActive = null;
+let filterIsoDate = null;
+let filterActiveSession = false;
 
 if (token) tryAutoLogin();
 
@@ -348,65 +351,68 @@ async function loadStats() {
 function applyStatFilter(filterKey, targetTab, label) {
   if (activeFilter === filterKey) { clearFilter(); return; }
   activeFilter = filterKey;
+  activeFilterTab = targetTab;
 
-  // Hide all filter bars first
-  ['filter-bar','filter-bar-wallets','filter-bar-campaigns','filter-bar-devnotes'].forEach(id => {
+  // Reset all filter state
+  filterIsoDate = null;
+  filterActiveSession = false;
+  campaignFilterActive = null;
+  walletWacActiveFilter = false;
+  document.getElementById('status-filter').value = '';
+  document.getElementById('verified-filter').value = '';
+  document.getElementById('bot-filter').value = '';
+  document.getElementById('note-read-filter').value = '';
+
+  // Show filter bar in target tab, hide others
+  const barMap = { users: 'filter-bar', wallets: 'filter-bar-wallets', campaigns: 'filter-bar-campaigns', devnotes: 'filter-bar-devnotes' };
+  Object.values(barMap).forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
-
-  // Show filter bar in target tab
-  const barMap = { users: 'filter-bar', wallets: 'filter-bar-wallets', campaigns: 'filter-bar-campaigns', devnotes: 'filter-bar-devnotes' };
   const bar = document.getElementById(barMap[targetTab] || 'filter-bar');
-  bar.style.display = 'flex';
-  const labelEl = bar.querySelector('span');
-  if (labelEl) labelEl.textContent = 'Filtre: ' + label;
-
-  // Switch to target tab
-  switchTab(targetTab);
+  if (bar) {
+    bar.style.display = 'flex';
+    const labelEl = bar.querySelector('span');
+    if (labelEl) labelEl.textContent = 'Filtre: ' + label;
+  }
 
   // Apply filter logic per tab
   const todayIso = new Date(Date.now() - 86400000).toISOString();
   const weekIso  = new Date(Date.now() - 7*86400000).toISOString();
 
   if (targetTab === 'users') {
-    document.getElementById('status-filter').value = '';
-    document.getElementById('verified-filter').value = '';
-    document.getElementById('bot-filter').value = '';
-    bar._isoDate = null;
-    bar._activeSessionFilter = false;
     if (filterKey === 'verified') document.getElementById('verified-filter').value = 'true';
     else if (filterKey === 'unverified') document.getElementById('verified-filter').value = 'false';
     else if (filterKey === 'banned') document.getElementById('status-filter').value = 'BANNED';
     else if (filterKey === 'bots') document.getElementById('bot-filter').value = 'true';
-    else if (filterKey === 'today') bar._isoDate = todayIso;
-    else if (filterKey === 'week') bar._isoDate = weekIso;
-    else if (filterKey === 'active_sessions') bar._activeSessionFilter = true;
-    loadUsers(1);
+    else if (filterKey === 'today') filterIsoDate = todayIso;
+    else if (filterKey === 'week') filterIsoDate = weekIso;
+    else if (filterKey === 'active_sessions') filterActiveSession = true;
   } else if (targetTab === 'campaigns') {
     campaignFilterActive = filterKey === 'camp_active' ? 'true' : '';
-    loadCampaigns(1);
   } else if (targetTab === 'wallets') {
-    walletWacActiveFilter = false;
     if (filterKey === 'wac_active') walletWacActiveFilter = true;
     if (filterKey === 'wac_sort' || filterKey === 'wac_active') document.getElementById('wallet-sort').value = 'wacBalance';
     else if (filterKey === 'rac_sort') document.getElementById('wallet-sort').value = 'racBalance';
-    loadWallets(1);
   } else if (targetTab === 'devnotes') {
     if (filterKey === 'notes_unread') document.getElementById('note-read-filter').value = 'false';
-    else document.getElementById('note-read-filter').value = '';
-    loadDevNotes(1);
   }
+
+  // Switch tab (this will also load data)
+  switchTab(targetTab);
   loadStats();
 }
 
 function clearFilter() {
   activeFilter = null;
+  activeFilterTab = null;
   campaignFilterActive = null;
   walletWacActiveFilter = false;
+  filterIsoDate = null;
+  filterActiveSession = false;
   ['filter-bar','filter-bar-wallets','filter-bar-campaigns','filter-bar-devnotes'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) { el.style.display = 'none'; el._isoDate = null; el._activeSessionFilter = false; }
+    if (el) el.style.display = 'none';
   });
   document.getElementById('status-filter').value = '';
   document.getElementById('verified-filter').value = '';
@@ -450,9 +456,8 @@ async function loadUsers(page) {
   if (status)   params.set('status', status);
   if (verified) params.set('emailVerified', verified);
   if (botVal)   params.set('isBot', botVal);
-  const bar = document.getElementById('filter-bar');
-  if (activeFilter && bar._isoDate) params.set('createdAfter', bar._isoDate);
-  if (activeFilter && bar._activeSessionFilter) params.set('hasActiveSession', 'true');
+  if (activeFilter && filterIsoDate) params.set('createdAfter', filterIsoDate);
+  if (activeFilter && filterActiveSession) params.set('hasActiveSession', 'true');
 
   document.getElementById('users-table').innerHTML = '<div class="loading">Yukleniyor...</div>';
   const res = await apiFetch('/admin/users?' + params);
@@ -631,9 +636,10 @@ function switchTab(tab) {
   const idx = tabMap[tab] ?? 0;
   document.querySelectorAll('.tab')[idx]?.classList.add('active');
   document.getElementById('tab-' + tab)?.classList.add('active');
-  if (tab === 'wallets') loadWallets(1);
-  if (tab === 'campaigns') loadCampaigns(1);
-  if (tab === 'devnotes') loadDevNotes(1);
+  if (tab === 'users') loadUsers(1);
+  else if (tab === 'wallets') loadWallets(1);
+  else if (tab === 'campaigns') loadCampaigns(1);
+  else if (tab === 'devnotes') loadDevNotes(1);
 }
 
 // ── Dev Notes ──────────────────────────────────────────────────────────────
