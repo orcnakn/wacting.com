@@ -71,7 +71,7 @@
     .new-reg .time { color: #555; font-size: 11px; white-space: nowrap; }
     .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:100; align-items:center; justify-content:center; }
     .modal-overlay.open { display:flex; }
-    .modal-box { background:#1a1a1a; border:1px solid #333; border-radius:14px; padding:32px; max-width:520px; width:90%; max-height:80vh; overflow-y:auto; }
+    .modal-box { background:#1a1a1a; border:1px solid #333; border-radius:14px; padding:32px; max-width:700px; width:90%; max-height:80vh; overflow-y:auto; }
     .modal-box h3 { font-size:16px; margin-bottom:16px; color:#fff; }
     .detail-row { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #222; font-size:13px; }
     .detail-row .k { color:#666; } .detail-row .v { color:#ccc; text-align:right; max-width:60%; word-break:break-all; }
@@ -246,7 +246,8 @@ let currentPage = 1;
 let searchTimer = null;
 let refreshTimer = null;
 let refreshCountdown = 30;
-let activeFilter = null; // null | 'today' | 'week' | 'all'
+let activeFilter = null;
+let campaignFilterActive = null; // null | 'active' | 'all'
 
 if (token) tryAutoLogin();
 
@@ -265,13 +266,13 @@ async function doLogin() {
   try {
     const res = await fetch(API + '/auth/email/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email, password:pass}) });
     const data = await res.json();
-    if (!res.ok) { document.getElementById('error-msg').textContent = data.error || 'Giriş başarısız.'; return; }
+    if (!res.ok) { document.getElementById('error-msg').textContent = data.error || 'Giris basarisiz.'; return; }
     token = data.token;
     localStorage.setItem('wacting_admin_token', token);
     const statsRes = await apiFetch('/admin/stats');
     if (!statsRes.ok) { document.getElementById('error-msg').textContent = 'Admin yetkisi yok.'; token = ''; return; }
     showMain();
-  } catch { document.getElementById('error-msg').textContent = 'Sunucuya bağlanılamadı.'; }
+  } catch { document.getElementById('error-msg').textContent = 'Sunucuya baglanilamadi.'; }
 }
 
 function showMain() {
@@ -299,7 +300,7 @@ function startAutoRefresh() {
     if (refreshCountdown <= 0) { refreshCountdown = 30; loadAll(); }
   }, 1000);
 }
-function updateCountdown() { document.getElementById('refresh-indicator').textContent = '↻ ' + refreshCountdown + 's'; }
+function updateCountdown() { document.getElementById('refresh-indicator').textContent = String.fromCharCode(8635) + ' ' + refreshCountdown + 's'; }
 
 async function loadStats() {
   const res = await apiFetch('/admin/stats');
@@ -307,68 +308,97 @@ async function loadStats() {
   const todayIso = new Date(Date.now() - 86400000).toISOString();
   const weekIso  = new Date(Date.now() - 7*86400000).toISOString();
   const cards = [
-    { num: d.totalUsers,      label: 'Toplam Üye',      cls: '',      filter: 'all',   iso: null,      hint: '↓ Tümünü göster' },
-    { num: d.todayUsers,      label: 'Bugün Kayıt',     cls: 'green', filter: 'today', iso: todayIso,  hint: '↓ Bugün kayıtları' },
-    { num: d.weekUsers,       label: 'Bu Hafta',        cls: 'green', filter: 'week',  iso: weekIso,   hint: '↓ Bu hafta kayıtları' },
-    { num: d.verifiedUsers,   label: 'Doğrulanmış',     cls: 'green', filter: 'verified',  iso: null, hint: '↓ Doğrulanmış' },
-    { num: d.unverifiedUsers, label: 'Bekliyor',        cls: 'amber', filter: 'unverified', iso: null, hint: '↓ Bekleyenler' },
-    { num: d.bannedUsers,     label: 'Banlı',           cls: 'red',   filter: 'banned',    iso: null, hint: '↓ Banlılar' },
-    { num: d.activeWacUsers,  label: 'Aktif WAC',       cls: '',      filter: null,    iso: null,      hint: '' },
-    { num: d.activeCampaigns, label: 'Aktif Kampanya',  cls: '',      filter: null,    iso: null,      hint: '' },
-    { num: d.totalCampaigns,  label: 'Toplam Kampanya', cls: '',      filter: null,    iso: null,      hint: '' },
-    { num: d.botUsers ?? 0,      label: 'Bot Hesaplar',    cls: '',   filter: 'bots',  iso: null, hint: '↓ Botlar' },
-    { num: d.devNotesTotal ?? 0, label: 'Dev Notlar',      cls: '',      filter: null,    iso: null,      hint: '' },
-    { num: d.devNotesUnread ?? 0,label: 'Okunmamış Not',   cls: 'amber', filter: null,    iso: null,      hint: '' },
-    { num: parseFloat(d.totalWacCirculation ?? '0').toFixed(2), label: 'WAC Dolaşım', cls: 'green', filter: null, iso: null, hint: '' },
-    { num: d.totalRacCirculation ?? '0', label: 'RAC Dolaşım', cls: 'red', filter: null, iso: null, hint: '' },
+    { num: d.totalUsers,      label: 'Toplam Uye',       cls: '',      filter: 'all',              tab: 'users',     hint: 'Tumunu goster' },
+    { num: d.todayUsers,      label: 'Bugun Kayit',      cls: 'green', filter: 'today',            tab: 'users',     hint: 'Bugun kayitlari' },
+    { num: d.weekUsers,       label: 'Bu Hafta',         cls: 'green', filter: 'week',             tab: 'users',     hint: 'Bu hafta kayitlari' },
+    { num: d.verifiedUsers,   label: 'Dogrulanmis',      cls: 'green', filter: 'verified',         tab: 'users',     hint: 'Dogrulanmis' },
+    { num: d.unverifiedUsers, label: 'Bekliyor',         cls: 'amber', filter: 'unverified',       tab: 'users',     hint: 'Bekleyenler' },
+    { num: d.bannedUsers,     label: 'Banli',            cls: 'red',   filter: 'banned',           tab: 'users',     hint: 'Banlilar' },
+    { num: d.activeWacUsers,  label: 'Aktif WAC',        cls: '',      filter: 'wac_active',       tab: 'wallets',   hint: 'Aktif WAC cuzdanlar' },
+    { num: d.activeCampaigns, label: 'Aktif Kampanya',   cls: '',      filter: 'camp_active',      tab: 'campaigns', hint: 'Aktif kampanyalar' },
+    { num: d.totalCampaigns,  label: 'Toplam Kampanya',  cls: '',      filter: 'camp_all',         tab: 'campaigns', hint: 'Tum kampanyalar' },
+    { num: d.botUsers ?? 0,   label: 'Bot Hesaplar',     cls: '',      filter: 'bots',             tab: 'users',     hint: 'Botlar' },
+    { num: d.devNotesTotal ?? 0,  label: 'Dev Notlar',   cls: '',      filter: 'notes_all',        tab: 'devnotes',  hint: 'Tum notlar' },
+    { num: d.devNotesUnread ?? 0, label: 'Okunmamis Not',cls: 'amber', filter: 'notes_unread',     tab: 'devnotes',  hint: 'Okunmamis notlar' },
+    { num: parseFloat(d.totalWacCirculation ?? '0').toFixed(2), label: 'WAC Dolasim', cls: 'green', filter: 'wac_sort', tab: 'wallets', hint: 'WAC siralama' },
+    { num: d.totalRacCirculation ?? '0', label: 'RAC Dolasim', cls: 'red', filter: 'rac_sort', tab: 'wallets', hint: 'RAC siralama' },
+    { num: d.activeSessions ?? 0, label: 'Aktif Oturum', cls: 'green', filter: null, tab: null, hint: '' },
   ];
   document.getElementById('stats-grid').innerHTML = cards.map(c => `
     <div class="stat-card ${c.filter ? 'clickable' : ''} ${activeFilter===c.filter && c.filter ? 'active-filter' : ''}"
-         ${c.filter ? `onclick="applyStatFilter('${c.filter}', ${c.iso ? "'"+c.iso+"'" : 'null'}, '${c.label}')"` : ''}>
+         ${c.filter ? `onclick="applyStatFilter('${c.filter}', '${c.tab}', '${c.label}')"` : ''}>
       <div class="num ${c.cls}">${c.num ?? 0}</div>
       <div class="label">${c.label}</div>
-      ${c.hint ? `<div class="filter-hint">${c.hint}</div>` : ''}
+      ${c.filter ? `<div class="filter-hint">${c.hint}</div>` : ''}
     </div>`).join('');
 }
 
-function applyStatFilter(filterKey, isoDate, label) {
+function applyStatFilter(filterKey, targetTab, label) {
+  if (activeFilter === filterKey) { clearFilter(); return; }
   activeFilter = filterKey;
+
+  // Show filter bar
   const bar = document.getElementById('filter-bar');
   bar.style.display = 'flex';
-  document.getElementById('filter-label').textContent = '🔽 Filtre: ' + label;
-  bar._isoDate = isoDate;
-  // Auto-set dropdown filters based on stat card click
-  if (filterKey === 'verified') { document.getElementById('verified-filter').value = 'true'; }
-  else if (filterKey === 'unverified') { document.getElementById('verified-filter').value = 'false'; }
-  else if (filterKey === 'banned') { document.getElementById('status-filter').value = 'BANNED'; }
-  else if (filterKey === 'bots') { document.getElementById('bot-filter').value = 'true'; }
-  else { document.getElementById('status-filter').value = ''; document.getElementById('verified-filter').value = ''; document.getElementById('bot-filter').value = ''; }
-  loadUsers(1);
+  document.getElementById('filter-label').textContent = 'Filtre: ' + label;
+
+  // Switch to target tab
+  switchTab(targetTab);
+
+  // Apply filter logic per tab
+  const todayIso = new Date(Date.now() - 86400000).toISOString();
+  const weekIso  = new Date(Date.now() - 7*86400000).toISOString();
+
+  if (targetTab === 'users') {
+    document.getElementById('status-filter').value = '';
+    document.getElementById('verified-filter').value = '';
+    document.getElementById('bot-filter').value = '';
+    bar._isoDate = null;
+    if (filterKey === 'verified') document.getElementById('verified-filter').value = 'true';
+    else if (filterKey === 'unverified') document.getElementById('verified-filter').value = 'false';
+    else if (filterKey === 'banned') document.getElementById('status-filter').value = 'BANNED';
+    else if (filterKey === 'bots') document.getElementById('bot-filter').value = 'true';
+    else if (filterKey === 'today') bar._isoDate = todayIso;
+    else if (filterKey === 'week') bar._isoDate = weekIso;
+    loadUsers(1);
+  } else if (targetTab === 'campaigns') {
+    campaignFilterActive = filterKey === 'camp_active' ? 'true' : '';
+    loadCampaigns(1);
+  } else if (targetTab === 'wallets') {
+    if (filterKey === 'wac_sort') document.getElementById('wallet-sort').value = 'wacBalance';
+    else if (filterKey === 'rac_sort') document.getElementById('wallet-sort').value = 'racBalance';
+    loadWallets(1);
+  } else if (targetTab === 'devnotes') {
+    if (filterKey === 'notes_unread') document.getElementById('note-read-filter').value = 'false';
+    else document.getElementById('note-read-filter').value = '';
+    loadDevNotes(1);
+  }
   loadStats();
 }
 
 function clearFilter() {
   activeFilter = null;
+  campaignFilterActive = null;
   document.getElementById('filter-bar').style.display = 'none';
   document.getElementById('filter-bar')._isoDate = null;
   document.getElementById('status-filter').value = '';
   document.getElementById('verified-filter').value = '';
   document.getElementById('bot-filter').value = '';
-  loadUsers(1);
+  document.getElementById('note-read-filter').value = '';
   loadStats();
 }
 
 async function loadRecent() {
   const res = await apiFetch('/admin/users?limit=8&page=1');
   const d = await res.json();
-  document.getElementById('recent-time').textContent = 'Son güncelleme: ' + new Date().toLocaleTimeString('tr-TR');
-  if (!d.users?.length) { document.getElementById('recent-list').innerHTML = '<div class="loading">Henüz kayıt yok.</div>'; return; }
+  document.getElementById('recent-time').textContent = 'Son guncelleme: ' + new Date().toLocaleTimeString('tr-TR');
+  if (!d.users?.length) { document.getElementById('recent-list').innerHTML = '<div class="loading">Henuz kayit yok.</div>'; return; }
   document.getElementById('recent-list').innerHTML = d.users.slice(0,3).map((u, i) => `
     <div class="new-reg">
       <div class="dot" style="background:${u.emailVerified?'#2ecc71':'#f39c12'}"></div>
       <span style="color:#4A90E2;font-weight:bold;font-size:11px;">PROFILE-${u.profileNumber || (i+1)}</span>
-      <div class="email">${u.email || u.slogan || '—'}</div>
-      <span class="badge ${u.emailVerified?'verified':'pending'}">${u.emailVerified?'✓ Doğrulandı':'⏳ Bekliyor'}</span>
+      <div class="email">${u.email || u.slogan || '---'}</div>
+      <span class="badge ${u.emailVerified?'verified':'pending'}">${u.emailVerified?'Dogrulanmis':'Bekliyor'}</span>
       <div class="time">${timeAgo(u.createdAt)}</div>
       <button class="sm" style="margin:0" onclick="viewUser('${u.id}')">Detay</button>
     </div>`).join('');
@@ -388,22 +418,22 @@ async function loadUsers(page) {
   const bar = document.getElementById('filter-bar');
   if (activeFilter && bar._isoDate) params.set('createdAfter', bar._isoDate);
 
-  document.getElementById('users-table').innerHTML = '<div class="loading">Yükleniyor...</div>';
+  document.getElementById('users-table').innerHTML = '<div class="loading">Yukleniyor...</div>';
   const res = await apiFetch('/admin/users?' + params);
   const d = await res.json();
-  document.getElementById('users-count').textContent = `${d.total ?? 0} kullanıcı`;
+  document.getElementById('users-count').textContent = `${d.total ?? 0} kullanici`;
   document.getElementById('page-info').textContent = `Sayfa ${d.page} / ${d.totalPages || 1}`;
-  if (!d.users?.length) { document.getElementById('users-table').innerHTML = '<div class="loading">Kullanıcı bulunamadı.</div>'; return; }
+  if (!d.users?.length) { document.getElementById('users-table').innerHTML = '<div class="loading">Kullanici bulunamadi.</div>'; return; }
 
   const startIdx = ((d.page || 1) - 1) * 20;
   const rows = d.users.map((u, i) => `
     <tr>
       <td style="color:#555;font-size:11px;">${startIdx + i + 1}</td>
       <td style="color:#4A90E2;font-weight:bold;font-size:11px;">PROFILE-${u.profileNumber || (startIdx + i + 1)}</td>
-      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${u.email||''}">${u.email||'—'} ${u.isBot?'<span class="badge bot">BOT</span>':''}</td>
-      <td>${u.slogan||'—'}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${u.email||''}">${u.email||'---'} ${u.isBot?'<span class="badge bot">BOT</span>':''}</td>
+      <td>${u.slogan||'---'}</td>
       <td><span class="badge ${u.status==='BANNED'?'banned':'active'}">${u.status}</span></td>
-      <td><span class="badge ${u.emailVerified?'verified':'pending'}">${u.emailVerified?'✓':'⏳'}</span></td>
+      <td><span class="badge ${u.emailVerified?'verified':'pending'}">${u.emailVerified?'V':'?'}</span></td>
       <td>${u.wac ? parseFloat(u.wac.wacBalance).toFixed(2) : '0'}</td>
       <td>${u.rac ? u.rac.racBalance.toString() : '0'}</td>
       <td>${u._count?.campaigns ?? 0}</td>
@@ -412,15 +442,15 @@ async function loadUsers(page) {
         ${u.status==='BANNED'
           ? `<button class="sm success" onclick="banUser('${u.id}','UNBAN')">Aktif Et</button>`
           : `<button class="sm danger" onclick="banUser('${u.id}','BAN')">Banla</button>`}
-        ${!u.emailVerified ? `<button class="sm warn" onclick="manualVerify('${u.id}')">Doğrula</button>` : ''}
-        <button class="sm notify-btn" onclick="openNotify('${u.id}','${(u.email||u.slogan||'').replace(/'/g,'&apos;')}')">📢</button>
+        ${!u.emailVerified ? `<button class="sm warn" onclick="manualVerify('${u.id}')">Dogrula</button>` : ''}
+        <button class="sm notify-btn" onclick="openNotify('${u.id}','${(u.email||u.slogan||'').replace(/'/g,'&apos;')}')">N</button>
         <button class="sm" onclick="viewUser('${u.id}')">Detay</button>
       </td>
     </tr>`).join('');
 
   document.getElementById('users-table').innerHTML = `
     <table>
-      <thead><tr><th>#</th><th>ID</th><th>Email</th><th>Kullanıcı</th><th>Durum</th><th>Email</th><th>WAC</th><th>RAC</th><th>Kampanya</th><th>Kayıt</th><th>İşlem</th></tr></thead>
+      <thead><tr><th>#</th><th>ID</th><th>Email</th><th>Kullanici</th><th>Durum</th><th>Email</th><th>WAC</th><th>RAC</th><th>Kampanya</th><th>Kayit</th><th>Islem</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
@@ -429,15 +459,15 @@ function debounceSearch() { clearTimeout(searchTimer); searchTimer = setTimeout(
 function changePage(delta) { loadUsers(Math.max(1, currentPage + delta)); }
 
 async function banUser(userId, action) {
-  if (!confirm(`Bu kullanıcıyı ${action==='BAN'?'banlamak':'aktif etmek'} istediğinize emin misiniz?`)) return;
+  if (!confirm(`Bu kullaniciyi ${action==='BAN'?'banlamak':'aktif etmek'} istediginize emin misiniz?`)) return;
   const res = await apiFetch('/admin/ban', {method:'POST', body:JSON.stringify({targetUserId:userId,action})});
-  if (res.ok) loadAll(); else alert('İşlem başarısız.');
+  if (res.ok) loadAll(); else alert('Islem basarisiz.');
 }
 
 async function manualVerify(userId) {
-  if (!confirm('Bu kullanıcının emailini manuel olarak doğrulamak istiyor musunuz?')) return;
+  if (!confirm('Bu kullanicinin emailini manuel olarak dogrulamak istiyor musunuz?')) return;
   const res = await apiFetch('/admin/verify-email', {method:'POST', body:JSON.stringify({userId})});
-  if (res.ok) loadAll(); else alert('İşlem başarısız.');
+  if (res.ok) loadAll(); else alert('Islem basarisiz.');
 }
 
 function openNotify(userId, email) {
@@ -453,40 +483,94 @@ async function sendNotify() {
   const userId  = document.getElementById('notify-user-id').value;
   const title   = document.getElementById('notify-title').value.trim();
   const message = document.getElementById('notify-message').value.trim();
-  if (!title || !message) { document.getElementById('notify-result').textContent = 'Başlık ve mesaj gerekli.'; return; }
+  if (!title || !message) { document.getElementById('notify-result').textContent = 'Baslik ve mesaj gerekli.'; return; }
   const res = await apiFetch('/admin/notify', {method:'POST', body:JSON.stringify({userId,title,message})});
   if (res.ok) {
     document.getElementById('notify-result').style.color = '#2ecc71';
-    document.getElementById('notify-result').textContent = '✓ Bildirim gönderildi!';
+    document.getElementById('notify-result').textContent = 'Bildirim gonderildi!';
     setTimeout(() => closeModal('notify-modal'), 1500);
   } else {
     document.getElementById('notify-result').style.color = '#e74c3c';
-    document.getElementById('notify-result').textContent = 'Gönderim başarısız.';
+    document.getElementById('notify-result').textContent = 'Gonderim basarisiz.';
   }
+}
+
+// ── User Detail (enhanced) ───────────────────────────────────────────────
+function formatDuration(totalSeconds) {
+  if (!totalSeconds || totalSeconds <= 0) return '0dk';
+  const d = Math.floor(totalSeconds / 86400);
+  const h = Math.floor((totalSeconds % 86400) / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  let s = '';
+  if (d > 0) s += d + 'g ';
+  if (h > 0) s += h + 'sa ';
+  s += m + 'dk';
+  return s.trim();
 }
 
 async function viewUser(userId) {
   document.getElementById('detail-modal').classList.add('open');
-  document.getElementById('detail-content').innerHTML = '<div class="loading">Yükleniyor...</div>';
+  document.getElementById('detail-content').innerHTML = '<div class="loading">Yukleniyor...</div>';
   const res = await apiFetch('/admin/users/' + userId);
-  const { user } = await res.json();
-  document.getElementById('detail-title').textContent = user.email || user.slogan || 'Kullanıcı';
-  const rows = [
-    ['ID', user.id], ['Email', user.email||'—'], ['Kullanıcı Adı', user.slogan||'—'],
-    ['Rol', user.role], ['Durum', user.status],
-    ['Email Doğrulandı', user.emailVerified ? '✓ Evet' : '✗ Hayır'],
-    ['WAC Bakiye', user.wac ? parseFloat(user.wac.wacBalance).toFixed(4)+' WAC' : '—'],
-    ['RAC Bakiye', user.rac ? user.rac.racBalance.toString()+' RAC' : '—'],
-    ['Kampanya', user._count?.campaigns??0], ['Takipçi', user._count?.followers??0],
-    ['Takip Edilen', user._count?.following??0],
-    ['Kayıt', new Date(user.createdAt).toLocaleString('tr-TR')],
+  const data = await res.json();
+  const user = data.user;
+  const totalTime = data.totalTimeSpent || 0;
+  document.getElementById('detail-title').textContent = user.email || user.slogan || 'Kullanici';
+
+  let html = '';
+
+  // Basic info
+  const info = [
+    ['ID', user.id],
+    ['Email', user.email||'---'],
+    ['Kullanici Adi', user.slogan||'---'],
+    ['Rol', user.role],
+    ['Durum', `<span class="badge ${user.status==='BANNED'?'banned':'active'}">${user.status}</span>`],
+    ['Email Dogrulanmis', user.emailVerified ? '<span style="color:#2ecc71">Evet</span>' : '<span style="color:#e74c3c">Hayir</span>'],
+    ['WAC Bakiye', user.wac ? parseFloat(user.wac.wacBalance).toFixed(4)+' WAC' : '---'],
+    ['RAC Bakiye', user.rac ? user.rac.racBalance.toString()+' RAC' : '---'],
+    ['Takipci', '<span style="color:#4A90E2;font-weight:bold;font-size:16px;">'+(user._count?.followers??0)+'</span>'],
+    ['Takip Edilen', '<span style="color:#4A90E2;font-weight:bold;font-size:16px;">'+(user._count?.following??0)+'</span>'],
+    ['Toplam Site Suresi', '<span style="color:#2ecc71;font-weight:bold;">'+formatDuration(totalTime)+'</span>'],
+    ['Kayit Tarihi', new Date(user.createdAt).toLocaleString('tr-TR')],
   ];
-  document.getElementById('detail-content').innerHTML = rows.map(([k,v]) =>
-    `<div class="detail-row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('') +
-    (user.campaigns?.length
-      ? '<div style="margin-top:14px;font-size:11px;color:#666;margin-bottom:6px;">KAMPANYALAR</div>' +
-        user.campaigns.map(c=>`<div class="detail-row"><span class="k">${c.title}</span><span class="v badge ${c.isActive?'active':'banned'}">${c.isActive?'Aktif':'Pasif'}</span></div>`).join('')
-      : '');
+  html += info.map(([k,v]) => `<div class="detail-row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
+
+  // Campaign memberships
+  const memberships = user.campaignMemberships || [];
+  if (memberships.length > 0) {
+    html += '<div style="margin-top:18px;font-size:12px;color:#4A90E2;font-weight:bold;margin-bottom:8px;">KAMPANYA KATILIMLARI (' + memberships.length + ')</div>';
+    html += '<table style="font-size:11px;"><thead><tr><th>Kampanya</th><th>Durum</th><th>Stake</th><th>Katilma</th></tr></thead><tbody>';
+    memberships.forEach(m => {
+      const c = m.campaign;
+      html += `<tr>
+        <td style="color:#4A90E2;font-weight:bold;">${c?.title||'---'}</td>
+        <td><span class="badge ${c?.isActive?'active':'banned'}">${c?.isActive?'Aktif':'Pasif'}</span></td>
+        <td style="color:#2ecc71;font-weight:bold;">${parseFloat(m.stakedWac||0).toFixed(2)} WAC</td>
+        <td style="white-space:nowrap;">${new Date(m.joinedAt).toLocaleString('tr-TR')}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  }
+
+  // Login sessions
+  const sessions = user.loginSessions || [];
+  if (sessions.length > 0) {
+    html += '<div style="margin-top:18px;font-size:12px;color:#4A90E2;font-weight:bold;margin-bottom:8px;">GIRIS GECMISI (Son 20)</div>';
+    html += '<table style="font-size:11px;"><thead><tr><th>IP</th><th>Ulke</th><th>Giris</th><th>Cikis</th><th>Sure</th></tr></thead><tbody>';
+    sessions.forEach(s => {
+      html += `<tr>
+        <td style="font-family:monospace;font-size:10px;">${s.ipAddress||'---'}</td>
+        <td>${s.country||'---'}</td>
+        <td style="white-space:nowrap;">${new Date(s.loginAt).toLocaleString('tr-TR')}</td>
+        <td style="white-space:nowrap;">${s.logoutAt ? new Date(s.logoutAt).toLocaleString('tr-TR') : '<span style="color:#2ecc71;">Aktif</span>'}</td>
+        <td>${s.duration ? formatDuration(s.duration) : '---'}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  }
+
+  document.getElementById('detail-content').innerHTML = html;
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
@@ -495,30 +579,25 @@ function closeModalBg(e, id) { if (e.target.id === id) closeModal(id); }
 function timeAgo(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime();
   const m = Math.floor(diff/60000);
-  if (m<1) return 'Az önce'; if (m<60) return m+' dk önce';
-  const h = Math.floor(m/60); if (h<24) return h+' saat önce';
-  const d = Math.floor(h/24); if (d<7) return d+' gün önce';
+  if (m<1) return 'Az once'; if (m<60) return m+' dk once';
+  const h = Math.floor(m/60); if (h<24) return h+' saat once';
+  const dy = Math.floor(h/24); if (dy<7) return dy+' gun once';
   return new Date(dateStr).toLocaleDateString('tr-TR');
 }
 
 document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
 
-// ── Tab Switching ──────────────────────────────────────────────────────────
+// ── Tab Switching (fixed) ──────────────────────────────────────────────────
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  const tabs = document.querySelectorAll('.tab');
-  if (tab === 'users') {
-    tabs[0].classList.add('active');
-    document.getElementById('tab-users').classList.add('active');
-  } else if (tab === 'wallets') {
-    tabs[1].classList.add('active');
-    document.getElementById('tab-wallets').classList.add('active');
-    loadWallets(1);
-  } else {
-    tabs[2].classList.add('active');
-    document.getElementById('tab-devnotes').classList.add('active');
-  }
+  const tabMap = { users: 0, campaigns: 1, wallets: 2, devnotes: 3 };
+  const idx = tabMap[tab] ?? 0;
+  document.querySelectorAll('.tab')[idx]?.classList.add('active');
+  document.getElementById('tab-' + tab)?.classList.add('active');
+  if (tab === 'wallets') loadWallets(1);
+  if (tab === 'campaigns') loadCampaigns(1);
+  if (tab === 'devnotes') loadDevNotes(1);
 }
 
 // ── Dev Notes ──────────────────────────────────────────────────────────────
@@ -532,28 +611,28 @@ async function loadDevNotes(page) {
   if (category) params.set('category', category);
   if (isRead)   params.set('isRead', isRead);
 
-  document.getElementById('devnotes-list').innerHTML = '<div class="loading">Yükleniyor...</div>';
+  document.getElementById('devnotes-list').innerHTML = '<div class="loading">Yukleniyor...</div>';
   const res = await apiFetch('/admin/dev-notes?' + params);
   const d = await res.json();
   document.getElementById('note-page-info').textContent = `Sayfa ${d.page} / ${d.totalPages || 1}`;
 
   if (!d.notes?.length) {
-    document.getElementById('devnotes-list').innerHTML = '<div class="loading">Not bulunamadı.</div>';
+    document.getElementById('devnotes-list').innerHTML = '<div class="loading">Not bulunamadi.</div>';
     return;
   }
 
-  const catIcon = { BUG: '🐛', SUGGESTION: '💡', FEEDBACK: '💬' };
+  const catIcon = { BUG: 'Bug', SUGGESTION: 'Oneri', FEEDBACK: 'Geri Bildirim' };
   const catClass = { BUG: 'bug', SUGGESTION: 'suggestion', FEEDBACK: 'feedback' };
 
   document.getElementById('devnotes-list').innerHTML = d.notes.map(n => `
     <div class="note-card" style="${!n.isRead ? 'border-color:#f39c12;' : ''}">
       <div class="note-meta">
-        <span class="badge ${catClass[n.category]}">${catIcon[n.category]} ${n.category}</span>
-        <span>${n.user?.email || n.user?.slogan || '—'}</span>
+        <span class="badge ${catClass[n.category]}">${catIcon[n.category]}</span>
+        <span>${n.user?.email || n.user?.slogan || '---'}</span>
         ${n.user?.isBot ? '<span class="badge bot">BOT</span>' : ''}
         <span class="badge ${n.isRead ? 'read' : 'unread'}">${n.isRead ? 'Okundu' : 'Yeni'}</span>
         <span style="margin-left:auto;">${timeAgo(n.createdAt)}</span>
-        ${!n.isRead ? `<button class="sm success" onclick="markNoteRead('${n.id}')" style="margin:0;">✓ Okundu</button>` : ''}
+        ${!n.isRead ? `<button class="sm success" onclick="markNoteRead('${n.id}')" style="margin:0;">Okundu</button>` : ''}
       </div>
       <div class="note-text">${escHtml(n.content)}</div>
     </div>`).join('');
@@ -583,18 +662,18 @@ async function loadWallets(page) {
   const params = new URLSearchParams({ page, limit: 20, sortBy, sortDir: 'desc' });
   if (search) params.set('search', search);
 
-  document.getElementById('wallets-table').innerHTML = '<div class="loading">Yükleniyor...</div>';
+  document.getElementById('wallets-table').innerHTML = '<div class="loading">Yukleniyor...</div>';
   const res = await apiFetch('/admin/wallets?' + params);
   const d = await res.json();
-  document.getElementById('wallets-count').textContent = `${d.total ?? 0} cüzdan`;
+  document.getElementById('wallets-count').textContent = `${d.total ?? 0} cuzdan`;
   document.getElementById('wallet-page-info').textContent = `Sayfa ${d.page} / ${d.totalPages || 1}`;
 
-  if (!d.wallets?.length) { document.getElementById('wallets-table').innerHTML = '<div class="loading">Cüzdan bulunamadı.</div>'; return; }
+  if (!d.wallets?.length) { document.getElementById('wallets-table').innerHTML = '<div class="loading">Cuzdan bulunamadi.</div>'; return; }
 
   const rows = d.wallets.map(w => `
     <tr>
-      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${w.email||''}">${w.email||'—'} ${w.isBot?'<span class="badge bot">BOT</span>':''}</td>
-      <td>${w.slogan||'—'}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${w.email||''}">${w.email||'---'} ${w.isBot?'<span class="badge bot">BOT</span>':''}</td>
+      <td>${w.slogan||'---'}</td>
       <td style="font-weight:bold;color:#2ecc71;">${parseFloat(w.wacBalance).toFixed(2)}</td>
       <td style="font-weight:bold;color:#e74c3c;">${w.racBalance}</td>
       <td><span class="badge ${w.wacActive?'active':'pending'}">${w.wacActive?'Aktif':'Pasif'}</span></td>
@@ -605,7 +684,7 @@ async function loadWallets(page) {
 
   document.getElementById('wallets-table').innerHTML = `
     <table>
-      <thead><tr><th>Email</th><th>Kullanıcı</th><th>WAC</th><th>RAC</th><th>WAC Durum</th><th>İşlem</th></tr></thead>
+      <thead><tr><th>Email</th><th>Kullanici</th><th>WAC</th><th>RAC</th><th>WAC Durum</th><th>Islem</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
@@ -618,26 +697,27 @@ let campaignCurrentPage = 1;
 async function loadCampaigns(page) {
   campaignCurrentPage = page;
   const params = new URLSearchParams({ page, limit: 20 });
-  document.getElementById('campaigns-table').innerHTML = '<div class="loading">Yükleniyor...</div>';
+  if (campaignFilterActive) params.set('isActive', campaignFilterActive);
+  document.getElementById('campaigns-table').innerHTML = '<div class="loading">Yukleniyor...</div>';
   try {
     const res = await apiFetch('/admin/campaigns?' + params);
     const d = await res.json();
-    document.getElementById('campaigns-count').textContent = `${d.total ?? d.campaigns?.length ?? 0} kampanya`;
-    document.getElementById('campaign-page-info').textContent = `Sayfa ${page}`;
+    document.getElementById('campaigns-count').textContent = `${d.total ?? 0} kampanya`;
+    document.getElementById('campaign-page-info').textContent = `Sayfa ${d.page || page} / ${d.totalPages || 1}`;
     const campaigns = d.campaigns || [];
-    if (!campaigns.length) { document.getElementById('campaigns-table').innerHTML = '<div class="loading">Kampanya bulunamadı.</div>'; return; }
+    if (!campaigns.length) { document.getElementById('campaigns-table').innerHTML = '<div class="loading">Kampanya bulunamadi.</div>'; return; }
 
     const rows = campaigns.map((c, i) => {
       const startIdx = (page - 1) * 20;
       return `<tr>
         <td style="color:#555;font-size:11px;">${startIdx + i + 1}</td>
-        <td style="font-weight:bold;color:#4A90E2;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.title||'—'}</td>
-        <td>${c.slogan||'—'}</td>
+        <td style="font-weight:bold;color:#4A90E2;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.title||'---'}</td>
+        <td>${c.slogan||'---'}</td>
         <td><span class="badge ${c.isActive?'active':'banned'}">${c.isActive?'Aktif':'Pasif'}</span></td>
-        <td>${c.stanceType||'—'}</td>
-        <td>${c.categoryType||'—'}</td>
+        <td>${c.stanceType||'---'}</td>
+        <td>${c.categoryType||'---'}</td>
         <td style="font-weight:bold;color:#2ecc71;">${parseFloat(c.totalWacStaked||0).toFixed(2)}</td>
-        <td>${c._count?.members || c.memberCount || 0}</td>
+        <td>${c._count?.members || 0}</td>
         <td style="white-space:nowrap;">${timeAgo(c.createdAt)}</td>
         <td><button class="sm" onclick="viewCampaign('${c.id}')">Detay</button></td>
       </tr>`;
@@ -645,36 +725,60 @@ async function loadCampaigns(page) {
 
     document.getElementById('campaigns-table').innerHTML = `
       <table>
-        <thead><tr><th>#</th><th>Başlık</th><th>Slogan</th><th>Durum</th><th>Duruş</th><th>Kategori</th><th>WAC</th><th>Üye</th><th>Oluşturulma</th><th>İşlem</th></tr></thead>
+        <thead><tr><th>#</th><th>Baslik</th><th>Slogan</th><th>Durum</th><th>Durus</th><th>Kategori</th><th>WAC</th><th>Uye</th><th>Olusturulma</th><th>Islem</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   } catch (e) {
-    document.getElementById('campaigns-table').innerHTML = '<div class="loading">Hata oluştu.</div>';
+    document.getElementById('campaigns-table').innerHTML = '<div class="loading">Hata olustu.</div>';
   }
 }
 function changeCampaignPage(delta) { loadCampaigns(Math.max(1, campaignCurrentPage + delta)); }
 
+// ── Campaign Detail (enhanced with members) ──────────────────────────────
 async function viewCampaign(cid) {
+  document.getElementById('detail-modal').classList.add('open');
+  document.getElementById('detail-content').innerHTML = '<div class="loading">Yukleniyor...</div>';
+  document.getElementById('detail-title').textContent = 'Kampanya Detayi';
   try {
-    const res = await apiFetch('/admin/campaigns');
-    const d = await res.json();
-    const c = (d.campaigns || []).find(x => x.id === cid);
-    if (!c) { alert('Kampanya bulunamadı.'); return; }
-    document.getElementById('detail-title').textContent = 'Kampanya Detayı';
-    document.getElementById('detail-content').innerHTML = `
-      <div class="detail-row"><div class="k">ID</div><div class="v">${c.id}</div></div>
-      <div class="detail-row"><div class="k">Başlık</div><div class="v">${c.title}</div></div>
-      <div class="detail-row"><div class="k">Slogan</div><div class="v">${c.slogan||'—'}</div></div>
-      <div class="detail-row"><div class="k">Duruş</div><div class="v">${c.stanceType||'—'}</div></div>
-      <div class="detail-row"><div class="k">Kategori</div><div class="v">${c.categoryType||'—'}</div></div>
-      <div class="detail-row"><div class="k">Toplam WAC</div><div class="v" style="color:#2ecc71;">${parseFloat(c.totalWacStaked||0).toFixed(2)}</div></div>
-      <div class="detail-row"><div class="k">Üye Sayısı</div><div class="v">${c._count?.members || 0}</div></div>
-      <div class="detail-row"><div class="k">Aktif</div><div class="v">${c.isActive?'Evet':'Hayır'}</div></div>
-      <div class="detail-row"><div class="k">Oluşturulma</div><div class="v">${new Date(c.createdAt).toLocaleString('tr-TR')}</div></div>
-      <div class="detail-row"><div class="k">Lider</div><div class="v">${c.leaderId}</div></div>
-    `;
-    openModal('detail-modal');
-  } catch { alert('Detay yüklenemedi.'); }
+    const res = await apiFetch('/admin/campaigns/' + cid);
+    const { campaign: c } = await res.json();
+    if (!c) { document.getElementById('detail-content').innerHTML = 'Kampanya bulunamadi.'; return; }
+
+    let html = '';
+    const info = [
+      ['Baslik', c.title],
+      ['Slogan', c.slogan||'---'],
+      ['Durus', c.stanceType||'---'],
+      ['Kategori', c.categoryType||'---'],
+      ['Toplam WAC', '<span style="color:#2ecc71;font-weight:bold;">'+parseFloat(c.totalWacStaked||0).toFixed(2)+'</span>'],
+      ['Uye Sayisi', c._count?.members || 0],
+      ['Aktif', c.isActive ? '<span style="color:#2ecc71">Evet</span>' : '<span style="color:#e74c3c">Hayir</span>'],
+      ['Lider', c.leader?.email || c.leader?.slogan || c.leaderId],
+      ['RAC Protesto', c.racPool ? c.racPool.totalBalance.toString() + ' RAC (' + c.racPool.participantCount + ' katilimci)' : 'Yok'],
+      ['Olusturulma', new Date(c.createdAt).toLocaleString('tr-TR')],
+    ];
+    html += info.map(([k,v]) => `<div class="detail-row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
+
+    // Members table
+    const members = c.members || [];
+    if (members.length > 0) {
+      html += '<div style="margin-top:18px;font-size:12px;color:#4A90E2;font-weight:bold;margin-bottom:8px;">UYELER (' + members.length + ')</div>';
+      html += '<table style="font-size:11px;"><thead><tr><th>Kullanici</th><th>Email</th><th>Stake</th><th>Katilma</th><th>Lider</th></tr></thead><tbody>';
+      members.forEach(m => {
+        const isLeader = m.userId === c.leaderId;
+        html += `<tr>
+          <td>${m.user?.slogan||'---'}</td>
+          <td style="font-size:10px;">${m.user?.email||'---'} ${m.user?.isBot?'<span class="badge bot">BOT</span>':''}</td>
+          <td style="color:#2ecc71;font-weight:bold;">${parseFloat(m.stakedWac||0).toFixed(2)}</td>
+          <td style="white-space:nowrap;">${new Date(m.joinedAt).toLocaleString('tr-TR')}</td>
+          <td>${isLeader ? '<span style="color:#f39c12;font-weight:bold;">Lider</span>' : ''}</td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+    }
+
+    document.getElementById('detail-content').innerHTML = html;
+  } catch { document.getElementById('detail-content').innerHTML = 'Detay yuklenemedi.'; }
 }
 </script>
 </body>

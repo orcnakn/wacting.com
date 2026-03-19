@@ -98,6 +98,9 @@ model User {
 
   // Developer notes
   devNotes DevNote[]
+
+  // Login sessions
+  loginSessions LoginSession[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -580,4 +583,22 @@ enum DevNoteCategory {
   BUG
   SUGGESTION
   FEEDBACK
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOGIN SESSION TRACKING
+// ─────────────────────────────────────────────────────────────────────────────
+
+model LoginSession {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  ipAddress String
+  country   String?
+  userAgent String?
+  loginAt   DateTime @default(now())
+  logoutAt  DateTime?
+  duration  Int?     // seconds
+
+  @@index([userId])
 }

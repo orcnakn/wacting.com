@@ -79,9 +79,12 @@ export async function adminRoutes(fastify: FastifyInstance) {
             prisma.devNote.count({ where: { isRead: false } }),
         ]);
 
-        // WAC/RAC circulation totals
-        const wacAgg = await prisma.userWac.aggregate({ _sum: { wacBalance: true } });
-        const racAgg = await prisma.userRac.aggregate({ _sum: { racBalance: true } });
+        // WAC/RAC circulation totals + active sessions
+        const [wacAgg, racAgg, activeSessions] = await Promise.all([
+            prisma.userWac.aggregate({ _sum: { wacBalance: true } }),
+            prisma.userRac.aggregate({ _sum: { racBalance: true } }),
+            prisma.loginSession.count({ where: { logoutAt: null } }),
+        ]);
         const totalWacCirculation = wacAgg._sum.wacBalance?.toString() ?? '0';
         const totalRacCirculation = racAgg._sum.racBalance?.toString() ?? '0';
 
@@ -100,6 +103,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
             devNotesUnread,
             totalWacCirculation,
             totalRacCirculation,
+            activeSessions,
         });
     });
 
@@ -177,14 +181,28 @@ export async function adminRoutes(fastify: FastifyInstance) {
             include: {
                 wac: true,
                 rac: true,
-                campaigns: { select: { id: true, title: true, isActive: true, createdAt: true } },
+                campaignMemberships: {
+                    include: {
+                        campaign: { select: { id: true, title: true, isActive: true, stanceType: true, categoryType: true, totalWacStaked: true } },
+                    },
+                    orderBy: { joinedAt: 'desc' },
+                },
                 transactions: { orderBy: { createdAt: 'desc' }, take: 20 },
+                loginSessions: { orderBy: { loginAt: 'desc' }, take: 20 },
                 _count: { select: { campaigns: true, followers: true, following: true } },
             },
         });
 
         if (!user) return reply.code(404).send({ error: 'User not found.' });
-        return reply.send({ user });
+
+        // Calculate total time spent
+        const allSessions = await prisma.loginSession.findMany({
+            where: { userId: id },
+            select: { duration: true },
+        });
+        const totalTimeSpent = allSessions.reduce((sum, s) => sum + (s.duration || 0), 0);
+
+        return reply.send({ user, totalTimeSpent });
     });
 
     // ── POST /admin/ban ───────────────────────────────────────────────────────
@@ -304,6 +322,76 @@ export async function adminRoutes(fastify: FastifyInstance) {
         });
 
         return reply.send({ success: true });
+    });
+
+    // ── GET /admin/campaigns ────────────────────────────────────────────────
+    fastify.get('/admin/campaigns', async (request, reply) => {
+        const query = request.query as {
+            page?: string;
+            limit?: string;
+            search?: string;
+            isActive?: string;
+        };
+
+        const page  = Math.max(1, Number(query.page || '1'));
+        const limit = Math.min(100, Math.max(1, Number(query.limit || '20')));
+        const skip  = (page - 1) * limit;
+
+        const where: any = {};
+        if (query.isActive !== undefined && query.isActive !== '') {
+            where.isActive = query.isActive === 'true';
+        }
+        if (query.search) {
+            where.OR = [
+                { title:  { contains: query.search, mode: 'insensitive' } },
+                { slogan: { contains: query.search, mode: 'insensitive' } },
+            ];
+        }
+
+        const [campaigns, total] = await Promise.all([
+            prisma.campaign.findMany({
+                where,
+                skip,
+                take: limit,
+                orderBy: { totalWacStaked: 'desc' },
+                include: {
+                    leader: { select: { id: true, email: true, slogan: true } },
+                    _count: { select: { members: true, polls: true } },
+                },
+            }),
+            prisma.campaign.count({ where }),
+        ]);
+
+        return reply.send({
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+            campaigns,
+        });
+    });
+
+    // ── GET /admin/campaigns/:id ────────────────────────────────────────────
+    fastify.get('/admin/campaigns/:id', async (request, reply) => {
+        const { id } = request.params as { id: string };
+
+        const campaign = await prisma.campaign.findUnique({
+            where: { id },
+            include: {
+                leader: { select: { id: true, email: true, slogan: true } },
+                members: {
+                    include: {
+                        user: { select: { id: true, email: true, slogan: true, isBot: true } },
+                    },
+                    orderBy: { joinedAt: 'asc' },
+                },
+                racPool: { select: { totalBalance: true, participantCount: true, isActive: true } },
+                _count: { select: { members: true, polls: true } },
+            },
+        });
+
+        if (!campaign) return reply.code(404).send({ error: 'Campaign not found.' });
+        return reply.send({ campaign });
     });
 
     // ── GET /admin/wallets ──────────────────────────────────────────────────

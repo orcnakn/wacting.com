@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -395,8 +396,35 @@ class _GridScreenState extends ConsumerState<GridScreen> {
     return false;
   }
 
+  // ── World offsets for multi-copy rendering ──
+  static const List<double> _worldOffsets = [-360, 0, 360];
+
+  // ── Create polygon copies at each world offset ──
+  List<Polygon> _multiWorldPolygon(_CountryPolygon cp, Color fillColor, Color borderColor, double borderWidth) {
+    return _worldOffsets.map((offset) => Polygon(
+      points: cp.outerRing.map((p) => LatLng(p.latitude, p.longitude + offset)).toList(),
+      holePointsList: cp.holes.map((hole) =>
+        hole.map((p) => LatLng(p.latitude, p.longitude + offset)).toList()
+      ).toList(),
+      color: fillColor,
+      borderColor: borderColor,
+      borderStrokeWidth: borderWidth,
+      isFilled: true,
+    )).toList();
+  }
+
+  // ── Normalize longitude to -180..180 ──
+  LatLng _normalizeLng(LatLng point) {
+    double lng = point.longitude;
+    while (lng > 180) lng -= 360;
+    while (lng < -180) lng += 360;
+    return LatLng(point.latitude, lng);
+  }
+
   // ── Handle tap in region-select mode ──
-  void _handleRegionTap(LatLng point) {
+  void _handleRegionTap(LatLng rawPoint) {
+    // Normalize longitude so taps on any world copy map to the same region
+    final point = _normalizeLng(rawPoint);
     final level = _zoomLevel;
 
     if (level == 'continents') {
@@ -640,104 +668,112 @@ class _GridScreenState extends ConsumerState<GridScreen> {
               final sortedAuraIcons = List<IconModel>.from(icons)
                 ..sort((a, b) => b.size.compareTo(a.size));
 
-              final circleAuras = sortedAuraIcons.map((icon) {
+              final circleAuras = <CircleMarker>[];
+              for (final icon in sortedAuraIcons) {
                  final latLng = _offsetToLatLng(icon.position);
                  final double tokenPower = icon.size > 1.0 ? (icon.size - 1.0) : 0.0;
                  final auraRadiusMeters = tokenPower * 10000.0;
+                 if (auraRadiusMeters <= 0) continue;
                  final Color auraColor = icon.displayColor;
-                 return CircleMarker(
-                   point: latLng,
-                   radius: auraRadiusMeters,
-                   useRadiusInMeter: true,
-                   color: auraColor.withOpacity(0.2),
-                   borderColor: auraColor.withOpacity(0.4),
-                   borderStrokeWidth: 1.0,
-                 );
-              }).where((c) => c.radius > 0).toList();
+                 for (final offset in _worldOffsets) {
+                   circleAuras.add(CircleMarker(
+                     point: LatLng(latLng.latitude, latLng.longitude + offset),
+                     radius: auraRadiusMeters,
+                     useRadiusInMeter: true,
+                     color: auraColor.withOpacity(0.2),
+                     borderColor: auraColor.withOpacity(0.4),
+                     borderStrokeWidth: 1.0,
+                   ));
+                 }
+              }
 
               final zoom = _currentZoom;
 
-              final markerDots = icons.map((icon) {
+              final markerDots = <Marker>[];
+              for (final icon in icons) {
                   final latLng = _offsetToLatLng(icon.position);
                   final Color displayColor = icon.displayColor;
                   final double wacSize = icon.size;
-
                   final double baseOpacity = LodManager.opacityForWac(wacSize, zoom);
 
-                  if (LodManager.isFullDetail(zoom, wacSize)) {
-                    final String? slogan = icon.campaignSlogan;
-                    final double rectW = LodManager.rectWidth(wacSize, zoom);
-                    final double rectH = LodManager.rectHeight(wacSize, zoom);
-                    final double fontSize = LodManager.sloganFontSize(wacSize, zoom);
-                    final double markerW = slogan != null ? (rectW + 40).clamp(rectW, 140.0) : rectW + 4;
-                    final double markerH = slogan != null ? rectH + fontSize + 8 : rectH + 4;
+                  for (final worldOffset in _worldOffsets) {
+                    final offsetPoint = LatLng(latLng.latitude, latLng.longitude + worldOffset);
 
-                    return Marker(
-                        point: latLng,
-                        width: markerW,
-                        height: markerH,
-                        child: Opacity(
-                          opacity: baseOpacity,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: rectW,
-                                height: rectH,
-                                decoration: BoxDecoration(
-                                  color: displayColor,
-                                  borderRadius: BorderRadius.circular(2),
-                                  boxShadow: wacSize >= 100 ? [
-                                    BoxShadow(color: displayColor.withOpacity(0.5), blurRadius: 6, spreadRadius: 1),
-                                  ] : null,
-                                ),
-                              ),
-                              if (slogan != null)
+                    if (LodManager.isFullDetail(zoom, wacSize)) {
+                      final String? slogan = icon.campaignSlogan;
+                      final double rectW = LodManager.rectWidth(wacSize, zoom);
+                      final double rectH = LodManager.rectHeight(wacSize, zoom);
+                      final double fontSize = LodManager.sloganFontSize(wacSize, zoom);
+                      final double markerW = slogan != null ? (rectW + 40).clamp(rectW, 140.0) : rectW + 4;
+                      final double markerH = slogan != null ? rectH + fontSize + 8 : rectH + 4;
+
+                      markerDots.add(Marker(
+                          point: offsetPoint,
+                          width: markerW,
+                          height: markerH,
+                          child: Opacity(
+                            opacity: baseOpacity,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
                                 Container(
-                                  margin: const EdgeInsets.only(top: 1),
-                                  padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                  width: rectW,
+                                  height: rectH,
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.7),
-                                    borderRadius: BorderRadius.circular(3),
-                                  ),
-                                  child: Text(
-                                    slogan,
-                                    style: TextStyle(
-                                      color: displayColor,
-                                      fontSize: fontSize,
-                                      fontWeight: FontWeight.w600,
-                                      height: 1.2,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                    color: displayColor,
+                                    borderRadius: BorderRadius.circular(2),
+                                    boxShadow: wacSize >= 100 ? [
+                                      BoxShadow(color: displayColor.withOpacity(0.5), blurRadius: 6, spreadRadius: 1),
+                                    ] : null,
                                   ),
                                 ),
-                            ],
-                          ),
-                        ),
-                    );
-                  } else {
-                    final double dotSize = LodManager.dotSizeAtZoom(zoom, wacSize);
-
-                    return Marker(
-                        point: latLng,
-                        width: dotSize,
-                        height: dotSize,
-                        child: Opacity(
-                          opacity: baseOpacity,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: displayColor,
-                              shape: BoxShape.circle,
-                              boxShadow: wacSize >= 100 ? [
-                                BoxShadow(color: displayColor.withOpacity(0.6), blurRadius: 4, spreadRadius: 1),
-                              ] : null,
+                                if (slogan != null)
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 1),
+                                    padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.7),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Text(
+                                      slogan,
+                                      style: TextStyle(
+                                        color: displayColor,
+                                        fontSize: fontSize,
+                                        fontWeight: FontWeight.w600,
+                                        height: 1.2,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
-                        ),
-                    );
+                      ));
+                    } else {
+                      final double dotSize = LodManager.dotSizeAtZoom(zoom, wacSize);
+
+                      markerDots.add(Marker(
+                          point: offsetPoint,
+                          width: dotSize,
+                          height: dotSize,
+                          child: Opacity(
+                            opacity: baseOpacity,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: displayColor,
+                                shape: BoxShape.circle,
+                                boxShadow: wacSize >= 100 ? [
+                                  BoxShadow(color: displayColor.withOpacity(0.6), blurRadius: 4, spreadRadius: 1),
+                                ] : null,
+                              ),
+                            ),
+                          ),
+                      ));
+                    }
                   }
-              }).toList();
+              }
 
               // ── Polygon layer ──
               // Always show selected polygons from BOTH layers at every zoom level.
@@ -747,6 +783,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
               if (_regionSelectMode && _isGeoJsonLoaded) {
                 // 1) Active layer: show all polygons (selected = cyan, unselected = faint)
+                // Render at multiple world offsets for seamless wrapping
                 for (final cp in _activePolygons) {
                   final bool selected = cp.parentCountry != null
                       ? _isRegionSelected(cp.name, cp.parentCountry)
@@ -756,48 +793,36 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                         ? '${cp.name}|${cp.parentCountry}'
                         : 'country:${cp.name}');
                   }
-                  polygonWidgets.add(Polygon(
-                    points: cp.outerRing,
-                    holePointsList: cp.holes,
-                    color: selected
-                        ? Colors.cyan.withOpacity(0.35)
-                        : Colors.cyan.withOpacity(0.08),
-                    borderColor: selected
-                        ? Colors.cyanAccent
-                        : Colors.cyan.withOpacity(0.7),
-                    borderStrokeWidth: selected ? 3.0 : 1.2,
-                    isFilled: true,
+                  polygonWidgets.addAll(_multiWorldPolygon(
+                    cp,
+                    selected ? Colors.cyan.withOpacity(0.35) : Colors.cyan.withOpacity(0.08),
+                    selected ? Colors.cyanAccent : Colors.cyan.withOpacity(0.7),
+                    selected ? 3.0 : 1.2,
                   ));
                 }
 
                 // 2) Also render selected items from the OTHER layer so they stay visible on zoom
-                // If active layer is countries (zoom<7), also show selected admin-1 regions
                 if (_currentZoom < 7 && _isAdmin1Loaded) {
                   for (final cp in _admin1Polygons) {
                     final key = '${cp.name}|${cp.parentCountry}';
                     if (_selectedRegions.contains(key) && !_renderedSelected.contains(key)) {
-                      polygonWidgets.add(Polygon(
-                        points: cp.outerRing,
-                        holePointsList: cp.holes,
-                        color: Colors.cyan.withOpacity(0.30),
-                        borderColor: Colors.cyanAccent.withOpacity(0.8),
-                        borderStrokeWidth: 2.0,
-                        isFilled: true,
+                      polygonWidgets.addAll(_multiWorldPolygon(
+                        cp,
+                        Colors.cyan.withOpacity(0.30),
+                        Colors.cyanAccent.withOpacity(0.8),
+                        2.0,
                       ));
                     }
                   }
                 }
-                // If active layer is admin-1 (zoom>=7), also show selected countries
                 if (_currentZoom >= 7 && _isCountriesLoaded) {
                   for (final cp in _countryPolygons) {
                     if (_isCountrySelected(cp.name) && !_renderedSelected.contains('country:${cp.name}')) {
-                      polygonWidgets.add(Polygon(
-                        points: cp.outerRing,
-                        holePointsList: cp.holes,
-                        color: Colors.cyan.withOpacity(0.25),
-                        borderColor: Colors.cyanAccent.withOpacity(0.7),
-                        borderStrokeWidth: 2.0,
-                        isFilled: true,
+                      polygonWidgets.addAll(_multiWorldPolygon(
+                        cp,
+                        Colors.cyan.withOpacity(0.25),
+                        Colors.cyanAccent.withOpacity(0.7),
+                        2.0,
                       ));
                     }
                   }
@@ -806,32 +831,48 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                 if (_isOceansLoaded) {
                   for (final cp in _oceanPolygons) {
                     final bool selected = _selectedOceans.contains(cp.name);
-                    polygonWidgets.add(Polygon(
-                      points: cp.outerRing,
-                      holePointsList: cp.holes,
-                      color: selected
-                          ? Colors.blue.withOpacity(0.3)
-                          : Colors.blue.withOpacity(0.05),
-                      borderColor: selected
-                          ? Colors.lightBlueAccent
-                          : Colors.blue.withOpacity(0.3),
-                      borderStrokeWidth: selected ? 2.5 : 0.8,
-                      isFilled: true,
+                    polygonWidgets.addAll(_multiWorldPolygon(
+                      cp,
+                      selected ? Colors.blue.withOpacity(0.3) : Colors.blue.withOpacity(0.05),
+                      selected ? Colors.lightBlueAccent : Colors.blue.withOpacity(0.3),
+                      selected ? 2.5 : 0.8,
                     ));
                   }
                 }
               }
+
+              // Calculate dynamic minZoom so world never shows twice
+              final screenWidth = MediaQuery.of(context).size.width;
+              final dynamicMinZoom = math.max(2.0, (math.log(screenWidth / 256) / math.ln2));
 
               return FlutterMap(
                 mapController: _mapController,
                 options: MapOptions(
                   initialCenter: _initialCenter,
                   initialZoom: _currentZoom,
-                  minZoom: 2.0,
+                  minZoom: dynamicMinZoom,
                   maxZoom: 18.0,
+                  // Constrain latitude to Mercator bounds, longitude free for wrapping
+                  cameraConstraint: CameraConstraint.contain(
+                    bounds: LatLngBounds(
+                      const LatLng(-85.0, -540.0),  // allow ~1.5 extra worlds each side
+                      const LatLng(85.0, 540.0),
+                    ),
+                  ),
                   onPositionChanged: (position, hasGesture) {
                     if (position.zoom != null) {
                       if (mounted) setState(() => _currentZoom = position.zoom!);
+                    }
+                    // Snap-back: normalize longitude to [-360, 360] range
+                    if (position.center != null && hasGesture) {
+                      final lng = position.center!.longitude;
+                      if (lng > 360 || lng < -360) {
+                        final normalizedLng = ((lng + 180) % 360) - 180;
+                        _mapController.move(
+                          LatLng(position.center!.latitude, normalizedLng),
+                          position.zoom ?? _currentZoom,
+                        );
+                      }
                     }
                   },
                   onTap: (tapPosition, point) {
@@ -842,6 +883,8 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                       }
 
                       // ── Normal mode: icon hit detection ──
+                      // Normalize tap point longitude for icon matching
+                      final normalizedTapPoint = _normalizeLng(point);
                       // Use the DISPLAYED icons (paused or live)
                       final displayIcons = _paused ? _pausedSnapshot : icons;
                       for (var icon in displayIcons) {
@@ -849,7 +892,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                               ? 'Mock Token ${icon.id}'
                               : 'World exploration mode.';
                           final iconPoint = _offsetToLatLng(icon.position);
-                          final dist = const Distance().as(LengthUnit.Kilometer, point, iconPoint);
+                          final dist = const Distance().as(LengthUnit.Kilometer, normalizedTapPoint, iconPoint);
                           final double tokenPower = icon.size > 1.0 ? (icon.size - 1.0) : 0.0;
                           // Tap radius = actual aura radius (10km per tokenPower) + 5km base for the dot
                           final auraRadiusKm = tokenPower * 10.0;

@@ -5,9 +5,21 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { sendVerificationCode, sendWelcomeEmail } from '../services/email_service.js';
 import { recordChainedTransaction } from '../engine/chain_engine.js';
-
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_dev_key';
+
+// ─── Helper: create login session and return sessionId ──────────────────────
+async function createLoginSession(userId: string, request: any): Promise<string> {
+    const session = await prisma.loginSession.create({
+        data: {
+            userId,
+            ipAddress: request.ip || request.headers['x-forwarded-for'] || 'unknown',
+            userAgent: request.headers['user-agent'] || '',
+            country: request.headers['cf-ipcountry'] || null,
+        },
+    });
+    return session.id;
+}
 
 // ─── Helper: generate 6-digit code ──────────────────────────────────────────
 function generate6DigitCode(): string {
@@ -167,7 +179,8 @@ export async function authRoutes(fastify: FastifyInstance) {
                 data: { emailVerified: true, emailVerifyToken: null },
             });
 
-            const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '30d' });
+            const sessionId = await createLoginSession(user.id, request);
+            const token = jwt.sign({ userId: user.id, sessionId }, JWT_SECRET, { expiresIn: '30d' });
 
             fastify.log.info(`[Auth] Email verified: ${email}`);
 
@@ -181,6 +194,7 @@ export async function authRoutes(fastify: FastifyInstance) {
                 token,
                 userId: user.id,
                 emailVerified: true,
+                sessionId,
                 message: 'Email doğrulandı! Hoş geldiniz.',
             });
         } catch (err: any) {
@@ -256,8 +270,9 @@ export async function authRoutes(fastify: FastifyInstance) {
                 return reply.code(403).send({ error: 'Bu hesap askıya alınmıştır.' });
             }
 
-            const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '30d' });
-            return reply.send({ token, userId: user.id, emailVerified: true });
+            const sessionId = await createLoginSession(user.id, request);
+            const token = jwt.sign({ userId: user.id, sessionId }, JWT_SECRET, { expiresIn: '30d' });
+            return reply.send({ token, userId: user.id, emailVerified: true, sessionId });
         } catch (err: any) {
             fastify.log.error(`Email login failed: ${err}`);
             return reply.code(400).send({ error: 'Geçersiz veri' });
@@ -327,8 +342,9 @@ export async function authRoutes(fastify: FastifyInstance) {
                 });
             });
 
-            const token = jwt.sign({ userId: user.id, deviceId }, JWT_SECRET, { expiresIn: '30d' });
-            return reply.code(201).send({ token, userId: user.id });
+            const regSessionId = await createLoginSession(user.id, request);
+            const token = jwt.sign({ userId: user.id, deviceId, sessionId: regSessionId }, JWT_SECRET, { expiresIn: '30d' });
+            return reply.code(201).send({ token, userId: user.id, sessionId: regSessionId });
         } catch (err: any) {
             fastify.log.error(`Registration failed: ${err}`);
             return reply.code(400).send({ error: 'Invalid payload or internal error' });
@@ -345,8 +361,9 @@ export async function authRoutes(fastify: FastifyInstance) {
                 return reply.code(404).send({ error: 'User not found. Need to register.' });
             }
 
-            const token = jwt.sign({ userId: user.id, deviceId }, JWT_SECRET, { expiresIn: '30d' });
-            return reply.send({ token, userId: user.id });
+            const sessionId = await createLoginSession(user.id, request);
+            const token = jwt.sign({ userId: user.id, deviceId, sessionId }, JWT_SECRET, { expiresIn: '30d' });
+            return reply.send({ token, userId: user.id, sessionId });
         } catch (err: any) {
             return reply.code(400).send({ error: 'Invalid payload' });
         }
@@ -404,11 +421,42 @@ export async function authRoutes(fastify: FastifyInstance) {
                 });
             }
 
-            const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '30d' });
-            return reply.send({ token, userId: user.id, isNew: !user });
+            const sessionId = await createLoginSession(user.id, request);
+            const token = jwt.sign({ userId: user.id, sessionId }, JWT_SECRET, { expiresIn: '30d' });
+            return reply.send({ token, userId: user.id, isNew: !user, sessionId });
         } catch (err: any) {
             fastify.log.error(`Social auth failed: ${err}`);
             return reply.code(400).send({ error: 'Invalid social payload' });
+        }
+    });
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // LOGOUT — close session and record duration
+    // ══════════════════════════════════════════════════════════════════════════
+    fastify.post('/auth/logout', async (request, reply) => {
+        try {
+            const authHeader = request.headers.authorization;
+            if (!authHeader) return reply.code(401).send({ error: 'Token gerekli.' });
+
+            const token = authHeader.split(' ')[1] ?? '';
+            const decoded = jwt.verify(token, JWT_SECRET) as any;
+            const sessionId = decoded.sessionId;
+
+            if (sessionId) {
+                const session = await prisma.loginSession.findUnique({ where: { id: sessionId } });
+                if (session) {
+                    const now = new Date();
+                    const duration = Math.floor((now.getTime() - session.loginAt.getTime()) / 1000);
+                    await prisma.loginSession.update({
+                        where: { id: sessionId },
+                        data: { logoutAt: now, duration },
+                    });
+                }
+            }
+
+            return reply.send({ success: true, message: 'Çıkış yapıldı.' });
+        } catch (err: any) {
+            return reply.send({ success: true, message: 'Session kapatıldı.' });
         }
     });
 }
