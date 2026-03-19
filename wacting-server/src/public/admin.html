@@ -240,7 +240,7 @@
 </div>
 
 <script>
-const API = 'http://127.0.0.1:3000';
+const API = window.location.origin;
 let token = localStorage.getItem('wacting_admin_token') || '';
 let currentPage = 1;
 let searchTimer = null;
