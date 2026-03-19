@@ -174,29 +174,31 @@ class _RootNavigationState extends State<RootNavigation> {
             ),
           ),
         ),
-        // Notification star
-        if (_unreadCount > 0)
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            left: 12,
-            child: GestureDetector(
-              onTap: _openNotifications,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppColors.navyPrimary.withOpacity(0.85),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.star,
-                      color: AppColors.accentAmber,
-                      size: 24,
-                    ),
+        // Notification star — always visible, dim when no unread
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 8,
+          left: 12,
+          child: GestureDetector(
+            onTap: _openNotifications,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.navyPrimary.withOpacity(0.85),
+                    shape: BoxShape.circle,
                   ),
+                  child: Icon(
+                    Icons.star,
+                    color: _unreadCount > 0
+                        ? AppColors.accentAmber
+                        : AppColors.textTertiary.withOpacity(0.3),
+                    size: 24,
+                  ),
+                ),
+                if (_unreadCount > 0)
                   Positioned(
                     top: -4,
                     right: -4,
@@ -219,10 +221,10 @@ class _RootNavigationState extends State<RootNavigation> {
                       ),
                     ),
                   ),
-                ],
-              ),
+              ],
             ),
           ),
+        ),
         // Map filter dropdown (below notification star)
         if (_currentIndex == 0)
           Positioned(

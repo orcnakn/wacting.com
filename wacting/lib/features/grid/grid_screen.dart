@@ -108,6 +108,10 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   List<IconModel> _pausedSnapshot = [];
   List<IconModel>? _lastIcons;
 
+  // ── Map filter state ──
+  String _mapFilter = 'all'; // all, nearby, trending, protested, newest
+  bool _filterDropdownOpen = false;
+
   @override
   void initState() {
     super.initState();
@@ -658,7 +662,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   final Color displayColor = icon.displayColor;
                   final double wacSize = icon.size;
 
-                  final double baseOpacity = LodManager.opacityForWac(wacSize);
+                  final double baseOpacity = LodManager.opacityForWac(wacSize, zoom);
 
                   if (LodManager.isFullDetail(zoom, wacSize)) {
                     final String? slogan = icon.campaignSlogan;
@@ -978,30 +982,21 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                 setState(() => _paused = !_paused);
                 ScaffoldMessenger.of(context).clearSnackBars();
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _paused ? Icons.pause_circle_filled : Icons.play_circle_filled,
-                        color: Colors.white, size: 16,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _paused ? 'Paused' : 'Resumed',
-                        style: const TextStyle(color: Colors.white, fontSize: 12),
-                      ),
-                    ],
+                  content: Text(
+                    _paused ? '⏸' : '▶',
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    textAlign: TextAlign.center,
                   ),
                   backgroundColor: (_paused ? Colors.amber.shade800 : Colors.cyan).withOpacity(0.85),
-                  duration: const Duration(seconds: 1),
+                  duration: const Duration(milliseconds: 600),
                   behavior: SnackBarBehavior.floating,
                   margin: EdgeInsets.only(
-                    bottom: MediaQuery.of(context).size.height - 120,
-                    left: MediaQuery.of(context).size.width / 2 - 60,
-                    right: MediaQuery.of(context).size.width / 2 - 60,
+                    bottom: MediaQuery.of(context).size.height - 100,
+                    left: MediaQuery.of(context).size.width / 2 - 28,
+                    right: MediaQuery.of(context).size.width / 2 - 28,
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ));
               },
             ),
@@ -1116,7 +1111,92 @@ class _GridScreenState extends ConsumerState<GridScreen> {
               },
             ),
           ),
+
+          // ── Map Filter Dropdown ──
+          Positioned(
+            top: 16,
+            left: 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () => setState(() => _filterDropdownOpen = !_filterDropdownOpen),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.navyPrimary.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.accentTeal, width: 1),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.filter_list, color: AppColors.accentTeal, size: 16),
+                      const SizedBox(width: 6),
+                      Text(
+                        _filterLabel(_mapFilter),
+                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(_filterDropdownOpen ? Icons.expand_less : Icons.expand_more,
+                          color: AppColors.accentTeal, size: 14),
+                    ]),
+                  ),
+                ),
+                if (_filterDropdownOpen)
+                  Container(
+                    margin: const EdgeInsets.only(top: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.navyPrimary.withOpacity(0.95),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.borderLight, width: 0.5),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _filterOption('all', 'Tum Kampanyalar', Icons.public),
+                        _filterOption('nearby', 'Bolgemdekiler', Icons.near_me),
+                        _filterOption('trending', 'Trend Kampanyalar', Icons.trending_up),
+                        _filterOption('protested', 'Linclenenler', Icons.warning_amber),
+                        _filterOption('newest', 'Yeni Kampanyalar', Icons.fiber_new),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  String _filterLabel(String filter) {
+    switch (filter) {
+      case 'nearby': return 'Bolgemdekiler';
+      case 'trending': return 'Trend';
+      case 'protested': return 'Linclenenler';
+      case 'newest': return 'Yeni';
+      default: return 'Filtre';
+    }
+  }
+
+  Widget _filterOption(String key, String label, IconData icon) {
+    final selected = _mapFilter == key;
+    return GestureDetector(
+      onTap: () => setState(() {
+        _mapFilter = key;
+        _filterDropdownOpen = false;
+      }),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        color: selected ? AppColors.accentTeal.withOpacity(0.15) : Colors.transparent,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, color: selected ? AppColors.accentTeal : Colors.white70, size: 14),
+          const SizedBox(width: 8),
+          Text(label, style: TextStyle(
+            color: selected ? AppColors.accentTeal : Colors.white70,
+            fontSize: 12, fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+          )),
+        ]),
       ),
     );
   }

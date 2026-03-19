@@ -108,6 +108,7 @@
   <div class="section" style="padding-bottom:0;">
     <div class="tabs">
       <div class="tab active" onclick="switchTab('users')">👥 Kullanıcılar</div>
+      <div class="tab" onclick="switchTab('campaigns')">🏳 Kampanyalar</div>
       <div class="tab" onclick="switchTab('wallets')">💰 Cüzdanlar</div>
       <div class="tab" onclick="switchTab('devnotes')">📝 Geliştirici Notları</div>
     </div>
@@ -172,6 +173,21 @@
     </div>
   </div>
 
+  <!-- CAMPAIGNS TAB -->
+  <div class="tab-content" id="tab-campaigns">
+    <div class="section" style="border-top:none;border-radius:0 0 10px 10px;margin-top:-1px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+        <span class="sub" id="campaigns-count"></span>
+      </div>
+      <div id="campaigns-table"><div class="loading">Yükleniyor...</div></div>
+      <div class="pager">
+        <button class="sm" onclick="changeCampaignPage(-1)">← Önceki</button>
+        <span id="campaign-page-info">1</span>
+        <button class="sm" onclick="changeCampaignPage(1)">Sonraki →</button>
+      </div>
+    </div>
+  </div>
+
   <!-- DEV NOTES TAB -->
   <div class="tab-content" id="tab-devnotes">
     <div class="section" style="border-top:none;border-radius:0 0 10px 10px;margin-top:-1px;">
@@ -224,7 +240,7 @@
 </div>
 
 <script>
-const API = 'https://api.wacting.com';
+const API = 'http://127.0.0.1:3000';
 let token = localStorage.getItem('wacting_admin_token') || '';
 let currentPage = 1;
 let searchTimer = null;
@@ -272,7 +288,7 @@ async function apiFetch(url, opts = {}) {
   return fetch(API + url, { ...opts, headers: {'Authorization':'Bearer '+token,'Content-Type':'application/json',...(opts.headers||{})} });
 }
 
-function loadAll() { loadStats(); loadRecent(); loadUsers(1); loadDevNotes(1); }
+function loadAll() { loadStats(); loadRecent(); loadUsers(1); loadCampaigns(1); loadDevNotes(1); }
 
 function startAutoRefresh() {
   refreshCountdown = 30;
@@ -294,13 +310,13 @@ async function loadStats() {
     { num: d.totalUsers,      label: 'Toplam Üye',      cls: '',      filter: 'all',   iso: null,      hint: '↓ Tümünü göster' },
     { num: d.todayUsers,      label: 'Bugün Kayıt',     cls: 'green', filter: 'today', iso: todayIso,  hint: '↓ Bugün kayıtları' },
     { num: d.weekUsers,       label: 'Bu Hafta',        cls: 'green', filter: 'week',  iso: weekIso,   hint: '↓ Bu hafta kayıtları' },
-    { num: d.verifiedUsers,   label: 'Doğrulanmış',     cls: 'green', filter: null,    iso: null,      hint: '' },
-    { num: d.unverifiedUsers, label: 'Bekliyor',        cls: 'amber', filter: null,    iso: null,      hint: '' },
-    { num: d.bannedUsers,     label: 'Banlı',           cls: 'red',   filter: null,    iso: null,      hint: '' },
+    { num: d.verifiedUsers,   label: 'Doğrulanmış',     cls: 'green', filter: 'verified',  iso: null, hint: '↓ Doğrulanmış' },
+    { num: d.unverifiedUsers, label: 'Bekliyor',        cls: 'amber', filter: 'unverified', iso: null, hint: '↓ Bekleyenler' },
+    { num: d.bannedUsers,     label: 'Banlı',           cls: 'red',   filter: 'banned',    iso: null, hint: '↓ Banlılar' },
     { num: d.activeWacUsers,  label: 'Aktif WAC',       cls: '',      filter: null,    iso: null,      hint: '' },
     { num: d.activeCampaigns, label: 'Aktif Kampanya',  cls: '',      filter: null,    iso: null,      hint: '' },
     { num: d.totalCampaigns,  label: 'Toplam Kampanya', cls: '',      filter: null,    iso: null,      hint: '' },
-    { num: d.botUsers ?? 0,      label: 'Bot Hesaplar',    cls: '',      filter: null,    iso: null,      hint: '' },
+    { num: d.botUsers ?? 0,      label: 'Bot Hesaplar',    cls: '',   filter: 'bots',  iso: null, hint: '↓ Botlar' },
     { num: d.devNotesTotal ?? 0, label: 'Dev Notlar',      cls: '',      filter: null,    iso: null,      hint: '' },
     { num: d.devNotesUnread ?? 0,label: 'Okunmamış Not',   cls: 'amber', filter: null,    iso: null,      hint: '' },
     { num: parseFloat(d.totalWacCirculation ?? '0').toFixed(2), label: 'WAC Dolaşım', cls: 'green', filter: null, iso: null, hint: '' },
@@ -321,14 +337,23 @@ function applyStatFilter(filterKey, isoDate, label) {
   bar.style.display = 'flex';
   document.getElementById('filter-label').textContent = '🔽 Filtre: ' + label;
   bar._isoDate = isoDate;
+  // Auto-set dropdown filters based on stat card click
+  if (filterKey === 'verified') { document.getElementById('verified-filter').value = 'true'; }
+  else if (filterKey === 'unverified') { document.getElementById('verified-filter').value = 'false'; }
+  else if (filterKey === 'banned') { document.getElementById('status-filter').value = 'BANNED'; }
+  else if (filterKey === 'bots') { document.getElementById('bot-filter').value = 'true'; }
+  else { document.getElementById('status-filter').value = ''; document.getElementById('verified-filter').value = ''; document.getElementById('bot-filter').value = ''; }
   loadUsers(1);
-  loadStats(); // re-render cards to show active state
+  loadStats();
 }
 
 function clearFilter() {
   activeFilter = null;
   document.getElementById('filter-bar').style.display = 'none';
   document.getElementById('filter-bar')._isoDate = null;
+  document.getElementById('status-filter').value = '';
+  document.getElementById('verified-filter').value = '';
+  document.getElementById('bot-filter').value = '';
   loadUsers(1);
   loadStats();
 }
@@ -338,9 +363,10 @@ async function loadRecent() {
   const d = await res.json();
   document.getElementById('recent-time').textContent = 'Son güncelleme: ' + new Date().toLocaleTimeString('tr-TR');
   if (!d.users?.length) { document.getElementById('recent-list').innerHTML = '<div class="loading">Henüz kayıt yok.</div>'; return; }
-  document.getElementById('recent-list').innerHTML = d.users.slice(0,8).map(u => `
+  document.getElementById('recent-list').innerHTML = d.users.slice(0,3).map((u, i) => `
     <div class="new-reg">
       <div class="dot" style="background:${u.emailVerified?'#2ecc71':'#f39c12'}"></div>
+      <span style="color:#4A90E2;font-weight:bold;font-size:11px;">PROFILE-${u.profileNumber || (i+1)}</span>
       <div class="email">${u.email || u.slogan || '—'}</div>
       <span class="badge ${u.emailVerified?'verified':'pending'}">${u.emailVerified?'✓ Doğrulandı':'⏳ Bekliyor'}</span>
       <div class="time">${timeAgo(u.createdAt)}</div>
@@ -369,8 +395,11 @@ async function loadUsers(page) {
   document.getElementById('page-info').textContent = `Sayfa ${d.page} / ${d.totalPages || 1}`;
   if (!d.users?.length) { document.getElementById('users-table').innerHTML = '<div class="loading">Kullanıcı bulunamadı.</div>'; return; }
 
-  const rows = d.users.map(u => `
+  const startIdx = ((d.page || 1) - 1) * 20;
+  const rows = d.users.map((u, i) => `
     <tr>
+      <td style="color:#555;font-size:11px;">${startIdx + i + 1}</td>
+      <td style="color:#4A90E2;font-weight:bold;font-size:11px;">PROFILE-${u.profileNumber || (startIdx + i + 1)}</td>
       <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${u.email||''}">${u.email||'—'} ${u.isBot?'<span class="badge bot">BOT</span>':''}</td>
       <td>${u.slogan||'—'}</td>
       <td><span class="badge ${u.status==='BANNED'?'banned':'active'}">${u.status}</span></td>
@@ -391,7 +420,7 @@ async function loadUsers(page) {
 
   document.getElementById('users-table').innerHTML = `
     <table>
-      <thead><tr><th>Email</th><th>Kullanıcı</th><th>Durum</th><th>Email</th><th>WAC</th><th>RAC</th><th>Kampanya</th><th>Kayıt</th><th>İşlem</th></tr></thead>
+      <thead><tr><th>#</th><th>ID</th><th>Email</th><th>Kullanıcı</th><th>Durum</th><th>Email</th><th>WAC</th><th>RAC</th><th>Kampanya</th><th>Kayıt</th><th>İşlem</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
@@ -583,6 +612,70 @@ async function loadWallets(page) {
 
 function debounceWalletSearch() { clearTimeout(walletSearchTimer); walletSearchTimer = setTimeout(() => loadWallets(1), 400); }
 function changeWalletPage(delta) { loadWallets(Math.max(1, walletCurrentPage + delta)); }
+
+// ── Campaigns ─────────────────────────────────────────────────────────────
+let campaignCurrentPage = 1;
+async function loadCampaigns(page) {
+  campaignCurrentPage = page;
+  const params = new URLSearchParams({ page, limit: 20 });
+  document.getElementById('campaigns-table').innerHTML = '<div class="loading">Yükleniyor...</div>';
+  try {
+    const res = await apiFetch('/admin/campaigns?' + params);
+    const d = await res.json();
+    document.getElementById('campaigns-count').textContent = `${d.total ?? d.campaigns?.length ?? 0} kampanya`;
+    document.getElementById('campaign-page-info').textContent = `Sayfa ${page}`;
+    const campaigns = d.campaigns || [];
+    if (!campaigns.length) { document.getElementById('campaigns-table').innerHTML = '<div class="loading">Kampanya bulunamadı.</div>'; return; }
+
+    const rows = campaigns.map((c, i) => {
+      const startIdx = (page - 1) * 20;
+      return `<tr>
+        <td style="color:#555;font-size:11px;">${startIdx + i + 1}</td>
+        <td style="font-weight:bold;color:#4A90E2;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.title||'—'}</td>
+        <td>${c.slogan||'—'}</td>
+        <td><span class="badge ${c.isActive?'active':'banned'}">${c.isActive?'Aktif':'Pasif'}</span></td>
+        <td>${c.stanceType||'—'}</td>
+        <td>${c.categoryType||'—'}</td>
+        <td style="font-weight:bold;color:#2ecc71;">${parseFloat(c.totalWacStaked||0).toFixed(2)}</td>
+        <td>${c._count?.members || c.memberCount || 0}</td>
+        <td style="white-space:nowrap;">${timeAgo(c.createdAt)}</td>
+        <td><button class="sm" onclick="viewCampaign('${c.id}')">Detay</button></td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('campaigns-table').innerHTML = `
+      <table>
+        <thead><tr><th>#</th><th>Başlık</th><th>Slogan</th><th>Durum</th><th>Duruş</th><th>Kategori</th><th>WAC</th><th>Üye</th><th>Oluşturulma</th><th>İşlem</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } catch (e) {
+    document.getElementById('campaigns-table').innerHTML = '<div class="loading">Hata oluştu.</div>';
+  }
+}
+function changeCampaignPage(delta) { loadCampaigns(Math.max(1, campaignCurrentPage + delta)); }
+
+async function viewCampaign(cid) {
+  try {
+    const res = await apiFetch('/admin/campaigns');
+    const d = await res.json();
+    const c = (d.campaigns || []).find(x => x.id === cid);
+    if (!c) { alert('Kampanya bulunamadı.'); return; }
+    document.getElementById('detail-title').textContent = 'Kampanya Detayı';
+    document.getElementById('detail-content').innerHTML = `
+      <div class="detail-row"><div class="k">ID</div><div class="v">${c.id}</div></div>
+      <div class="detail-row"><div class="k">Başlık</div><div class="v">${c.title}</div></div>
+      <div class="detail-row"><div class="k">Slogan</div><div class="v">${c.slogan||'—'}</div></div>
+      <div class="detail-row"><div class="k">Duruş</div><div class="v">${c.stanceType||'—'}</div></div>
+      <div class="detail-row"><div class="k">Kategori</div><div class="v">${c.categoryType||'—'}</div></div>
+      <div class="detail-row"><div class="k">Toplam WAC</div><div class="v" style="color:#2ecc71;">${parseFloat(c.totalWacStaked||0).toFixed(2)}</div></div>
+      <div class="detail-row"><div class="k">Üye Sayısı</div><div class="v">${c._count?.members || 0}</div></div>
+      <div class="detail-row"><div class="k">Aktif</div><div class="v">${c.isActive?'Evet':'Hayır'}</div></div>
+      <div class="detail-row"><div class="k">Oluşturulma</div><div class="v">${new Date(c.createdAt).toLocaleString('tr-TR')}</div></div>
+      <div class="detail-row"><div class="k">Lider</div><div class="v">${c.leaderId}</div></div>
+    `;
+    openModal('detail-modal');
+  } catch { alert('Detay yüklenemedi.'); }
+}
 </script>
 </body>
 </html>

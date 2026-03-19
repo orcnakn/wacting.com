@@ -60,7 +60,7 @@ export async function feedRoutes(fastify: FastifyInstance) {
         }
     });
 
-    // GET /feed/campaigns/following - Campaigns I follow
+    // GET /feed/campaigns/following - Campaigns I follow (via campaign leader)
     fastify.get('/campaigns/following', async (request, reply) => {
         try {
             const user = (request as any).user || { id: 'mockUserId_1' };
@@ -70,7 +70,27 @@ export async function feedRoutes(fastify: FastifyInstance) {
                     target: { include: { icon: true } }
                 }
             });
-            return reply.send({ success: true, followed });
+
+            // Enrich with campaign data for each followed leader
+            const campaigns: any[] = [];
+            for (const f of followed) {
+                const targetId = f.targetId;
+                const campaign = await prisma.campaign.findFirst({
+                    where: { leaderId: targetId, isActive: true },
+                    include: {
+                        _count: { select: { members: true } },
+                    }
+                });
+                if (campaign) {
+                    campaigns.push({
+                        ...campaign,
+                        memberCount: campaign._count?.members ?? 0,
+                        leader: f.target,
+                        followedAt: f.createdAt,
+                    });
+                }
+            }
+            return reply.send({ success: true, campaigns });
         } catch (error: any) {
             fastify.log.error(error);
             return reply.status(500).send({ success: false, error: 'Server error' });

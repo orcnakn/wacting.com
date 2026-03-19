@@ -367,6 +367,7 @@ enum NotifType {
   RAC_PROTEST_STARTED
   DIRECT_MESSAGE
   CAMPAIGN_CHANGE
+  CAMPAIGN_TRENDING
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -190,13 +190,12 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Widget _buildSocialIconsRow() {
     final socials = [
-      _SocialDef('instagram', const Color(0xFFE4405F), Icons.camera_alt),
       _SocialDef('facebook', const Color(0xFF1877F2), Icons.facebook),
+      _SocialDef('instagram', const Color(0xFFE4405F), Icons.camera_alt),
       _SocialDef('twitter', const Color(0xFFEEEEEE), null, 'X'),
-      _SocialDef('tiktok', const Color(0xFF69C9D0), Icons.music_note),
       _SocialDef('linkedin', const Color(0xFF0A66C2), Icons.work),
       _SocialDef('apple', const Color(0xFFAAAAAA), Icons.apple),
-      _SocialDef('steam', const Color(0xFF66C0F4), Icons.sports_esports),
+      _SocialDef('tiktok', const Color(0xFF69C9D0), Icons.music_note),
     ];
 
     return Wrap(

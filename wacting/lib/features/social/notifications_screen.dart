@@ -43,6 +43,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'RAC_PROTEST_STARTED': return Icons.warning;
       case 'DIRECT_MESSAGE': return Icons.message;
       case 'CAMPAIGN_CHANGE': return Icons.edit;
+      case 'CAMPAIGN_TRENDING': return Icons.trending_up;
+      case 'SYSTEM': return Icons.campaign;
       default: return Icons.info;
     }
   }
@@ -57,6 +59,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'RAC_PROTEST_STARTED': return AppColors.accentRed;
       case 'DIRECT_MESSAGE': return AppColors.accentBlue;
       case 'CAMPAIGN_CHANGE': return AppColors.accentTeal;
+      case 'CAMPAIGN_TRENDING': return AppColors.accentAmber;
+      case 'SYSTEM': return AppColors.accentBlue;
       default: return AppColors.textTertiary;
     }
   }

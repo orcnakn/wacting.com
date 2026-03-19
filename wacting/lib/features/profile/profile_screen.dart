@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../app/theme.dart';
 import '../../core/services/api_service.dart';
+import '../../core/utils/format_utils.dart';
 
 import '../social/notifications_screen.dart';
 
@@ -37,7 +38,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: _isOwnProfile ? 3 : 1, vsync: this);
     _loadProfile();
   }
 
@@ -153,11 +154,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     return Scaffold(
       backgroundColor: AppColors.pageBackground,
       appBar: AppBar(
-        title: Text('Profil', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.textPrimary)),
+        title: Text(_isOwnProfile ? 'Profil' : displayName, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.textPrimary)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        bottom: TabBar(
+        bottom: _isOwnProfile ? TabBar(
           controller: _tabController,
           indicatorColor: AppColors.accentBlue,
           labelColor: AppColors.accentBlue,
@@ -171,12 +172,23 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             Tab(text: 'CUZDAN'),
             Tab(text: 'BILDIRIMLER'),
           ],
-        ),
+        ) : null,
       ),
-      body: TabBarView(
+      body: _isOwnProfile
+        ? TabBarView(
         controller: _tabController,
         children: [
-          RefreshIndicator(
+          _buildProfileTab(displayName, followerCount, followingCount, avatarUrl, sloganText, isFollowedByViewer),
+          _buildWalletTab(),
+          const NotificationsScreen(),
+        ],
+      )
+        : _buildProfileTab(displayName, followerCount, followingCount, avatarUrl, sloganText, isFollowedByViewer),
+    );
+  }
+
+  Widget _buildProfileTab(String displayName, int followerCount, int followingCount, String? avatarUrl, String sloganText, bool isFollowedByViewer) {
+    return RefreshIndicator(
             onRefresh: _loadProfile,
             child: ListView(
               padding: const EdgeInsets.all(20),
@@ -240,6 +252,23 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                         style: TextStyle(color: AppColors.accentTeal, fontStyle: FontStyle.italic, fontSize: 13)),
                   ),
                 ],
+                const SizedBox(height: 12),
+                // Daily passive reward
+                if (_dailyRewards.isNotEmpty)
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.accentGreen.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.accentGreen.withOpacity(0.3)),
+                      ),
+                      child: Text(
+                        '+${_dailyRewards.fold<double>(0, (sum, r) => sum + (double.tryParse((r['dailyReward'] ?? '0').toString()) ?? 0)).toStringAsFixed(2)} WAC / gun',
+                        style: TextStyle(color: AppColors.accentGreen, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -304,14 +333,35 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       ),
                     );
                   }),
+              // Follow button for other profiles
+              if (!_isOwnProfile) ...[
+                const SizedBox(height: 20),
+                Center(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isFollowedByViewer ? AppColors.surfaceLight : AppColors.accentBlue,
+                      foregroundColor: isFollowedByViewer ? AppColors.textPrimary : Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                    ),
+                    icon: Icon(isFollowedByViewer ? Icons.person_remove : Icons.person_add, size: 18),
+                    label: Text(isFollowedByViewer ? 'Takibi Birak' : 'Takip Et'),
+                    onPressed: () async {
+                      try {
+                        if (isFollowedByViewer) {
+                          await apiService.unfollowUser(_targetUserId);
+                        } else {
+                          await apiService.followUser(_targetUserId);
+                        }
+                        _loadProfile();
+                      } catch (_) {}
+                    },
+                  ),
+                ),
+              ],
               ],
             ),
-          ),
-          _buildWalletTab(),
-          const NotificationsScreen(),
-        ],
-      ),
-    );
+          );
   }
 
   Widget _buildSocialMediaRow(bool isFollowedByViewer) {
@@ -470,6 +520,14 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           final slogan = (user['slogan'] ?? '') as String;
           return ListTile(
             dense: true,
+            onTap: () {
+              final uid = user['id'] as String?;
+              if (uid != null && uid != _targetUserId) {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => ProfileScreen(viewUserId: uid),
+                ));
+              }
+            },
             leading: CircleAvatar(
               radius: 16,
               backgroundColor: AppColors.accentBlue.withOpacity(0.1),
@@ -503,7 +561,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       return Center(child: CircularProgressIndicator(color: AppColors.accentBlue));
     }
 
-    final wacBalance = _wacStatus?['wacBalance'] ?? '0.000000';
+    final wacBalance = formatWac(_wacStatus?['wacBalance'] ?? '0');
     final racBal = _racBalance?['racBalance'] ?? 0;
     final walletId = _profile?['walletId'] ?? '';
 

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 
 class ApiService {
@@ -25,12 +26,40 @@ class ApiService {
     _token = token;
     _userId = userId;
     _dio.options.headers['Authorization'] = 'Bearer $token';
+    _persistAuth(token, userId);
   }
 
   void clearAuth() {
     _token = null;
     _userId = null;
     _dio.options.headers.remove('Authorization');
+    _clearPersistedAuth();
+  }
+
+  Future<void> _persistAuth(String token, String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('wacting_token', token);
+    await prefs.setString('wacting_userId', userId);
+  }
+
+  Future<void> _clearPersistedAuth() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('wacting_token');
+    await prefs.remove('wacting_userId');
+  }
+
+  /// Try to restore session from persistent storage. Returns true if restored.
+  Future<bool> tryRestoreSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('wacting_token');
+    final userId = prefs.getString('wacting_userId');
+    if (token != null && userId != null) {
+      _token = token;
+      _userId = userId;
+      _dio.options.headers['Authorization'] = 'Bearer $token';
+      return true;
+    }
+    return false;
   }
 
   // ── Auth ────────────────────────────────────────────────────────────────────
@@ -166,6 +195,11 @@ class ApiService {
 
   Future<List<dynamic>> getAllCampaigns() async {
     final res = await _dio.get('/campaign/all');
+    return (res.data as Map<String, dynamic>)['campaigns'] as List<dynamic>;
+  }
+
+  Future<List<dynamic>> getFollowedCampaigns() async {
+    final res = await _dio.get('/feed/campaigns/following');
     return (res.data as Map<String, dynamic>)['campaigns'] as List<dynamic>;
   }
 
