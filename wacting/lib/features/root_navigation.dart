@@ -177,7 +177,7 @@ class _RootNavigationState extends State<RootNavigation> {
         // Notification star — always visible, dim when no unread
         Positioned(
           top: MediaQuery.of(context).padding.top + 8,
-          left: 12,
+          right: 12,
           child: GestureDetector(
             onTap: _openNotifications,
             child: Stack(
@@ -225,10 +225,10 @@ class _RootNavigationState extends State<RootNavigation> {
             ),
           ),
         ),
-        // Map filter dropdown (below notification star)
+        // Map filter dropdown
         if (_currentIndex == 0)
           Positioned(
-            top: MediaQuery.of(context).padding.top + (_unreadCount > 0 ? 56 : 8),
+            top: MediaQuery.of(context).padding.top + 8,
             left: 12,
             child: _buildFilterDropdown(),
           ),
