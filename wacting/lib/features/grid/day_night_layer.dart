@@ -1,16 +1,16 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 
-/// Smooth day/night overlay using an offscreen image.
+/// Smooth day/night overlay using bilinear interpolation.
 ///
-/// 1. Computes solar illumination on a small grid (sample points).
-/// 2. Writes those values as alpha pixels into a tiny RGBA image.
-/// 3. Draws the image stretched to fill the screen with bilinear filtering.
-///    The GPU handles smooth interpolation — no visible grid cells.
+/// 1. Computes solar illumination on a coarse sample grid.
+/// 2. Renders a fine output grid where each cell's opacity is
+///    bilinear-interpolated from the 4 surrounding samples.
+/// 3. No blur layer needed — no edge artifacts, perfectly consistent
+///    across all world copies.
 class DayNightLayer extends StatelessWidget {
   const DayNightLayer({Key? key}) : super(key: key);
 
@@ -23,23 +23,20 @@ class DayNightLayer extends StatelessWidget {
     return IgnorePointer(
       child: CustomPaint(
         size: Size.infinite,
-        painter: _DayNightImagePainter(camera: camera, solar: solar),
+        painter: _DayNightPainter(camera: camera, solar: solar),
       ),
     );
   }
 }
 
-/// Pre-computed solar parameters for the current moment.
 class _SolarParams {
   final double sinDec;
   final double cosDec;
-  final double eqTimeMin;
-  final double solarBaseMin; // (hour*60 + minute) + eqTime
+  final double solarBaseMin;
 
   _SolarParams._({
     required this.sinDec,
     required this.cosDec,
-    required this.eqTimeMin,
     required this.solarBaseMin,
   });
 
@@ -61,7 +58,6 @@ class _SolarParams {
     return _SolarParams._(
       sinDec: math.sin(dec),
       cosDec: math.cos(dec),
-      eqTimeMin: eqTime,
       solarBaseMin: (utc.hour * 60 + utc.minute).toDouble() + eqTime,
     );
   }
@@ -73,33 +69,32 @@ class _SolarParams {
     if (lng < 0) lng += 360;
     lng -= 180;
 
-    final solarTimeMin = solarBaseMin + (lng * 4);
-    final hRad = ((solarTimeMin / 4) - 180) * math.pi / 180;
-
+    final hRad = ((solarBaseMin + lng * 4) / 4 - 180) * math.pi / 180;
     final latRad = latDeg * math.pi / 180;
 
     final cosZenith = math.sin(latRad) * sinDec +
         math.cos(latRad) * cosDec * math.cos(hRad);
 
-    // cosZenith >= 0   → day (opacity 0)
-    // -0.20 < cosZ < 0 → twilight (smooth gradient 0..0.55)
-    // cosZenith <= -0.20 → night (opacity 0.55)
     if (cosZenith >= 0.0) return 0.0;
     if (cosZenith > -0.20) return (-cosZenith / 0.20) * 0.55;
     return 0.55;
   }
 }
 
-class _DayNightImagePainter extends CustomPainter {
+class _DayNightPainter extends CustomPainter {
   final MapCamera camera;
   final _SolarParams solar;
 
-  /// Sample grid resolution for the offscreen image.
-  /// Kept small — GPU bilinear upscaling handles smoothness.
-  static const int imgW = 160;
-  static const int imgH = 80;
+  // Coarse sample grid — illumination computed here
+  static const int sampleCols = 64;
+  static const int sampleRows = 32;
 
-  _DayNightImagePainter({required this.camera, required this.solar});
+  // Fine render grid — bilinear-interpolated, drawn to canvas
+  // ~6x6 px cells on a 1920x1080 screen — invisible to the eye
+  static const int renderCols = 320;
+  static const int renderRows = 180;
+
+  _DayNightPainter({required this.camera, required this.solar});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -107,85 +102,63 @@ class _DayNightImagePainter extends CustomPainter {
     final h = size.height;
     if (w <= 0 || h <= 0) return;
 
-    // Step sizes: map each image pixel to a screen point
-    final stepX = w / imgW;
-    final stepY = h / imgH;
+    // ── Step 1: Compute coarse sample grid ──
+    final samples = Float64List(sampleCols * sampleRows);
+    final sStepX = w / (sampleCols - 1);
+    final sStepY = h / (sampleRows - 1);
 
-    // Build RGBA pixel data
-    final pixels = Uint8List(imgW * imgH * 4);
-    int offset = 0;
-
-    for (int row = 0; row < imgH; row++) {
-      final sy = (row + 0.5) * stepY;
-      for (int col = 0; col < imgW; col++) {
-        final sx = (col + 0.5) * stepX;
-
-        // Screen point → lat/lng
+    for (int row = 0; row < sampleRows; row++) {
+      final sy = row * sStepY;
+      for (int col = 0; col < sampleCols; col++) {
+        final sx = col * sStepX;
         final ll = camera.pointToLatLng(math.Point(sx, sy));
         final lat = ll.latitude.clamp(-85.0, 85.0);
-        final lng = ll.longitude;
-
-        final opacity = solar.nightOpacity(lat, lng);
-
-        // RGBA — black with computed alpha
-        pixels[offset]     = 0;   // R
-        pixels[offset + 1] = 0;   // G
-        pixels[offset + 2] = 0;   // B
-        pixels[offset + 3] = (opacity * 255).round().clamp(0, 255); // A
-        offset += 4;
+        samples[row * sampleCols + col] = solar.nightOpacity(lat, ll.longitude);
       }
     }
 
-    // Decode pixels into a ui.Image synchronously via ImmutableBuffer + ImageDescriptor
-    // We use decodeImageFromPixels with a sync-like pattern via PictureRecorder
-    // Since decodeImageFromPixels is async, we use a workaround:
-    // Draw the image data as individual vertical gradient strips using drawRect.
-    //
-    // Better approach: use saveLayer + blur to smooth the grid.
-    _drawSmoothed(canvas, size, pixels);
-  }
-
-  void _drawSmoothed(Canvas canvas, Size size, Uint8List pixels) {
-    final w = size.width;
-    final h = size.height;
-    final cellW = w / imgW;
-    final cellH = h / imgH;
-
-    // Apply Gaussian blur to the entire night layer for smooth transitions.
-    // The blur sigma is ~1.5x cell size — eliminates visible grid edges
-    // while keeping the day/night boundary crisp enough.
-    final blurSigma = math.max(cellW, cellH) * 1.5;
-
-    canvas.saveLayer(
-      Rect.fromLTWH(0, 0, w, h),
-      Paint()..imageFilter = ui.ImageFilter.blur(
-        sigmaX: blurSigma,
-        sigmaY: blurSigma,
-        tileMode: TileMode.clamp,
-      ),
-    );
-
+    // ── Step 2: Render fine grid with bilinear interpolation ──
+    final cellW = w / renderCols;
+    final cellH = h / renderRows;
     final paint = Paint()..style = PaintingStyle.fill;
-    int offset = 0;
 
-    for (int row = 0; row < imgH; row++) {
-      for (int col = 0; col < imgW; col++) {
-        final alpha = pixels[offset + 3];
-        offset += 4;
+    // Scale factors: render grid → sample grid
+    final scaleX = (sampleCols - 1) / renderCols;
+    final scaleY = (sampleRows - 1) / renderRows;
 
-        if (alpha == 0) continue; // Skip daylight cells
+    for (int row = 0; row < renderRows; row++) {
+      // Sample grid Y coordinate (continuous)
+      final gy = (row + 0.5) * scaleY;
+      final y0 = gy.floor().clamp(0, sampleRows - 2);
+      final fy = gy - y0;
+      final fy1 = 1.0 - fy;
+      final rowOff0 = y0 * sampleCols;
+      final rowOff1 = (y0 + 1) * sampleCols;
 
+      for (int col = 0; col < renderCols; col++) {
+        // Sample grid X coordinate (continuous)
+        final gx = (col + 0.5) * scaleX;
+        final x0 = gx.floor().clamp(0, sampleCols - 2);
+        final fx = gx - x0;
+
+        // Bilinear interpolation from 4 surrounding samples
+        final val = samples[rowOff0 + x0] * (1.0 - fx) * fy1 +
+            samples[rowOff0 + x0 + 1] * fx * fy1 +
+            samples[rowOff1 + x0] * (1.0 - fx) * fy +
+            samples[rowOff1 + x0 + 1] * fx * fy;
+
+        if (val < 0.01) continue; // Skip daylight cells
+
+        final alpha = (val * 255).round().clamp(0, 140);
         paint.color = Color.fromARGB(alpha, 0, 0, 0);
         canvas.drawRect(
-          Rect.fromLTWH(col * cellW, row * cellH, cellW + 1, cellH + 1),
+          Rect.fromLTWH(col * cellW, row * cellH, cellW + 0.5, cellH + 0.5),
           paint,
         );
       }
     }
-
-    canvas.restore(); // Applies the blur
   }
 
   @override
-  bool shouldRepaint(covariant _DayNightImagePainter oldDelegate) => true;
+  bool shouldRepaint(covariant _DayNightPainter oldDelegate) => true;
 }

@@ -754,9 +754,11 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
               }
 
-              // Calculate dynamic minZoom so world never shows twice
+              // minZoom: at max zoom-out exactly 1 world fills the screen.
+              // 7 copies exist for seamless left/right panning.
               final screenWidth = MediaQuery.of(context).size.width;
-              final dynamicMinZoom = math.max(1.0, (math.log(screenWidth / 256) / math.ln2) - 2.5);
+              // At zoom z, one world = 256 * 2^z px. Solve: 256 * 2^z = screenWidth
+              final dynamicMinZoom = (math.log(screenWidth / 256) / math.ln2);
 
               return FlutterMap(
                 mapController: _mapController,
