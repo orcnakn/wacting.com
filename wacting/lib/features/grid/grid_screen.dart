@@ -91,17 +91,14 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   bool _regionSelectMode = false;       // toggle: show/hide polygon overlay
   List<_CountryPolygon> _countryPolygons = [];  // 110m countries
   List<_CountryPolygon> _admin1Polygons = [];   // 50m admin-1 (states/provinces)
-  List<_CountryPolygon> _oceanPolygons = [];    // ocean/sea regions
   List<_CityPoint> _cityPoints = [];            // major cities
   final Set<String> _selectedCountries = {};    // individual country names
   final Set<String> _selectedContinents = {};   // whole-continent selections
   final Set<String> _excludedCountries = {};    // countries excluded from continent selection
   final Set<String> _selectedRegions = {};      // admin-1 regions ("state|country")
-  final Set<String> _selectedOceans = {};       // ocean/sea names
   final Set<String> _selectedCities = {};       // city names ("city|country")
   bool _isCountriesLoaded = false;
   bool _isAdmin1Loaded = false;
-  bool _isOceansLoaded = false;
   bool _isCitiesLoaded = false;
 
   // ── Pause/Resume state ──
@@ -225,37 +222,6 @@ class _GridScreenState extends ConsumerState<GridScreen> {
     }
   }
 
-  Future<void> _ensureOceansLoaded() async {
-    if (_isOceansLoaded) return;
-    try {
-      final raw = await rootBundle.loadString('assets/map/ocean_regions.geojson');
-      final Map<String, dynamic> geoJson = jsonDecode(raw);
-      final List features = geoJson['features'] as List;
-      final List<_CountryPolygon> parsed = [];
-      for (final feature in features) {
-        final props = feature['properties'] as Map<String, dynamic>;
-        final name = (props['name'] ?? 'Unknown') as String;
-        final geometry = feature['geometry'];
-        final type = geometry['type'] as String;
-        if (type == 'Polygon') {
-          final coords = geometry['coordinates'] as List;
-          parsed.add(_CountryPolygon(
-            name: name, continent: null, parentCountry: null,
-            outerRing: _parseRing(coords[0] as List),
-            holes: coords.length > 1
-                ? coords.sublist(1).map((h) => _parseRing(h as List)).toList()
-                : <List<LatLng>>[],
-          ));
-        }
-      }
-      if (mounted) {
-        setState(() { _oceanPolygons = parsed; _isOceansLoaded = true; });
-      }
-    } catch (e) {
-      debugPrint("Failed to load ocean regions: $e");
-    }
-  }
-
   Future<void> _ensureCitiesLoaded() async {
     if (_isCitiesLoaded) return;
     try {
@@ -330,30 +296,6 @@ class _GridScreenState extends ConsumerState<GridScreen> {
       }
     }
     return null;
-  }
-
-  String? _findOceanAtPoint(LatLng point) {
-    // First try specific sea/ocean polygons from GeoJSON
-    for (final cp in _oceanPolygons) {
-      if (_pointInPolygon(point, cp.outerRing)) return cp.name;
-    }
-    // Fallback: determine ocean by coordinates (covers gaps in polygons)
-    final lat = point.latitude;
-    final lng = point.longitude;
-    // Southern Ocean
-    if (lat < -60) return 'Southern Ocean';
-    // Arctic Ocean
-    if (lat > 65) return 'Arctic Ocean';
-    // Indian Ocean: roughly between Africa, Asia and Australia
-    if (lat < 30 && lat > -60 && lng > 20 && lng < 120) return 'Indian Ocean';
-    // South Pacific: southern hemisphere, east of Australia to Americas
-    if (lat < 0 && (lng >= 120 || lng < -60)) return 'South Pacific Ocean';
-    // North Pacific: northern hemisphere, Asia to Americas (wide)
-    if (lat >= 0 && lat <= 65 && (lng >= 120 || lng <= -80)) return 'North Pacific Ocean';
-    // South Atlantic: southern hemisphere, between Americas and Africa
-    if (lat < 0 && lng >= -60 && lng <= 20) return 'South Atlantic Ocean';
-    // North Atlantic: default for remaining northern water
-    return 'North Atlantic Ocean';
   }
 
   _CityPoint? _findNearestCity(LatLng point, {double maxDistKm = 50.0}) {
@@ -616,6 +558,12 @@ class _GridScreenState extends ConsumerState<GridScreen> {
       if (parent != null && _isCountrySelected(parent)) continue;
       if (parent != null && _excludedCountries.contains(parent)) continue;
       parts.add('${split[0]}${parent != null ? ' ($parent)' : ''}');
+    }
+    for (final c in _selectedCities) {
+      final split = c.split('|');
+      final city = split[0];
+      final country = split.length >= 2 ? split[1] : null;
+      parts.add('$city${country != null ? ' ($country)' : ''}');
     }
     return parts.isEmpty ? 'Seçim yok' : parts.join(', ');
   }
@@ -1072,7 +1020,6 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   // Entering region-select mode — lazy-load GeoJSON layers + auto-pause
                   await _ensureCountriesLoaded();
                   await _ensureAdmin1Loaded();
-                  await _ensureOceansLoaded();
                   await _ensureCitiesLoaded();
                   setState(() {
                     _regionSelectMode = true;
