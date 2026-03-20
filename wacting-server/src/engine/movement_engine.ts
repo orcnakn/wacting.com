@@ -76,9 +76,15 @@ export function tickMovement(icon: IconState, dt: number): void {
             icon.y = wrapCoordinate(newY, GRID_HEIGHT);
         }
     } else {
-        // World boundary wrapping (toroidal topology)
-        icon.x = wrapCoordinate(newX, GRID_WIDTH);
-        icon.y = wrapCoordinate(newY, GRID_HEIGHT);
+        // Land-only movement: reject move if new position is in ocean
+        const newLng = (newX / GRID_WIDTH) * 360 - 180;
+        const newLat = 90 - (newY / GRID_HEIGHT) * 180;
+        const isOnLand = wc([newLng, newLat]) != null;
+        if (isOnLand) {
+            icon.x = wrapCoordinate(newX, GRID_WIDTH);
+            icon.y = wrapCoordinate(newY, GRID_HEIGHT);
+        }
+        // If ocean, icon stays in place (will try again next tick with new random direction)
     }
 
     // Asynchronous Tracker Logic (To be connected to Prisma)

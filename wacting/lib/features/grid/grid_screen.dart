@@ -446,22 +446,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
     if (level == 'continents') {
       final country = _findCountryAtPoint(point);
-      if (country == null) {
-        if (_isOceansLoaded) {
-          final ocean = _findOceanAtPoint(point);
-          if (ocean != null) {
-            setState(() {
-              if (_selectedOceans.contains(ocean)) {
-                _selectedOceans.remove(ocean);
-              } else {
-                _selectedOceans.add(ocean);
-              }
-            });
-            _showSelectionSnackbar(ocean);
-          }
-        }
-        return;
-      }
+      if (country == null) return;
       final continent = _continentForCountry(country);
       if (continent == null) return;
 
@@ -482,22 +467,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
       _showSelectionSnackbar('🌍 $continent');
     } else if (level == 'countries') {
       final country = _findCountryAtPoint(point);
-      if (country == null) {
-        if (_isOceansLoaded) {
-          final ocean = _findOceanAtPoint(point);
-          if (ocean != null) {
-            setState(() {
-              if (_selectedOceans.contains(ocean)) {
-                _selectedOceans.remove(ocean);
-              } else {
-                _selectedOceans.add(ocean);
-              }
-            });
-            _showSelectionSnackbar(ocean);
-          }
-        }
-        return;
-      }
+      if (country == null) return;
 
       final cont = _continentForCountry(country);
       final isViaContinent = cont != null && _selectedContinents.contains(cont);
@@ -549,9 +519,6 @@ class _GridScreenState extends ConsumerState<GridScreen> {
             return;
           }
         }
-      } else {
-        // Water area - try ocean selection
-        _trySelectOcean(point);
       }
     } else {
       // Regions zoom (>=7) — select admin-1 state/province
@@ -588,25 +555,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
           }
         });
         _showSelectionSnackbar(country);
-      } else {
-        // Water area - try ocean selection
-        _trySelectOcean(point);
       }
-    }
-  }
-
-  void _trySelectOcean(LatLng point) {
-    if (!_isOceansLoaded) return;
-    final ocean = _findOceanAtPoint(point);
-    if (ocean != null) {
-      setState(() {
-        if (_selectedOceans.contains(ocean)) {
-          _selectedOceans.remove(ocean);
-        } else {
-          _selectedOceans.add(ocean);
-        }
-      });
-      _showSelectionSnackbar(ocean);
     }
   }
 
@@ -677,7 +626,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
       all.addAll(_continentCountries[c] ?? []);
     }
     all.removeAll(_excludedCountries);
-    return all.length + _selectedRegions.length + _selectedOceans.length + _selectedCities.length;
+    return all.length + _selectedRegions.length + _selectedCities.length;
   }
 
   // Active polygons based on zoom level
@@ -855,22 +804,11 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   }
                 }
 
-                if (_isOceansLoaded) {
-                  for (final cp in _oceanPolygons) {
-                    final bool selected = _selectedOceans.contains(cp.name);
-                    polygonWidgets.addAll(_multiWorldPolygon(
-                      cp,
-                      selected ? Colors.blue.withOpacity(0.3) : Colors.blue.withOpacity(0.05),
-                      selected ? Colors.lightBlueAccent : Colors.blue.withOpacity(0.3),
-                      selected ? 2.5 : 0.8,
-                    ));
-                  }
-                }
               }
 
               // Calculate dynamic minZoom so world never shows twice
               final screenWidth = MediaQuery.of(context).size.width;
-              final dynamicMinZoom = math.max(2.0, (math.log(screenWidth / 256) / math.ln2));
+              final dynamicMinZoom = math.max(1.0, (math.log(screenWidth / 256) / math.ln2) - 2.5);
 
               return FlutterMap(
                 mapController: _mapController,
@@ -882,18 +820,18 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   // Constrain latitude to Mercator bounds, longitude free for wrapping
                   cameraConstraint: CameraConstraint.contain(
                     bounds: LatLngBounds(
-                      const LatLng(-85.0, -900.0),  // allow 2.5 extra worlds each side
-                      const LatLng(85.0, 900.0),
+                      const LatLng(-85.0, -1260.0),  // allow 3.5 extra worlds each side (7 copies)
+                      const LatLng(85.0, 1260.0),
                     ),
                   ),
                   onPositionChanged: (position, hasGesture) {
                     if (position.zoom != null) {
                       if (mounted) setState(() => _currentZoom = position.zoom!);
                     }
-                    // Snap-back: when user scrolls beyond 2 worlds, snap to center
+                    // Snap-back: when user scrolls beyond 5 worlds, snap to center
                     if (position.center != null && hasGesture) {
                       final lng = position.center!.longitude;
-                      if (lng > 540 || lng < -540) {
+                      if (lng > 1080 || lng < -1080) {
                         final normalizedLng = ((lng + 180) % 360) - 180;
                         _mapController.move(
                           LatLng(position.center!.latitude, normalizedLng),
