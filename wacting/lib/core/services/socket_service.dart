@@ -152,7 +152,15 @@ class SocketService {
     });
   }
 
-  void updateViewportSubscription(ViewportState viewport) {}
+  void updateViewportSubscription(ViewportState viewport) {
+    if (_socket == null || !(_socket!.connected)) return;
+    // Map screen bounds to world coordinate space (0-510)
+    final minX = viewport.position.dx;
+    final minY = viewport.position.dy;
+    final maxX = minX + viewport.screenSize.width / viewport.zoom;
+    final maxY = minY + viewport.screenSize.height / viewport.zoom;
+    _socket!.emit('join_viewport', {'minX': minX, 'minY': minY, 'maxX': maxX, 'maxY': maxY});
+  }
 
   void dispose() {
     _socket?.disconnect();

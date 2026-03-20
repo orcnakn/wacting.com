@@ -38,29 +38,69 @@ const engine = new MovementEngine();
 
 async function start() {
     try {
-        // Inject Mock Testing Icons
-        for (let i = 0; i < 10; i++) {
-            engine.icons.set(`mock_${i}`, {
-                id: `mock_${i}`,
-                userId: `mockUserId_${i}`,
-                x: 100 + (Math.random() * 500),
-                y: 100 + (Math.random() * 500),
-                vx: 0,
-                vy: 0,
-                baseSpeed: 1 + Math.random(),
-                size: 15 + (Math.random() * 100),
-                wacBalance: 0,   // WAC balance drives map size
-                exploreMode: 0,
-                campaignSpeed: 0.5, // default: 75% of reference (mock_95) speed
-            });
-        }
-
         // 1. Initialize Prisma Database Connection (graceful — server starts even without DB)
         try {
             await prisma.$connect();
             fastify.log.info('Prisma Postgres Connected');
+
+            // Load all DB icons into the physics engine
+            const dbIcons = await prisma.icon.findMany({
+                include: {
+                    user: {
+                        include: {
+                            wac: true,
+                            campaignMemberships: {
+                                where: { campaign: { isActive: true } },
+                                include: { campaign: true },
+                                take: 1,
+                            }
+                        }
+                    }
+                }
+            });
+
+            for (const icon of dbIcons) {
+                const wacBal = parseFloat(icon.user?.wac?.wacBalance?.toString() ?? '0');
+                const campaign = icon.user?.campaignMemberships?.[0]?.campaign;
+                const size = wacBal > 0
+                    ? Math.max(1, Math.log10(wacBal + 1) * 20)
+                    : Math.max(1, icon.followerCount * 0.5 + 1);
+
+                engine.icons.set(icon.userId, {
+                    id: icon.id,
+                    userId: icon.userId,
+                    x: icon.lastKnownX > 0 ? icon.lastKnownX : Math.random() * 510,
+                    y: icon.lastKnownY > 0 ? icon.lastKnownY : Math.random() * 510,
+                    vx: 0,
+                    vy: 0,
+                    baseSpeed: 1.0,
+                    size,
+                    wacBalance: wacBal,
+                    exploreMode: icon.exploreMode,
+                    campaignSpeed: campaign?.speed ?? 0.5,
+                    campaignColor: campaign?.iconColor ?? icon.colorHex,
+                    campaignSlogan: campaign?.slogan ?? icon.slogan ?? undefined,
+                });
+            }
+            fastify.log.info(`Loaded ${dbIcons.length} icons from DB into engine`);
+
         } catch (dbErr) {
             fastify.log.warn('⚠ PostgreSQL unavailable — server will start without DB. WAC/RAC routes will return errors.');
+            // Fallback: inject mock icons for testing
+            for (let i = 0; i < 10; i++) {
+                engine.icons.set(`mock_${i}`, {
+                    id: `mock_${i}`,
+                    userId: `mockUserId_${i}`,
+                    x: 100 + (Math.random() * 310),
+                    y: 100 + (Math.random() * 310),
+                    vx: 0, vy: 0,
+                    baseSpeed: 1 + Math.random(),
+                    size: 15 + (Math.random() * 100),
+                    wacBalance: 0,
+                    exploreMode: 0,
+                    campaignSpeed: 0.5,
+                });
+            }
         }
 
         // 2. Start WebSocket Manager passing our physics engine instance

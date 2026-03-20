@@ -26,10 +26,7 @@ export class SocketManager {
         this.io.use((socket, next) => {
             const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.replace('Bearer ', '');
             if (!token) {
-                // Allow unauthenticated connections in dev, reject in production
-                if (process.env.NODE_ENV === 'production') {
-                    return next(new Error('Authentication required'));
-                }
+                // Allow anonymous connections — map is publicly viewable
                 socket.data.userId = null;
                 return next();
             }
@@ -75,21 +72,22 @@ export class SocketManager {
     }
 
     private broadcastViewportUpdates() {
-        // For every connected client, fetch icons that reside only in their screen bounds from the SpatialIndex
         const sockets = this.io.sockets.sockets;
+        if (sockets.size === 0) return;
 
-        for (const [id, socket] of sockets) {
+        // Send all visible icons to every connected client
+        const allIcons = Array.from(this.engine.icons.values()).filter((i: any) => i.size > 0);
+
+        for (const [, socket] of sockets) {
             if (socket.data.viewport) {
+                // Viewport-aware: spatially filtered for performance
                 const { minX, minY, maxX, maxY } = socket.data.viewport;
-
-                // RBush fast spatial query! O(log N) instead of O(N). Extremely crucial for scalability.
-                let nearbyIcons = this.engine.spatialIndex.search(minX, minY, maxX, maxY);
-
-                // Visibility: icons with zero size (no WAC) disappear from the map.
-                nearbyIcons = nearbyIcons.filter((i: any) => i.size > 0);
-
-                // Emit just the subset
-                socket.volatile.emit('tick', nearbyIcons);
+                const nearby = this.engine.spatialIndex.search(minX, minY, maxX, maxY)
+                    .filter((i: any) => i.size > 0);
+                socket.volatile.emit('tick', nearby);
+            } else {
+                // No viewport set: send all icons (for initial load / anonymous users)
+                socket.volatile.emit('tick', allIcons);
             }
         }
     }
