@@ -26,6 +26,7 @@ import {
 } from '../engine/reward_calculator.js';
 import { buildMerkleTree } from '../engine/merkle_builder.js';
 import { recordChainedTransaction } from '../engine/chain_engine.js';
+import { SocketManager } from '../socket/socket_manager.js';
 
 const prisma = new PrismaClient();
 
@@ -203,6 +204,23 @@ export const snapshotWorker = new Worker(
                     campaignId: entry.campaignId,
                     epochDay: epoch,
                 });
+
+                // Daily reward notification
+                const notif = await tx.notification.create({
+                    data: {
+                        userId: entry.leaderId,
+                        type: 'DAILY_WAC_REWARD' as any,
+                        title: 'Gunluk WAC Odulu',
+                        message: `Bugun +${entry.rewardWac.toFixed(4)} WAC kazandiniz! (Kampanya #${entry.rank} sira)`,
+                        data: JSON.stringify({
+                            campaignId: entry.campaignId,
+                            reward: entry.rewardWac.toFixed(6),
+                            rank: entry.rank,
+                            epoch,
+                        }),
+                    },
+                });
+                SocketManager.notifyUser(entry.leaderId, notif);
             }
 
             // RAC pool decay updates

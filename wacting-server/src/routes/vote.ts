@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken } from '../middleware/auth.js';
+import { SocketManager } from '../socket/socket_manager.js';
 
 const prisma = new PrismaClient();
 
@@ -83,6 +84,14 @@ export async function voteRoutes(fastify: FastifyInstance) {
 
             if (notifData.length > 0) {
                 await prisma.notification.createMany({ data: notifData });
+                // Real-time push
+                for (const recipientId of recipientIds) {
+                    SocketManager.notifyUser(recipientId as string, {
+                        type: 'POLL_CREATED',
+                        title: 'Yeni Oylama',
+                        message: `${campaign.title} kampanyasinda yeni oylama baslatildi`,
+                    });
+                }
             }
 
             return reply.send({ success: true, poll });

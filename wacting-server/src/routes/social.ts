@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
+import { SocketManager } from '../socket/socket_manager.js';
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_dev_key';
@@ -91,14 +92,15 @@ export async function socialRoutes(fastify: FastifyInstance) {
                 });
 
                 // Send Notification
-                await tx.notification.create({
+                const notif = await tx.notification.create({
                     data: {
                         userId: followingId,
                         type: 'FOLLOW_REQUEST',
-                        title: 'New Follower Request',
-                        message: 'Someone wants to follow you!'
+                        title: 'Takip Istegi',
+                        message: 'Birisi sizi takip etmek istiyor!'
                     }
                 });
+                SocketManager.notifyUser(followingId, notif);
             });
 
             return reply.send({ success: true, message: "Follow request sent" });
@@ -141,14 +143,15 @@ export async function socialRoutes(fastify: FastifyInstance) {
                     data: { status: 'APPROVED' }
                 });
 
-                await tx.notification.create({
+                const acceptNotif = await tx.notification.create({
                     data: {
                         userId: followerId,
                         type: 'FOLLOW_ACCEPTED',
-                        title: 'Follow Request Accepted',
-                        message: 'Your follow request was accepted!'
+                        title: 'Takip Onaylandi',
+                        message: 'Takip isteginiz onaylandi!'
                     }
                 });
+                SocketManager.notifyUser(followerId, acceptNotif);
             });
             return reply.send({ success: true });
         } catch (err) {

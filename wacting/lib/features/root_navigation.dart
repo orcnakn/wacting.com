@@ -129,7 +129,7 @@ class _RootNavigationState extends State<RootNavigation> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  'v.4',
+                  'v.5',
                   style: TextStyle(
                     color: AppColors.textTertiary.withOpacity(0.5),
                     fontSize: 11,

@@ -20,6 +20,22 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { authenticateToken } from '../middleware/auth.js';
 import { recordChainedTransaction } from '../engine/chain_engine.js';
 import { GRID_WIDTH, GRID_HEIGHT } from '../utils/brownian.js';
+import { SocketManager } from '../socket/socket_manager.js';
+
+/** Helper: create notification + push via socket */
+async function notify(
+    tx: Prisma.TransactionClient | PrismaClient,
+    userId: string,
+    type: string,
+    title: string,
+    message: string,
+    data?: string,
+) {
+    const notif = await (tx as any).notification.create({
+        data: { userId, type, title, message, data },
+    });
+    SocketManager.notifyUser(userId, notif);
+}
 
 const prisma = new PrismaClient();
 const MIN_STAKE = new Prisma.Decimal('1.000000'); // Minimum WAC to join/create
@@ -156,6 +172,13 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 return c;
             });
 
+            // Notify creator
+            await notify(prisma, user.id, 'CAMPAIGN_CHANGE',
+                'Kampanya Olusturuldu',
+                `"${body.title}" kampanyasi basariyla olusturuldu. ${stakeAmount} WAC stake edildi.`,
+                JSON.stringify({ campaignId: campaign.id }),
+            );
+
             const updatedWac = await prisma.userWac.findUnique({ where: { userId: user.id } });
 
             return reply.code(201).send({
@@ -242,6 +265,21 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 });
             });
 
+            // Notify joiner
+            await notify(prisma, user.id, 'CAMPAIGN_CHANGE',
+                'Kampanyaya Katildiniz',
+                `"${campaign.title}" kampanyasina ${stakeAmount} WAC ile katildiniz.`,
+                JSON.stringify({ campaignId: id }),
+            );
+            // Notify campaign leader
+            if (campaign.leaderId !== user.id) {
+                await notify(prisma, campaign.leaderId, 'CAMPAIGN_CHANGE',
+                    'Yeni Uye Katildi',
+                    `"${campaign.title}" kampanyaniza yeni bir uye ${stakeAmount} WAC ile katildi.`,
+                    JSON.stringify({ campaignId: id }),
+                );
+            }
+
             return reply.send({
                 success: true,
                 message: 'Kampanyaya başarıyla katıldınız.',
@@ -304,6 +342,13 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                     campaignId: id,
                 });
             });
+
+            // Notify user
+            await notify(prisma, user.id, 'CAMPAIGN_CHANGE',
+                'Stake Eklendi',
+                `Kampanyaya ${amount} WAC ek stake yapildi.`,
+                JSON.stringify({ campaignId: id }),
+            );
 
             return reply.send({ success: true, message: 'Stake eklendi.' });
         } catch (error: any) {
@@ -461,6 +506,25 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 }
             });
 
+            // Notify user
+            await notify(prisma, user.id, 'CAMPAIGN_CHANGE',
+                'Kampanyadan Ayrildiniz',
+                `"${campaign.title}" kampanyasindan ayrildiniz. ${returnAmount.toFixed(2)} WAC iade edildi, ${Number(racReward)} RAC kazandiniz.`,
+                JSON.stringify({ campaignId: id }),
+            );
+
+            // Notify successor if leadership transferred
+            if (isLeader && memberCount > 1) {
+                const successor = campaign.members.find((m) => m.userId !== user.id);
+                if (successor) {
+                    await notify(prisma, successor.userId, 'CAMPAIGN_CHANGE',
+                        'Liderlik Devredildi',
+                        `"${campaign.title}" kampanyasinin yeni lideri siz oldunuz!`,
+                        JSON.stringify({ campaignId: id }),
+                    );
+                }
+            }
+
             fastify.log.info(
                 `[Campaign] ${user.id} left campaign ${id}. ` +
                 `Returned: ${returnAmount}, Burned: ${burnAmount}, Dev: ${devAmount}, RAC: ${racReward}`
@@ -598,6 +662,20 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                         icon.campaignSpeed = speed;
                     }
                 }
+            }
+
+            // Notify all members about speed change
+            const members = await (prisma as any).campaignMember.findMany({
+                where: { campaignId: id },
+                select: { userId: true },
+            });
+            for (const m of members) {
+                if (m.userId === user.id) continue;
+                await notify(prisma, m.userId, 'CAMPAIGN_CHANGE',
+                    'Kampanya Hizi Degisti',
+                    `"${campaign.title}" kampanyasinin hizi ${speed === 0 ? 'sabit' : speed.toFixed(1) + 'x'} olarak guncellendi.`,
+                    JSON.stringify({ campaignId: id }),
+                );
             }
 
             return reply.send({ success: true, speed, message: 'Kampanya hızı güncellendi.' });
