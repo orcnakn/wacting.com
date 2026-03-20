@@ -7,15 +7,20 @@ import '../services/api_service.dart';
 import '../../features/grid/providers/grid_state.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
-// ── Reference speed constants ─────────────────────────────────────────────────
-// mock_95 base step sizes per explore mode (the reference = 100% speed)
-const double _mock95BaseStepCity    = 0.5;   // City mode
-const double _mock95BaseStepCountry = 2.0;   // Country mode
-const double _mock95BaseStepWorld   = 10.0;  // World mode
+// ── Speed formula ─────────────────────────────────────────────────────────────
+// 1x = 1000 km/s (max). Each 0.1x decrease adds 1 second.
+// seconds_per_1000km = 1 + (1 - speed) * 10
+// At 1x: 1s, 0.6x: 5s, 0.2x: 9s, 0x: stationary
+// Earth circumference ≈ 40075 km, grid 715 px → 1 px ≈ 56.05 km
+// Mock grid is 510 px wide, scale accordingly
+const double _mockGridWidth = 510.0;
+const double _earthCircKm = 40075.0;
+const double _kmPerMockPixel = _earthCircKm / _mockGridWidth; // ≈ 78.6
 
-// campaignSpeed=0.5 → 75% of mock_95 step; formula: speedMult = (cSpeed/0.5)*0.75
-double _effectiveStep(double mock95BaseStep, double campaignSpeed) {
-  return mock95BaseStep * (campaignSpeed / 0.5) * 0.75;
+double _campaignStep(double speed) {
+  if (speed <= 0) return 0;
+  final secondsPer1000km = 1 + (1 - speed) * 10;
+  return (1000 / _kmPerMockPixel) / secondsPer1000km; // pixels per second
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -114,15 +119,8 @@ class SocketService {
     _mockPhysicsTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       final List<IconModel> moved = [];
       for (var icon in _mockIcons) {
-        // Base step for this icon's explore mode (mock_95 reference speed)
-        final double baseStep = icon.exploreMode == 0
-            ? _mock95BaseStepCity
-            : icon.exploreMode == 1
-                ? _mock95BaseStepCountry
-                : _mock95BaseStepWorld;
-
-        // Apply campaign speed: 0.5 → 75% of mock_95, 0 → stationary
-        final double step = _effectiveStep(baseStep, icon.campaignSpeed);
+        // New km-based speed: 1x=1000km/s, 0=stationary
+        final double step = _campaignStep(icon.campaignSpeed);
 
         double nx = icon.position.dx + (rand.nextDouble() - 0.5) * step;
         double ny = icon.position.dy + (rand.nextDouble() - 0.5) * step;

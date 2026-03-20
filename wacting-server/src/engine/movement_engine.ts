@@ -123,9 +123,13 @@ export interface IconState {
     wacBalance: number; // WAC balance — drives aura/visibility
     exploreMode: number; // 0=City, 1=Country, 2=World
     // Campaign data — drives icon movement speed, color, and slogan display
-    campaignSpeed?: number;  // 0-1, default 0.5 = 75% of reference speed
+    campaignSpeed?: number;  // 0-1: 1x=1000km/s, 0.6x=5s/1000km, 0=stationary
     campaignColor?: string;  // hex color from campaign iconColor
     campaignSlogan?: string; // slogan text from campaign
+    // Campaign leader pinned position (grid coords, null = not pinned)
+    pinnedX?: number | null;
+    pinnedY?: number | null;
+    isCampaignLeader?: boolean;
     restrictedContinents?: string[];
     restrictedCountries?: string[];
     restrictedCities?: string[];
@@ -135,18 +139,35 @@ export interface IconState {
     currentCountry?: string;
 }
 
+// ── Speed formula ──────────────────────────────────────────────────────────
+// 1x = 1000 km/s → max speed.  Each 0.1x decrease adds 1 second.
+// seconds_per_1000km = 1 + (1 - speed) * 10
+// At 1x: 1s, 0.6x: 5s, 0.2x: 9s, 0x: stationary
+// Earth circumference ≈ 40 075 km, grid width = 715 px → 1 px ≈ 56.05 km
+const EARTH_CIRC_KM = 40_075;
+const KM_PER_PIXEL = EARTH_CIRC_KM / GRID_WIDTH;  // ≈ 56.05
+
+function campaignStepSize(speed: number): number {
+    if (speed <= 0) return 0;
+    const secondsPer1000km = 1 + (1 - speed) * 10;
+    // pixels per second
+    return (1000 / KM_PER_PIXEL) / secondsPer1000km;
+}
+
 export function tickMovement(icon: IconState, dt: number): void {
-    // 0=City, 1=Country, 2=World — base step sizes (reference: mock_95 speed)
-    let stepSize = 0.5; // Default City
-    if (icon.exploreMode === 1) {
-        stepSize = 2.0;
-    } else if (icon.exploreMode === 2) {
-        stepSize = 10.0;
+    const cSpeed = icon.campaignSpeed ?? 0.5;
+
+    // Campaign leader with pinned position and speed 0 → stay pinned
+    if (icon.pinnedX != null && icon.pinnedY != null && cSpeed <= 0) {
+        icon.x = icon.pinnedX;
+        icon.y = icon.pinnedY;
+        icon.vx = 0;
+        icon.vy = 0;
+        return;
     }
 
-    // Apply campaign speed: campaignSpeed=0.5 → 75% of reference step, campaignSpeed=0 → stays in place
-    const cSpeed = icon.campaignSpeed ?? 0.5;
-    stepSize = stepSize * (cSpeed / 0.5) * 0.75;
+    // Calculate step size using new km-based formula
+    let stepSize = campaignStepSize(cSpeed);
 
     icon.vx = (Math.random() - 0.5) * stepSize;
     icon.vy = (Math.random() - 0.5) * stepSize;

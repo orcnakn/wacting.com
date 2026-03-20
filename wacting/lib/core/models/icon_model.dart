@@ -13,9 +13,12 @@ class IconModel extends Equatable {
   final int exploreMode; // 0=City, 1=Country, 2=World
 
   // Campaign data — used for map icon rendering and movement speed
-  final double campaignSpeed;   // 0-1; 0.5=75% of mock_95 speed, 0=stationary
+  final double campaignSpeed;   // 0-1: 1x=1000km/s, 0.6x=5s/1000km, 0=stationary
   final String? campaignSlogan; // Slogan displayed on icon at high zoom
   final Color? campaignColor;   // Campaign icon color (overrides user color on map)
+  final bool isCampaignLeader;  // true if this user is the campaign leader
+  final double? pinnedLat;      // Campaign leader pinned latitude
+  final double? pinnedLng;      // Campaign leader pinned longitude
 
   const IconModel({
     required this.id,
@@ -30,6 +33,9 @@ class IconModel extends Equatable {
     this.campaignSpeed = 0.5,
     this.campaignSlogan,
     this.campaignColor,
+    this.isCampaignLeader = false,
+    this.pinnedLat,
+    this.pinnedLng,
   });
 
   factory IconModel.fromJson(Map<String, dynamic> json) {
@@ -56,6 +62,9 @@ class IconModel extends Equatable {
       campaignSpeed: (json['campaignSpeed'] as num?)?.toDouble() ?? 0.5,
       campaignSlogan: json['campaignSlogan'] as String?,
       campaignColor: parsedCampaignColor,
+      isCampaignLeader: json['isCampaignLeader'] as bool? ?? false,
+      pinnedLat: (json['pinnedLat'] as num?)?.toDouble(),
+      pinnedLng: (json['pinnedLng'] as num?)?.toDouble(),
     );
   }
 
@@ -82,5 +91,8 @@ class IconModel extends Equatable {
         campaignSpeed,
         campaignSlogan,
         campaignColor,
+        isCampaignLeader,
+        pinnedLat,
+        pinnedLng,
       ];
 }

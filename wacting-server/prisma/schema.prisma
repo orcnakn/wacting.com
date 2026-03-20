@@ -528,6 +528,8 @@ model Campaign {
   stanceType   StanceType  @default(SUPPORT)
   categoryType CategoryType @default(AWARENESS)
   speed        Float            @default(0.5)
+  pinnedLat    Float?           // Campaign leader pinned latitude (null = not pinned)
+  pinnedLng    Float?           // Campaign leader pinned longitude (null = not pinned)
   isActive     Boolean          @default(true)
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt

@@ -5,6 +5,7 @@
  * POST /campaign/:id/join     — Join campaign with WAC stake
  * POST /campaign/:id/leave    — Leave campaign (30% penalty: 15% burn + 15% dev, 2x RAC mint)
  * POST /campaign/:id/stake    — Add more WAC to existing membership
+ * POST /campaign/:id/pin      — Pin campaign leader to map location
  * GET  /campaign/:id          — Get single campaign
  * GET  /campaign/:id/members  — Get campaign members
  * GET  /campaign/mine         — List my campaigns
@@ -18,6 +19,7 @@ import { FastifyInstance } from 'fastify';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { authenticateToken } from '../middleware/auth.js';
 import { recordChainedTransaction } from '../engine/chain_engine.js';
+import { GRID_WIDTH, GRID_HEIGHT } from '../utils/brownian.js';
 
 const prisma = new PrismaClient();
 const MIN_STAKE = new Prisma.Decimal('1.000000'); // Minimum WAC to join/create
@@ -480,6 +482,81 @@ export async function campaignRoutes(fastify: FastifyInstance) {
         } catch (error: any) {
             fastify.log.error(error);
             return reply.status(500).send({ success: false, error: error.message || 'Failed to leave campaign' });
+        }
+    });
+
+    // ── Pin Campaign Location (Leader Only) ──────────────────────────────────
+    fastify.post('/:id/pin', async (request, reply) => {
+        try {
+            const user = (request as any).user;
+            const { id } = request.params as { id: string };
+            const body = request.body as { lat: number; lng: number } | null;
+
+            const campaign = await prisma.campaign.findUnique({ where: { id } });
+            if (!campaign || !campaign.isActive) {
+                return reply.status(404).send({ success: false, error: 'Kampanya bulunamadı.' });
+            }
+            if (campaign.leaderId !== user.id) {
+                return reply.status(403).send({ success: false, error: 'Sadece kampanya lideri konum sabitleyebilir.' });
+            }
+
+            // Helper: convert lat/lng to grid coords
+            const lngToGridX = (lng: number) => (lng + 180) / 360 * GRID_WIDTH;
+            const latToGridY = (lat: number) => (90 - lat) / 180 * GRID_HEIGHT;
+
+            // Access movement engine for real-time update
+            const engine = (fastify as any).engine;
+
+            if (!body || body.lat === undefined || body.lng === undefined) {
+                // Unpin
+                await prisma.campaign.update({
+                    where: { id },
+                    data: { pinnedLat: null, pinnedLng: null },
+                });
+                // Update engine in real-time
+                if (engine) {
+                    const icon = engine.icons.get(user.id);
+                    if (icon) {
+                        icon.pinnedX = null;
+                        icon.pinnedY = null;
+                    }
+                }
+                return reply.send({ success: true, message: 'Konum sabitleme kaldırıldı.', pinnedLat: null, pinnedLng: null });
+            }
+
+            const { lat, lng } = body;
+            if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+                return reply.status(400).send({ success: false, error: 'Geçersiz koordinat.' });
+            }
+
+            await prisma.campaign.update({
+                where: { id },
+                data: { pinnedLat: lat, pinnedLng: lng },
+            });
+
+            // Update engine in real-time
+            const gridX = lngToGridX(lng);
+            const gridY = latToGridY(lat);
+            if (engine) {
+                const icon = engine.icons.get(user.id);
+                if (icon) {
+                    icon.pinnedX = gridX;
+                    icon.pinnedY = gridY;
+                    icon.x = gridX;
+                    icon.y = gridY;
+                    icon.isCampaignLeader = true;
+                }
+            }
+
+            return reply.send({
+                success: true,
+                message: 'Konum sabitlendi.',
+                pinnedLat: lat,
+                pinnedLng: lng,
+            });
+        } catch (error: any) {
+            fastify.log.error(error);
+            return reply.status(500).send({ success: false, error: error.message || 'Failed to pin location' });
         }
     });
 

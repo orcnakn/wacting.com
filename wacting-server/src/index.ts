@@ -38,6 +38,9 @@ const fastify = Fastify({
 const prisma = new PrismaClient();
 const engine = new MovementEngine();
 
+// Make engine accessible to route handlers
+fastify.decorate('engine', engine);
+
 async function start() {
     try {
         // 1. Initialize Prisma Database Connection (graceful — server starts even without DB)
@@ -128,11 +131,20 @@ async function start() {
                     }).catch(err => fastify.log.error(`Failed to update icon position: ${err}`));
                 }
 
+                // Campaign leader pinned position → grid coords
+                const isLeader = campaign?.leaderId === icon.userId;
+                let pinnedX: number | null = null;
+                let pinnedY: number | null = null;
+                if (isLeader && campaign?.pinnedLat != null && campaign?.pinnedLng != null) {
+                    pinnedX = lngToGridX(campaign.pinnedLng);
+                    pinnedY = latToGridY(campaign.pinnedLat);
+                }
+
                 engine.icons.set(icon.userId, {
                     id: icon.id,
                     userId: icon.userId,
-                    x,
-                    y,
+                    x: pinnedX ?? x,
+                    y: pinnedY ?? y,
                     vx: 0,
                     vy: 0,
                     baseSpeed: 1.0,
@@ -142,6 +154,9 @@ async function start() {
                     campaignSpeed: campaign?.speed ?? 0.5,
                     campaignColor: campaign?.iconColor ?? icon.colorHex,
                     campaignSlogan: campaign?.slogan ?? icon.slogan ?? undefined,
+                    pinnedX,
+                    pinnedY,
+                    isCampaignLeader: isLeader ?? false,
                     restrictedContinents: (icon as any).restrictedContinents ?? [],
                     restrictedCountries: (icon as any).restrictedCountries ?? [],
                     restrictedCities: (icon as any).restrictedCities ?? [],
