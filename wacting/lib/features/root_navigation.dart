@@ -133,7 +133,7 @@ class _RootNavigationState extends State<RootNavigation> {
               ),
               const SizedBox(width: 8),
               GestureDetector(
-                onTap: _openNotifications,
+                onTap: _unreadCount > 0 ? _openNotifications : null,
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
