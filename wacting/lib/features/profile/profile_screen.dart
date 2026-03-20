@@ -38,7 +38,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _isOwnProfile ? 3 : 1, vsync: this);
+    _tabController = TabController(length: _isOwnProfile ? 2 : 1, vsync: this);
     _loadProfile();
   }
 
@@ -170,7 +170,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           tabs: const [
             Tab(text: 'PROFIL'),
             Tab(text: 'CUZDAN'),
-            Tab(text: 'BILDIRIMLER'),
           ],
         ) : null,
       ),
@@ -180,7 +179,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         children: [
           _buildProfileTab(displayName, followerCount, followingCount, avatarUrl, sloganText, isFollowedByViewer),
           _buildWalletTab(),
-          const NotificationsScreen(),
         ],
       )
         : _buildProfileTab(displayName, followerCount, followingCount, avatarUrl, sloganText, isFollowedByViewer),
