@@ -259,8 +259,8 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   }
 
   LatLng _offsetToLatLng(Offset pos) {
-    double lng = (pos.dx / 510) * 360 - 180;
-    double lat = 90 - (pos.dy / 510) * 180;
+    double lng = (pos.dx / GridConstants.gridWidth) * 360 - 180;
+    double lat = 90 - (pos.dy / GridConstants.gridHeight) * 180;
     // Normalize longitude to -180..180
     while (lng > 180) lng -= 360;
     while (lng < -180) lng += 360;

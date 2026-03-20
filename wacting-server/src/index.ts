@@ -11,6 +11,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import { PrismaClient } from '@prisma/client';
 import { MovementEngine } from './engine/movement_engine.js';
+import wc from 'which-country';
+import { GRID_WIDTH, GRID_HEIGHT } from './utils/brownian.js';
 import { SocketManager } from './socket/socket_manager.js';
 import { webhookRoutes } from './routes/webhook.js';
 import { authRoutes } from './routes/auth.js';
@@ -59,6 +61,27 @@ async function start() {
                 }
             });
 
+            // Helper: find a random position on land
+            function randomLandPosition(): { x: number, y: number } {
+                for (let attempt = 0; attempt < 500; attempt++) {
+                    const x = Math.random() * GRID_WIDTH;
+                    const y = Math.random() * GRID_HEIGHT;
+                    const lng = (x / GRID_WIDTH) * 360 - 180;
+                    const lat = 90 - (y / GRID_HEIGHT) * 180;
+                    if (wc([lng, lat]) != null) return { x, y };
+                }
+                // Fallback: Istanbul
+                return { x: (28.9784 + 180) / 360 * GRID_WIDTH, y: (90 - 41.0082) / 180 * GRID_HEIGHT };
+            }
+
+            // Helper: check if grid position is on land
+            function isOnLand(x: number, y: number): boolean {
+                const lng = (x / GRID_WIDTH) * 360 - 180;
+                const lat = 90 - (y / GRID_HEIGHT) * 180;
+                return wc([lng, lat]) != null;
+            }
+
+            let relocatedCount = 0;
             for (const icon of dbIcons) {
                 const wacBal = parseFloat(icon.user?.wac?.wacBalance?.toString() ?? '0');
                 const campaign = icon.user?.campaignMemberships?.[0]?.campaign;
@@ -66,11 +89,22 @@ async function start() {
                     ? Math.max(1, Math.log10(wacBal + 1) * 20)
                     : Math.max(1, icon.followerCount * 0.5 + 1);
 
+                let x = icon.lastKnownX > 0 ? icon.lastKnownX : 0;
+                let y = icon.lastKnownY > 0 ? icon.lastKnownY : 0;
+
+                // Ensure icon starts on land — relocate if on ocean
+                if (!isOnLand(x, y)) {
+                    const land = randomLandPosition();
+                    x = land.x;
+                    y = land.y;
+                    relocatedCount++;
+                }
+
                 engine.icons.set(icon.userId, {
                     id: icon.id,
                     userId: icon.userId,
-                    x: icon.lastKnownX > 0 ? icon.lastKnownX : Math.random() * 510,
-                    y: icon.lastKnownY > 0 ? icon.lastKnownY : Math.random() * 510,
+                    x,
+                    y,
                     vx: 0,
                     vy: 0,
                     baseSpeed: 1.0,
@@ -84,6 +118,9 @@ async function start() {
                     restrictedCountries: (icon as any).restrictedCountries ?? [],
                     restrictedCities: (icon as any).restrictedCities ?? [],
                 });
+            }
+            if (relocatedCount > 0) {
+                fastify.log.info(`Relocated ${relocatedCount} icons from ocean to land`);
             }
             fastify.log.info(`Loaded ${dbIcons.length} icons from DB into engine`);
 

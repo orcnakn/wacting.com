@@ -100028,10 +100028,10 @@ if(r!=null){r.ZE(0)
 r.Ku()}s.a.aA(0)
 s.b.aA(0)
 this.aE()},
-uX(a){var s=a.a/510*360-180
+uX(a){var s=a.a/715*360-180
 for(;s>180;)s-=360
 for(;s<-180;)s+=360
-return new A.b1(B.c.cE(90-a.b/510*180,-90,90),s)},
+return new A.b1(B.c.cE(90-a.b/714*180,-90,90),s)},
 AI(a,b){var s,r,q,p,o,n=J.ab(b),m=n.gv(b)-1
 for(s=a.a,r=a.b,q=!1,p=0;p<n.gv(b);o=p+1,m=p,p=o)if(n.h(b,p).a>s!==n.h(b,m).a>s&&r<(n.h(b,m).b-n.h(b,p).b)*(s-n.h(b,p).a)/(n.h(b,m).a-n.h(b,p).a)+n.h(b,p).b)q=!q
 return q},
