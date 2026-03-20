@@ -708,28 +708,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
               _lastIcons = _paused ? _pausedSnapshot : liveIcons;
               final icons = _lastIcons!;
 
-              // Sort Auras so large ones don't cover small ones
-              final sortedAuraIcons = List<IconModel>.from(icons)
-                ..sort((a, b) => b.size.compareTo(a.size));
-
-              final circleAuras = <CircleMarker>[];
-              for (final icon in sortedAuraIcons) {
-                 final latLng = _offsetToLatLng(icon.position);
-                 final double tokenPower = icon.size > 1.0 ? (icon.size - 1.0) : 0.0;
-                 final auraRadiusMeters = tokenPower * 10000.0;
-                 if (auraRadiusMeters <= 0) continue;
-                 final Color auraColor = icon.displayColor;
-                 for (final offset in _worldOffsets) {
-                   circleAuras.add(CircleMarker(
-                     point: LatLng(latLng.latitude, latLng.longitude + offset),
-                     radius: auraRadiusMeters,
-                     useRadiusInMeter: true,
-                     color: auraColor.withOpacity(0.2),
-                     borderColor: auraColor.withOpacity(0.4),
-                     borderStrokeWidth: 1.0,
-                   ));
-                 }
-              }
+              const circleAuras = <CircleMarker>[];
 
               final zoom = _currentZoom;
 
