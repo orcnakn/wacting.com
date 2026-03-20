@@ -174,55 +174,76 @@ class _RootNavigationState extends State<RootNavigation> {
             ),
           ),
         ),
-        // Notification star — always visible, dim when no unread
+        // Version label + Notification star — top right
         Positioned(
           top: MediaQuery.of(context).padding.top + 8,
           right: 12,
-          child: GestureDetector(
-            onTap: _openNotifications,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.navyPrimary.withOpacity(0.85),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.star,
-                    color: _unreadCount > 0
-                        ? AppColors.accentAmber
-                        : AppColors.textTertiary.withOpacity(0.3),
-                    size: 24,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.navyPrimary.withOpacity(0.85),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'v.3',
+                  style: TextStyle(
+                    color: AppColors.textTertiary.withOpacity(0.5),
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                if (_unreadCount > 0)
-                  Positioned(
-                    top: -4,
-                    right: -4,
-                    child: Container(
-                      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      decoration: const BoxDecoration(
-                        color: AppColors.accentRed,
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _openNotifications,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.navyPrimary.withOpacity(0.85),
                         shape: BoxShape.circle,
                       ),
-                      child: Center(
-                        child: Text(
-                          _unreadCount > 99 ? '99+' : '$_unreadCount',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                      child: Icon(
+                        Icons.star,
+                        color: _unreadCount > 0
+                            ? AppColors.accentAmber
+                            : AppColors.textTertiary.withOpacity(0.3),
+                        size: 24,
+                      ),
+                    ),
+                    if (_unreadCount > 0)
+                      Positioned(
+                        top: -4,
+                        right: -4,
+                        child: Container(
+                          constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: const BoxDecoration(
+                            color: AppColors.accentRed,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Text(
+                              _unreadCount > 99 ? '99+' : '$_unreadCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-              ],
-            ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
         // Map filter dropdown
