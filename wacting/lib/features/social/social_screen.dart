@@ -4,6 +4,8 @@ import '../../app/theme.dart';
 import '../../app/widgets/modern_card.dart';
 import '../../core/services/api_service.dart';
 import '../profile/profile_screen.dart';
+import '../grid/grid_screen.dart' show globalMapNavigateTo;
+import '../root_navigation.dart' show globalSwitchTab;
 
 String _extractError(dynamic e, [String fallback = 'Bir hata olustu.']) {
   if (e is DioException && e.response?.data is Map) {
@@ -237,6 +239,8 @@ class _CampaignsTabState extends State<_CampaignsTab>
                 isLeader: isLeader,
                 rank: idx + 1,
                 speed: speed,
+                pinnedLat: (c['pinnedLat'] as num?)?.toDouble(),
+                pinnedLng: (c['pinnedLng'] as num?)?.toDouble(),
               ),
             );
           });
@@ -618,6 +622,8 @@ class _CampaignsTabState extends State<_CampaignsTab>
     required bool isLeader,
     int? rank,
     double speed = 0.5,
+    double? pinnedLat,
+    double? pinnedLng,
   }) {
     String fmtWac(double v) => v >= 1000
         ? '${(v / 1000).toStringAsFixed(1)}K'
@@ -634,6 +640,8 @@ class _CampaignsTabState extends State<_CampaignsTab>
         myStakedWac: myStakedWac,
         isLeader: isLeader,
         speed: speed,
+        pinnedLat: pinnedLat,
+        pinnedLng: pinnedLng,
       ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -699,6 +707,8 @@ class _CampaignsTabState extends State<_CampaignsTab>
     required double myStakedWac,
     required bool isLeader,
     double speed = 0.5,
+    double? pinnedLat,
+    double? pinnedLng,
   }) {
     double currentSpeed = speed;
     showModalBottomSheet(
@@ -783,6 +793,33 @@ class _CampaignsTabState extends State<_CampaignsTab>
                 ]),
               ),
             ],
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.accentTeal,
+                  side: BorderSide(color: AppColors.accentTeal),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                icon: Icon(Icons.my_location, size: 18),
+                label: const Text('Konuma Git', style: TextStyle(fontWeight: FontWeight.bold)),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  if (pinnedLat != null && pinnedLng != null && globalMapNavigateTo != null) {
+                    globalSwitchTab?.call(0);
+                    Future.delayed(const Duration(milliseconds: 200), () {
+                      globalMapNavigateTo!(pinnedLat!, pinnedLng!, zoom: 8.0);
+                    });
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('$title icin konum belirlenmemis')),
+                    );
+                  }
+                },
+              ),
+            ),
           ]),
         ),
       ),

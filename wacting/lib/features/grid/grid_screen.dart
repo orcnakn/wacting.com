@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import 'providers/grid_state.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import '../../core/services/socket_service.dart';
+import '../../core/services/api_service.dart';
 import '../../core/config/app_config.dart';
 import '../../core/models/icon_model.dart';
 import '../../app/constants.dart';
@@ -75,6 +76,10 @@ String? _continentForCountry(String countryName) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Global callback for navigating to a lat/lng on the map from other screens
+typedef MapNavigateCallback = void Function(double lat, double lng, {double zoom});
+MapNavigateCallback? globalMapNavigateTo;
+
 class GridScreen extends ConsumerStatefulWidget {
   const GridScreen({Key? key}) : super(key: key);
 
@@ -114,6 +119,9 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   void initState() {
     super.initState();
     socketService.connect(AppConfig.socketUrl);
+    globalMapNavigateTo = (double lat, double lng, {double zoom = 8.0}) {
+      _mapController.move(LatLng(lat, lng), zoom);
+    };
   }
 
   // ── Lazy-load 110m countries ──
@@ -871,7 +879,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
             ),
           ),
 
-          // ── Focus Button ──
+          // ── Focus Button (tap: go to my icon, long-press: campaign list) ──
           Positioned(
             bottom: 30,
             left: 20,
@@ -883,20 +891,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                 side: BorderSide(color: AppColors.accentTeal, width: 2)
               ),
               child: Icon(Icons.center_focus_strong, color: AppColors.accentTeal),
-              onPressed: () {
-                final displayIcons = _paused ? _pausedSnapshot : (_lastIcons ?? []);
-                if (displayIcons.isNotEmpty) {
-                  final myIcon = displayIcons.first;
-                  final focusZoom = LodManager.focusZoom(myIcon.size);
-                  final latLng = _offsetToLatLng(myIcon.position);
-                  _mapController.move(latLng, focusZoom);
-                } else {
-                  _mapController.move(_initialCenter, 4.0);
-                }
-                if (_paused) {
-                  setState(() => _paused = false);
-                }
-              },
+              onPressed: () => _showCampaignLocationPicker(),
             ),
           ),
 
@@ -1262,6 +1257,135 @@ class _GridScreenState extends ConsumerState<GridScreen> {
               );
           }
       );
+  }
+
+  // ── Campaign location picker popup ─────────────────────────────────────────
+  void _showCampaignLocationPicker() async {
+    List<dynamic> campaigns = [];
+    try {
+      campaigns = await apiService.getMyCampaigns();
+    } catch (_) {}
+
+    if (campaigns.isEmpty) {
+      // No campaigns — just center on initial position
+      _mapController.move(_initialCenter, 4.0);
+      return;
+    }
+
+    if (!mounted) return;
+
+    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+
+    // Show popup above the focus button
+    showDialog(
+      context: context,
+      barrierColor: Colors.black38,
+      builder: (ctx) => Stack(
+        children: [
+          Positioned(
+            bottom: 100,
+            left: 20,
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: 280,
+                constraints: const BoxConstraints(maxHeight: 320),
+                decoration: BoxDecoration(
+                  color: AppColors.navyPrimary,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.accentTeal, width: 1.5),
+                  boxShadow: [BoxShadow(color: Colors.black54, blurRadius: 12)],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        border: Border(bottom: BorderSide(color: AppColors.accentTeal.withOpacity(0.3))),
+                      ),
+                      child: Row(children: [
+                        Icon(Icons.flag, color: AppColors.accentTeal, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Kampanyalar (${campaigns.length})',
+                          style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold),
+                        ),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () => Navigator.pop(ctx),
+                          child: Icon(Icons.close, color: AppColors.textTertiary, size: 18),
+                        ),
+                      ]),
+                    ),
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        itemCount: campaigns.length,
+                        itemBuilder: (_, i) {
+                          final c = campaigns[i] as Map<String, dynamic>;
+                          final title = c['title'] ?? 'Kampanya';
+                          final slogan = c['slogan'] ?? '';
+                          final pLat = (c['pinnedLat'] as num?)?.toDouble();
+                          final pLng = (c['pinnedLng'] as num?)?.toDouble();
+                          final hasLocation = pLat != null && pLng != null;
+
+                          return InkWell(
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              if (hasLocation) {
+                                _mapController.move(LatLng(pLat, pLng), 8.0);
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('$title icin konum belirlenmemis'),
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              child: Row(children: [
+                                Container(
+                                  width: 8, height: 8,
+                                  decoration: BoxDecoration(
+                                    color: hasLocation ? AppColors.accentTeal : AppColors.textTertiary,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(title, style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                      if (slogan.isNotEmpty)
+                                        Text(slogan, style: TextStyle(color: AppColors.textTertiary, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  hasLocation ? Icons.my_location : Icons.location_off,
+                                  color: hasLocation ? AppColors.accentTeal : AppColors.textTertiary,
+                                  size: 16,
+                                ),
+                              ]),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

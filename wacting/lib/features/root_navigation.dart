@@ -8,6 +8,9 @@ import 'social/social_screen.dart';
 import 'social/notifications_screen.dart';
 import 'profile/profile_screen.dart';
 
+// Global callback to switch bottom nav tab from anywhere
+void Function(int index)? globalSwitchTab;
+
 class RootNavigation extends StatefulWidget {
   const RootNavigation({Key? key}) : super(key: key);
 
@@ -29,6 +32,9 @@ class _RootNavigationState extends State<RootNavigation> {
   @override
   void initState() {
     super.initState();
+    globalSwitchTab = (int index) {
+      if (mounted) setState(() => _currentIndex = index);
+    };
     _fetchUnreadCount();
     _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _fetchUnreadCount();
