@@ -80,6 +80,9 @@ async function start() {
                     campaignSpeed: campaign?.speed ?? 0.5,
                     campaignColor: campaign?.iconColor ?? icon.colorHex,
                     campaignSlogan: campaign?.slogan ?? icon.slogan ?? undefined,
+                    restrictedContinents: (icon as any).restrictedContinents ?? [],
+                    restrictedCountries: (icon as any).restrictedCountries ?? [],
+                    restrictedCities: (icon as any).restrictedCities ?? [],
                 });
             }
             fastify.log.info(`Loaded ${dbIcons.length} icons from DB into engine`);

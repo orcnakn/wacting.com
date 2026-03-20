@@ -6,6 +6,111 @@ import wc from 'which-country';
 
 const prisma = new PrismaClient();
 
+// ── Country name → ISO3 mapping (Natural Earth GeoJSON names → which-country ISO3) ──
+const NAME_TO_ISO3: Record<string, string> = {
+    'Afghanistan':'AFG','Albania':'ALB','Algeria':'DZA','Andorra':'AND','Angola':'AGO',
+    'Antigua and Barbuda':'ATG','Argentina':'ARG','Armenia':'ARM','Australia':'AUS',
+    'Austria':'AUT','Azerbaijan':'AZE','Bahamas':'BHS','Bahrain':'BHR','Bangladesh':'BGD',
+    'Barbados':'BRB','Belarus':'BLR','Belgium':'BEL','Belize':'BLZ','Benin':'BEN',
+    'Bhutan':'BTN','Bolivia':'BOL','Bosnia and Herzegovina':'BIH','Botswana':'BWA',
+    'Brazil':'BRA','Brunei':'BRN','Bulgaria':'BGR','Burkina Faso':'BFA','Burundi':'BDI',
+    'Cambodia':'KHM','Cameroon':'CMR','Canada':'CAN','Cape Verde':'CPV',
+    'Central African Republic':'CAF','Chad':'TCD','Chile':'CHL','China':'CHN',
+    'Colombia':'COL','Comoros':'COM','Congo':'COG','Costa Rica':'CRI','Croatia':'HRV',
+    'Cuba':'CUB','Cyprus':'CYP','Czech Republic':'CZE','Czechia':'CZE',
+    'Democratic Republic of the Congo':'COD','Denmark':'DNK','Djibouti':'DJI',
+    'Dominica':'DMA','Dominican Republic':'DOM','East Timor':'TLS','Timor-Leste':'TLS',
+    'Ecuador':'ECU','Egypt':'EGY','El Salvador':'SLV','Equatorial Guinea':'GNQ',
+    'Eritrea':'ERI','Estonia':'EST','Eswatini':'SWZ','Swaziland':'SWZ','Ethiopia':'ETH',
+    'Fiji':'FJI','Finland':'FIN','France':'FRA','Gabon':'GAB','Gambia':'GMB',
+    'Georgia':'GEO','Germany':'DEU','Ghana':'GHA','Greece':'GRC','Greenland':'GRL',
+    'Grenada':'GRD','Guatemala':'GTM','Guinea':'GIN','Guinea-Bissau':'GNB','Guyana':'GUY',
+    'Haiti':'HTI','Honduras':'HND','Hungary':'HUN','Iceland':'ISL','India':'IND',
+    'Indonesia':'IDN','Iran':'IRN','Iraq':'IRQ','Ireland':'IRL','Israel':'ISR',
+    'Italy':'ITA','Ivory Coast':'CIV',"Côte d'Ivoire":'CIV','Jamaica':'JAM','Japan':'JPN',
+    'Jordan':'JOR','Kazakhstan':'KAZ','Kenya':'KEN','Kiribati':'KIR','Kosovo':'XKX',
+    'Kuwait':'KWT','Kyrgyzstan':'KGZ','Laos':'LAO','Latvia':'LVA','Lebanon':'LBN',
+    'Lesotho':'LSO','Liberia':'LBR','Libya':'LBY','Liechtenstein':'LIE','Lithuania':'LTU',
+    'Luxembourg':'LUX','Madagascar':'MDG','Malawi':'MWI','Malaysia':'MYS','Maldives':'MDV',
+    'Mali':'MLI','Malta':'MLT','Marshall Islands':'MHL','Mauritania':'MRT','Mauritius':'MUS',
+    'Mexico':'MEX','Micronesia':'FSM','Moldova':'MDA','Monaco':'MCO','Mongolia':'MNG',
+    'Montenegro':'MNE','Morocco':'MAR','Mozambique':'MOZ','Myanmar':'MMR','Namibia':'NAM',
+    'Nauru':'NRU','Nepal':'NPL','Netherlands':'NLD','New Caledonia':'NCL',
+    'New Zealand':'NZL','Nicaragua':'NIC','Niger':'NER','Nigeria':'NGA',
+    'North Korea':'PRK','North Macedonia':'MKD','Norway':'NOR','Oman':'OMN',
+    'Pakistan':'PAK','Palau':'PLW','Palestine':'PSE','Panama':'PAN',
+    'Papua New Guinea':'PNG','Paraguay':'PRY','Peru':'PER','Philippines':'PHL',
+    'Poland':'POL','Portugal':'PRT','Puerto Rico':'PRI','Qatar':'QAT','Romania':'ROU',
+    'Russia':'RUS','Rwanda':'RWA','Saint Kitts and Nevis':'KNA','Saint Lucia':'LCA',
+    'Saint Vincent and the Grenadines':'VCT','Samoa':'WSM','San Marino':'SMR',
+    'Saudi Arabia':'SAU','Senegal':'SEN','Serbia':'SRB','Republic of Serbia':'SRB',
+    'Sierra Leone':'SLE','Singapore':'SGP','Slovakia':'SVK','Slovenia':'SVN',
+    'Solomon Islands':'SLB','Somalia':'SOM','Somaliland':'SOM','South Africa':'ZAF',
+    'South Korea':'KOR','South Sudan':'SSD','Spain':'ESP','Sri Lanka':'LKA',
+    'Sudan':'SDN','Suriname':'SUR','Sweden':'SWE','Switzerland':'CHE','Syria':'SYR',
+    'Taiwan':'TWN','Tajikistan':'TJK','Tanzania':'TZA','United Republic of Tanzania':'TZA',
+    'Thailand':'THA','Togo':'TGO','Tonga':'TON','Trinidad and Tobago':'TTO',
+    'Tunisia':'TUN','Turkey':'TUR','Turkmenistan':'TKM','Tuvalu':'TUV','Uganda':'UGA',
+    'Ukraine':'UKR','United Arab Emirates':'ARE','United Kingdom':'GBR',
+    'United States of America':'USA','United States':'USA','Uruguay':'URY',
+    'Uzbekistan':'UZB','Vanuatu':'VUT','Vatican':'VAT','Venezuela':'VEN',
+    'Vietnam':'VNM','Western Sahara':'ESH','Yemen':'YEM','Zambia':'ZMB','Zimbabwe':'ZWE',
+    'Falkland Islands':'FLK','French Guiana':'GUF','Antarctica':'ATA',
+    'Northern Cyprus':'CYP','Republic of the Congo':'COG',
+};
+
+// Continent → ISO3 set (for continent-level restrictions)
+const CONTINENT_ISO3: Record<string, Set<string>> = {};
+const CONTINENT_COUNTRIES: Record<string, string[]> = {
+    'Europe': ['Albania','Andorra','Austria','Belarus','Belgium','Bosnia and Herzegovina','Bulgaria','Croatia','Cyprus','Czech Republic','Czechia','Denmark','Estonia','Finland','France','Germany','Greece','Hungary','Iceland','Ireland','Italy','Kosovo','Latvia','Liechtenstein','Lithuania','Luxembourg','Malta','Moldova','Monaco','Montenegro','Netherlands','North Macedonia','Norway','Poland','Portugal','Romania','Russia','San Marino','Serbia','Slovakia','Slovenia','Spain','Sweden','Switzerland','Ukraine','United Kingdom','Vatican','Republic of Serbia','Northern Cyprus'],
+    'Asia': ['Afghanistan','Armenia','Azerbaijan','Bahrain','Bangladesh','Bhutan','Brunei','Cambodia','China','East Timor','Timor-Leste','Georgia','India','Indonesia','Iran','Iraq','Israel','Japan','Jordan','Kazakhstan','Kuwait','Kyrgyzstan','Laos','Lebanon','Malaysia','Maldives','Mongolia','Myanmar','Nepal','North Korea','Oman','Pakistan','Palestine','Philippines','Qatar','Saudi Arabia','Singapore','South Korea','Sri Lanka','Syria','Taiwan','Tajikistan','Thailand','Turkey','Turkmenistan','United Arab Emirates','Uzbekistan','Vietnam','Yemen'],
+    'Africa': ['Algeria','Angola','Benin','Botswana','Burkina Faso','Burundi','Cameroon','Cape Verde','Central African Republic','Chad','Comoros','Congo','Democratic Republic of the Congo','Republic of the Congo','Ivory Coast','Djibouti','Egypt','Equatorial Guinea','Eritrea','Eswatini','Ethiopia','Gabon','Gambia','Ghana','Guinea','Guinea-Bissau','Kenya','Lesotho','Liberia','Libya','Madagascar','Malawi','Mali','Mauritania','Mauritius','Morocco','Mozambique','Namibia','Niger','Nigeria','Rwanda','Senegal','Sierra Leone','Somalia','Somaliland','South Africa','South Sudan','Sudan','Tanzania','Togo','Tunisia','Uganda','Zambia','Zimbabwe','Western Sahara','United Republic of Tanzania','Swaziland'],
+    'North America': ['Antigua and Barbuda','Bahamas','Barbados','Belize','Canada','Costa Rica','Cuba','Dominica','Dominican Republic','El Salvador','Grenada','Guatemala','Haiti','Honduras','Jamaica','Mexico','Nicaragua','Panama','Saint Kitts and Nevis','Saint Lucia','Saint Vincent and the Grenadines','Trinidad and Tobago','United States of America','United States','Puerto Rico','Greenland'],
+    'South America': ['Argentina','Bolivia','Brazil','Chile','Colombia','Ecuador','Guyana','Paraguay','Peru','Suriname','Uruguay','Venezuela','French Guiana','Falkland Islands'],
+    'Oceania': ['Australia','Fiji','Kiribati','Marshall Islands','Micronesia','Nauru','New Zealand','Palau','Papua New Guinea','Samoa','Solomon Islands','Tonga','Tuvalu','Vanuatu','New Caledonia'],
+};
+
+// Build continent → ISO3 sets at startup
+for (const [continent, countries] of Object.entries(CONTINENT_COUNTRIES)) {
+    const isoSet = new Set<string>();
+    for (const name of countries) {
+        const iso = NAME_TO_ISO3[name];
+        if (iso) isoSet.add(iso);
+    }
+    CONTINENT_ISO3[continent] = isoSet;
+}
+
+/** Convert restriction arrays (country names, continent names) → Set of allowed ISO3 codes */
+export function buildAllowedIso3(icon: IconState): Set<string> | null {
+    const hasRestrictions = (icon.restrictedContinents?.length ?? 0) > 0 ||
+        (icon.restrictedCountries?.length ?? 0) > 0;
+
+    if (!hasRestrictions) return null; // null = all land allowed
+
+    const allowed = new Set<string>();
+
+    // Add all countries from restricted continents
+    if (icon.restrictedContinents) {
+        for (const cont of icon.restrictedContinents) {
+            const isoSet = CONTINENT_ISO3[cont];
+            if (isoSet) {
+                for (const iso of isoSet) allowed.add(iso);
+            }
+        }
+    }
+
+    // Add individual restricted countries
+    if (icon.restrictedCountries) {
+        for (const name of icon.restrictedCountries) {
+            // Try as country name first, then as ISO3 directly
+            const iso = NAME_TO_ISO3[name] ?? name;
+            allowed.add(iso);
+        }
+    }
+
+    return allowed.size > 0 ? allowed : null;
+}
+
 export interface IconState {
     id: string;
     userId: string;
@@ -24,6 +129,8 @@ export interface IconState {
     restrictedContinents?: string[];
     restrictedCountries?: string[];
     restrictedCities?: string[];
+    // Precomputed allowed ISO3 set (null = all land)
+    _allowedIso3?: Set<string> | null;
     // Memory Cache for Country Visit metrics
     currentCountry?: string;
 }
@@ -47,48 +154,38 @@ export function tickMovement(icon: IconState, dt: number): void {
     const newX = icon.x + icon.vx;
     const newY = icon.y + icon.vy;
 
-    // Check Geographic Boundary Restrictions (Continents, Countries, Cities)
-    const hasRestrictions = (icon.restrictedContinents?.length ?? 0) > 0 ||
-        (icon.restrictedCountries?.length ?? 0) > 0 ||
-        (icon.restrictedCities?.length ?? 0) > 0;
+    // Convert grid coords → lng/lat for geographic checks
+    const newLng = (newX / GRID_WIDTH) * 360 - 180;
+    const newLat = 90 - (newY / GRID_HEIGHT) * 180;
 
-    if (hasRestrictions) {
-        // Here we do a reverse coordinate map:
-        // x (-180 to 180) -> longitude
-        // y (90 to -90) -> latitude (Note: in Cartesian visually +y is down, but map +y is up in Lat, let's keep raw value mapping simple)
-        const countryIso3 = wc([newX, newY]); // which-country takes [lng, lat]
+    // Check which country the new position falls in
+    const countryIso3 = wc([newLng, newLat]);
 
-        let allowed = true;
-        if (icon.restrictedCountries && icon.restrictedCountries.length > 0) {
-            // Basic naive string match for now; UI sends 'Germany', wc returns 'DEU'. 
-            // Production needs a mapping. For the prototype we assume Elastic bouncing to show mechanics.
-            const hitBoundary = Math.random() < 0.05; // Simulate country border hit 
-            if (hitBoundary) allowed = false;
-        }
-
-        if (!allowed) {
-            icon.vx *= -1;
-            icon.vy *= -1;
-            icon.x += icon.vx;
-            icon.y += icon.vy;
-        } else {
-            icon.x = wrapCoordinate(newX, GRID_WIDTH);
-            icon.y = wrapCoordinate(newY, GRID_HEIGHT);
-        }
-    } else {
-        // Land-only movement: reject move if new position is in ocean
-        const newLng = (newX / GRID_WIDTH) * 360 - 180;
-        const newLat = 90 - (newY / GRID_HEIGHT) * 180;
-        const isOnLand = wc([newLng, newLat]) != null;
-        if (isOnLand) {
-            icon.x = wrapCoordinate(newX, GRID_WIDTH);
-            icon.y = wrapCoordinate(newY, GRID_HEIGHT);
-        }
-        // If ocean, icon stays in place (will try again next tick with new random direction)
+    // Build allowed set (cached on first use)
+    if (icon._allowedIso3 === undefined) {
+        icon._allowedIso3 = buildAllowedIso3(icon);
     }
 
-    // Asynchronous Tracker Logic (To be connected to Prisma)
-    const newCountryIso = wc([icon.x, icon.y]);
+    if (icon._allowedIso3 !== null) {
+        // Has restrictions: only allow movement within allowed countries
+        if (countryIso3 && icon._allowedIso3.has(countryIso3)) {
+            icon.x = wrapCoordinate(newX, GRID_WIDTH);
+            icon.y = wrapCoordinate(newY, GRID_HEIGHT);
+        }
+        // If not in allowed set (ocean or wrong country), icon stays in place
+    } else {
+        // No restrictions: allow all land
+        if (countryIso3 != null) {
+            icon.x = wrapCoordinate(newX, GRID_WIDTH);
+            icon.y = wrapCoordinate(newY, GRID_HEIGHT);
+        }
+        // If ocean, icon stays in place
+    }
+
+    // Asynchronous Tracker Logic
+    const currentLng = (icon.x / GRID_WIDTH) * 360 - 180;
+    const currentLat = 90 - (icon.y / GRID_HEIGHT) * 180;
+    const newCountryIso = wc([currentLng, currentLat]);
     if (newCountryIso && newCountryIso !== icon.currentCountry) {
         icon.currentCountry = newCountryIso;
 
