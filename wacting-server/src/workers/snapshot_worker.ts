@@ -173,7 +173,9 @@ export const snapshotWorker = new Worker(
             }
 
             // Auto-compound WAC rewards to campaign leaders
-            for (const entry of rewardEntries) {
+            for (let ri = 0; ri < rewardEntries.length; ri++) {
+                const entry = rewardEntries[ri]!;
+                const rank = ri + 1;
                 if (entry.rewardWac <= 0) continue;
 
                 // Add reward to leader's liquid WAC balance
@@ -211,11 +213,11 @@ export const snapshotWorker = new Worker(
                         userId: entry.leaderId,
                         type: 'DAILY_WAC_REWARD' as any,
                         title: 'Gunluk WAC Odulu',
-                        message: `Bugun +${entry.rewardWac.toFixed(4)} WAC kazandiniz! (Kampanya #${entry.rank} sira)`,
+                        message: `Bugun +${entry.rewardWac.toFixed(4)} WAC kazandiniz! (Kampanya #${rank} sira)`,
                         data: JSON.stringify({
                             campaignId: entry.campaignId,
                             reward: entry.rewardWac.toFixed(6),
-                            rank: entry.rank,
+                            rank,
                             epoch,
                         }),
                     },
