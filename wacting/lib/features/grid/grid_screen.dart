@@ -642,9 +642,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                                   decoration: BoxDecoration(
                                     color: displayColor,
                                     borderRadius: BorderRadius.circular(2),
-                                    boxShadow: [
-                                      BoxShadow(color: displayColor.withOpacity(0.6), blurRadius: wacSize >= 100 ? 10 : 5, spreadRadius: wacSize >= 100 ? 2 : 1),
-                                    ],
+                                    border: Border.all(color: Colors.white, width: 1),
                                   ),
                                 ),
                                 if (slogan != null)
@@ -687,9 +685,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                                 decoration: BoxDecoration(
                                   color: displayColor,
                                   shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(color: displayColor.withOpacity(0.7), blurRadius: wacSize >= 100 ? 8 : 4, spreadRadius: wacSize >= 100 ? 2 : 1),
-                                  ],
+                                  border: Border.all(color: Colors.white, width: 1),
                                 ),
                               ),
                             ),
