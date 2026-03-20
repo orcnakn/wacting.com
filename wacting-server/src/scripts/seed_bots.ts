@@ -15,6 +15,18 @@ import { recordChainedTransaction } from '../engine/chain_engine.js';
 const prisma = new PrismaClient();
 const BOT_PASSWORD_HASH = await bcrypt.hash('WactingBot2026!', 10);
 
+// Grid dimensions — must match GRID_WIDTH/GRID_HEIGHT in brownian.ts
+const GRID_WIDTH = 715;
+const GRID_HEIGHT = 714;
+
+// Convert lng/lat → grid coordinates
+function lngToGridX(lng: number): number {
+  return (lng + 180) / 360 * GRID_WIDTH;
+}
+function latToGridY(lat: number): number {
+  return (90 - lat) / 180 * GRID_HEIGHT;
+}
+
 // ─── US Cities with approximate lat/lng ──────────────────────────────────────
 const US_CITIES = [
   { city: 'New York', x: -74.006, y: 40.7128 },
@@ -472,8 +484,8 @@ async function seedBots() {
             slogan: bot.slogan.substring(0, 50),
             colorHex: bot.colorHex,
             shapeIndex: bot.shapeIndex,
-            lastKnownX: city.x + (Math.random() - 0.5) * 0.5,
-            lastKnownY: city.y + (Math.random() - 0.5) * 0.5,
+            lastKnownX: lngToGridX(city.x) + (Math.random() - 0.5) * 2,
+            lastKnownY: latToGridY(city.y) + (Math.random() - 0.5) * 2,
             exploreMode: bot.exploreMode,
             restrictedCountries: ['US'],
             restrictedCities: [city.city],

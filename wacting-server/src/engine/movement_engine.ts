@@ -170,14 +170,14 @@ export function tickMovement(icon: IconState, dt: number): void {
         // Has restrictions: only allow movement within allowed countries
         if (countryIso3 && icon._allowedIso3.has(countryIso3)) {
             icon.x = wrapCoordinate(newX, GRID_WIDTH);
-            icon.y = wrapCoordinate(newY, GRID_HEIGHT);
+            icon.y = Math.max(0, Math.min(newY, GRID_HEIGHT)); // clamp Y (latitude doesn't wrap)
         }
         // If not in allowed set (ocean or wrong country), icon stays in place
     } else {
         // No restrictions: allow all land
         if (countryIso3 != null) {
             icon.x = wrapCoordinate(newX, GRID_WIDTH);
-            icon.y = wrapCoordinate(newY, GRID_HEIGHT);
+            icon.y = Math.max(0, Math.min(newY, GRID_HEIGHT)); // clamp Y
         }
         // If ocean, icon stays in place
     }

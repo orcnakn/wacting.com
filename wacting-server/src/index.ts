@@ -81,6 +81,14 @@ async function start() {
                 return wc([lng, lat]) != null;
             }
 
+            // Helper: convert lng/lat to grid coords
+            function lngToGridX(lng: number): number {
+                return (lng + 180) / 360 * GRID_WIDTH;
+            }
+            function latToGridY(lat: number): number {
+                return (90 - lat) / 180 * GRID_HEIGHT;
+            }
+
             let relocatedCount = 0;
             for (const icon of dbIcons) {
                 const wacBal = parseFloat(icon.user?.wac?.wacBalance?.toString() ?? '0');
@@ -89,8 +97,20 @@ async function start() {
                     ? Math.max(1, Math.log10(wacBal + 1) * 20)
                     : Math.max(1, icon.followerCount * 0.5 + 1);
 
-                let x = icon.lastKnownX > 0 ? icon.lastKnownX : 0;
-                let y = icon.lastKnownY > 0 ? icon.lastKnownY : 0;
+                let x = icon.lastKnownX;
+                let y = icon.lastKnownY;
+
+                // Detect raw lng/lat stored as grid coords (legacy bug):
+                // Valid grid coords are 0..715 for x and 0..714 for y.
+                // Raw lng values are -180..180, raw lat values are -90..90.
+                // If x is negative or y looks like latitude (small positive), convert.
+                const looksLikeRawLngLat = x < 0 || x > GRID_WIDTH || y < 0 || y > GRID_HEIGHT ||
+                    (Math.abs(x) <= 180 && Math.abs(y) <= 90 && x < GRID_WIDTH / 2);
+                if (looksLikeRawLngLat && (x !== 0 || y !== 0)) {
+                    // x was stored as longitude, y as latitude
+                    x = lngToGridX(x);
+                    y = latToGridY(y);
+                }
 
                 // Ensure icon starts on land — relocate if on ocean
                 if (!isOnLand(x, y)) {
@@ -98,6 +118,14 @@ async function start() {
                     x = land.x;
                     y = land.y;
                     relocatedCount++;
+                }
+
+                // Persist corrected position to DB
+                if (x !== icon.lastKnownX || y !== icon.lastKnownY) {
+                    prisma.icon.update({
+                        where: { id: icon.id },
+                        data: { lastKnownX: x, lastKnownY: y }
+                    }).catch(err => fastify.log.error(`Failed to update icon position: ${err}`));
                 }
 
                 engine.icons.set(icon.userId, {
