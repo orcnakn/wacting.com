@@ -356,7 +356,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   }
 
   // ── World offsets for multi-copy rendering ──
-  static const List<double> _worldOffsets = [-720, -360, 0, 360, 720];
+  static const List<double> _worldOffsets = [-1080, -720, -360, 0, 360, 720, 1080];
 
   // ── Create polygon copies at each world offset ──
   List<Polygon> _multiWorldPolygon(_CountryPolygon cp, Color fillColor, Color borderColor, double borderWidth) {
@@ -768,8 +768,8 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   // Constrain latitude to Mercator bounds, longitude free for wrapping
                   cameraConstraint: CameraConstraint.contain(
                     bounds: LatLngBounds(
-                      const LatLng(-85.0, -1260.0),  // allow 3.5 extra worlds each side (7 copies)
-                      const LatLng(85.0, 1260.0),
+                      const LatLng(-85.0, -1440.0),  // 7 world copies: 3.5 extra each side
+                      const LatLng(85.0, 1440.0),
                     ),
                   ),
                   onPositionChanged: (position, hasGesture) {
@@ -779,7 +779,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                     // Snap-back: when user scrolls beyond 5 worlds, snap to center
                     if (position.center != null && hasGesture) {
                       final lng = position.center!.longitude;
-                      if (lng > 1080 || lng < -1080) {
+                      if (lng > 1260 || lng < -1260) {
                         final normalizedLng = ((lng + 180) % 360) - 180;
                         _mapController.move(
                           LatLng(position.center!.latitude, normalizedLng),
