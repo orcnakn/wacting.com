@@ -17,9 +17,7 @@ echo "▶ Flutter web build başlatılıyor..."
 cd wacting
 flutter build web \
   --release \
-  --web-renderer canvaskit \
   --dart-define=PRODUCTION=true \
-  --dart-define=FLUTTER_WEB_USE_SKIA=true \
   --tree-shake-icons
 cd ..
 
