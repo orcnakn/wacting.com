@@ -356,7 +356,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   }
 
   // ── World offsets for multi-copy rendering ──
-  static const List<double> _worldOffsets = [-1080, -720, -360, 0, 360, 720, 1080];
+  static const List<double> _worldOffsets = [0];
 
   // ── Create polygon copies at each world offset ──
   List<Polygon> _multiWorldPolygon(_CountryPolygon cp, Color fillColor, Color borderColor, double borderWidth) {
@@ -755,7 +755,6 @@ class _GridScreenState extends ConsumerState<GridScreen> {
               }
 
               // minZoom: at max zoom-out exactly 1 world fills the screen.
-              // 7 copies exist for seamless left/right panning.
               final screenWidth = MediaQuery.of(context).size.width;
               // At zoom z, one world = 256 * 2^z px. Solve: 256 * 2^z = screenWidth
               final dynamicMinZoom = (math.log(screenWidth / 256) / math.ln2);
@@ -767,27 +766,16 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   initialZoom: _currentZoom,
                   minZoom: dynamicMinZoom,
                   maxZoom: 18.0,
-                  // Constrain latitude to Mercator bounds, longitude free for wrapping
+                  // Single world: constrain to standard bounds
                   cameraConstraint: CameraConstraint.contain(
                     bounds: LatLngBounds(
-                      const LatLng(-85.0, -1440.0),  // 7 world copies: 3.5 extra each side
-                      const LatLng(85.0, 1440.0),
+                      const LatLng(-85.0, -180.0),
+                      const LatLng(85.0, 180.0),
                     ),
                   ),
                   onPositionChanged: (position, hasGesture) {
                     if (position.zoom != null) {
                       if (mounted) setState(() => _currentZoom = position.zoom!);
-                    }
-                    // Snap-back: when user scrolls beyond 5 worlds, snap to center
-                    if (position.center != null && hasGesture) {
-                      final lng = position.center!.longitude;
-                      if (lng > 1260 || lng < -1260) {
-                        final normalizedLng = ((lng + 180) % 360) - 180;
-                        _mapController.move(
-                          LatLng(position.center!.latitude, normalizedLng),
-                          position.zoom ?? _currentZoom,
-                        );
-                      }
                     }
                   },
                   onTap: (tapPosition, point) {

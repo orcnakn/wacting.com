@@ -89,11 +89,6 @@ class _DayNightPainter extends CustomPainter {
   static const int sampleCols = 64;
   static const int sampleRows = 32;
 
-  // Fine render grid — bilinear-interpolated, drawn to canvas
-  // ~6x6 px cells on a 1920x1080 screen — invisible to the eye
-  static const int renderCols = 320;
-  static const int renderRows = 180;
-
   _DayNightPainter({required this.camera, required this.solar});
 
   @override
@@ -118,16 +113,17 @@ class _DayNightPainter extends CustomPainter {
     }
 
     // ── Step 2: Render fine grid with bilinear interpolation ──
-    final cellW = w / renderCols;
-    final cellH = h / renderRows;
+    // 3px cells: invisible to the eye, good performance (~230K iterations).
+    // No overlap between cells — prevents alpha compositing artifacts.
+    const cellSize = 3.0;
+    final renderCols = (w / cellSize).ceil();
+    final renderRows = (h / cellSize).ceil();
     final paint = Paint()..style = PaintingStyle.fill;
 
-    // Scale factors: render grid → sample grid
     final scaleX = (sampleCols - 1) / renderCols;
     final scaleY = (sampleRows - 1) / renderRows;
 
     for (int row = 0; row < renderRows; row++) {
-      // Sample grid Y coordinate (continuous)
       final gy = (row + 0.5) * scaleY;
       final y0 = gy.floor().clamp(0, sampleRows - 2);
       final fy = gy - y0;
@@ -136,23 +132,21 @@ class _DayNightPainter extends CustomPainter {
       final rowOff1 = (y0 + 1) * sampleCols;
 
       for (int col = 0; col < renderCols; col++) {
-        // Sample grid X coordinate (continuous)
         final gx = (col + 0.5) * scaleX;
         final x0 = gx.floor().clamp(0, sampleCols - 2);
         final fx = gx - x0;
 
-        // Bilinear interpolation from 4 surrounding samples
         final val = samples[rowOff0 + x0] * (1.0 - fx) * fy1 +
             samples[rowOff0 + x0 + 1] * fx * fy1 +
             samples[rowOff1 + x0] * (1.0 - fx) * fy +
             samples[rowOff1 + x0 + 1] * fx * fy;
 
-        if (val < 0.01) continue; // Skip daylight cells
+        if (val < 0.01) continue;
 
         final alpha = (val * 255).round().clamp(0, 140);
         paint.color = Color.fromARGB(alpha, 0, 0, 0);
         canvas.drawRect(
-          Rect.fromLTWH(col * cellW, row * cellH, cellW + 0.5, cellH + 0.5),
+          Rect.fromLTWH(col * cellSize, row * cellSize, cellSize, cellSize),
           paint,
         );
       }
