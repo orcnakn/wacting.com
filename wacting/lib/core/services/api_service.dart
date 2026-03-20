@@ -381,6 +381,26 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
+  // ── User Location ──────────────────────────────────────────────────────
+
+  Future<void> updateLocation({
+    required bool locationEnabled,
+    double? locationLat,
+    double? locationLng,
+    double? locationOffsetMeters,
+  }) async {
+    final body = <String, dynamic>{'locationEnabled': locationEnabled};
+    if (locationLat != null) body['locationLat'] = locationLat;
+    if (locationLng != null) body['locationLng'] = locationLng;
+    if (locationOffsetMeters != null) body['locationOffsetMeters'] = locationOffsetMeters;
+    await _dio.post('/icons/location', data: body);
+  }
+
+  Future<List<dynamic>> getUserLocations() async {
+    final res = await _dio.get('/icons/locations');
+    return (res.data as Map<String, dynamic>)['locations'] as List<dynamic>;
+  }
+
   Future<Map<String, dynamic>> transferRac(String toWalletId, int amount) async {
     final res = await _dio.post('/rac/transfer', data: {
       'toWalletId': toWalletId,

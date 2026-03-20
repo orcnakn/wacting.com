@@ -76,6 +76,12 @@ String? _continentForCountry(String countryName) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+Color _hexToColor(String hex) {
+  hex = hex.replaceAll('#', '');
+  if (hex.length == 6) hex = 'FF$hex';
+  return Color(int.parse(hex, radix: 16));
+}
+
 // Global callback for navigating to a lat/lng on the map from other screens
 typedef MapNavigateCallback = void Function(double lat, double lng, {double zoom});
 MapNavigateCallback? globalMapNavigateTo;
@@ -115,6 +121,10 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   String _mapFilter = 'all'; // all, nearby, trending, protested, newest
   bool _filterDropdownOpen = false;
 
+  // ── User location pins ──
+  List<Map<String, dynamic>> _userLocations = [];
+  Timer? _locationTimer;
+
   @override
   void initState() {
     super.initState();
@@ -122,6 +132,20 @@ class _GridScreenState extends ConsumerState<GridScreen> {
     globalMapNavigateTo = (double lat, double lng, {double zoom = 8.0}) {
       _mapController.move(LatLng(lat, lng), zoom);
     };
+    _fetchUserLocations();
+    _locationTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchUserLocations());
+  }
+
+  Future<void> _fetchUserLocations() async {
+    if (!apiService.isLoggedIn) return;
+    try {
+      final locations = await apiService.getUserLocations();
+      if (mounted) {
+        setState(() {
+          _userLocations = locations.cast<Map<String, dynamic>>();
+        });
+      }
+    } catch (_) {}
   }
 
   // ── Lazy-load 110m countries ──
@@ -262,6 +286,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
   @override
   void dispose() {
+    _locationTimer?.cancel();
     socketService.dispose();
     super.dispose();
   }
@@ -823,6 +848,37 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                     PolygonLayer(polygons: polygonWidgets),
                   CircleLayer(circles: circleAuras),
                   MarkerLayer(markers: markerDots),
+                  // ── User location pins ──
+                  if (_userLocations.isNotEmpty)
+                    MarkerLayer(
+                      markers: _userLocations.map((loc) {
+                        final lat = (loc['lat'] as num).toDouble();
+                        final lng = (loc['lng'] as num).toDouble();
+                        final name = loc['displayName'] ?? '';
+                        final color = _hexToColor(loc['colorHex'] ?? '#FFFFFF');
+                        return Marker(
+                          point: LatLng(lat, lng),
+                          width: 28,
+                          height: 28,
+                          child: GestureDetector(
+                            onTap: () {
+                              ScaffoldMessenger.of(context).clearSnackBars();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(name.isNotEmpty ? name : 'Kullanici'), duration: const Duration(seconds: 2)),
+                              );
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: color.withOpacity(0.8),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                              ),
+                              child: const Icon(Icons.person, color: Colors.white, size: 16),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
                 ],
               );
             }

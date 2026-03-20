@@ -152,4 +152,91 @@ export async function iconRoutes(fastify: FastifyInstance) {
             return reply.code(500).send({ error: 'Server error' });
         }
     });
+
+    // ── Update user location (GPS) ──────────────────────────────────────────
+    const locationSchema = z.object({
+        locationEnabled: z.boolean(),
+        locationLat: z.number().min(-90).max(90).optional(),
+        locationLng: z.number().min(-180).max(180).optional(),
+        locationOffsetMeters: z.number().min(0).max(50000).optional(),
+    });
+
+    fastify.post('/icons/location', async (request, reply) => {
+        try {
+            const userId = (request as any).userId;
+            const data = locationSchema.parse(request.body);
+
+            const updateData: any = {
+                locationEnabled: data.locationEnabled,
+            };
+
+            if (data.locationLat != null) updateData.locationLat = data.locationLat;
+            if (data.locationLng != null) updateData.locationLng = data.locationLng;
+            if (data.locationOffsetMeters != null) updateData.locationOffsetMeters = data.locationOffsetMeters;
+
+            // If disabling, clear location
+            if (!data.locationEnabled) {
+                updateData.locationLat = null;
+                updateData.locationLng = null;
+            }
+
+            await prisma.icon.update({
+                where: { userId },
+                data: updateData,
+            });
+
+            return reply.send({ success: true });
+        } catch (err: any) {
+            fastify.log.error(`Location update failed: ${err}`);
+            return reply.code(500).send({ error: 'Server error' });
+        }
+    });
+
+    // ── Get users with location enabled (for map pins) ─────────────────────
+    fastify.get('/icons/locations', async (request, reply) => {
+        try {
+            const icons = await prisma.icon.findMany({
+                where: { locationEnabled: true, locationLat: { not: null }, locationLng: { not: null } },
+                select: {
+                    userId: true,
+                    locationLat: true,
+                    locationLng: true,
+                    locationOffsetMeters: true,
+                    colorHex: true,
+                    slogan: true,
+                    user: { select: { displayName: true, slogan: true, avatarUrl: true } },
+                },
+            });
+
+            // Apply privacy offset — random direction, fixed distance
+            const result = icons.map(icon => {
+                const offsetM = icon.locationOffsetMeters || 0;
+                let lat = icon.locationLat!;
+                let lng = icon.locationLng!;
+                if (offsetM > 0) {
+                    // Deterministic offset based on userId hash (consistent per user)
+                    const hash = icon.userId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+                    const angle = (hash % 360) * (Math.PI / 180);
+                    const mPerDegLat = 111_320;
+                    const mPerDegLng = 111_320 * Math.cos(lat * Math.PI / 180);
+                    lat += (offsetM * Math.sin(angle)) / mPerDegLat;
+                    lng += (offsetM * Math.cos(angle)) / (mPerDegLng || 1);
+                }
+                return {
+                    userId: icon.userId,
+                    lat,
+                    lng,
+                    colorHex: icon.colorHex,
+                    slogan: icon.slogan,
+                    displayName: icon.user?.displayName || icon.user?.slogan || '',
+                    avatarUrl: icon.user?.avatarUrl,
+                };
+            });
+
+            return reply.send({ locations: result });
+        } catch (err: any) {
+            fastify.log.error(`Locations fetch failed: ${err}`);
+            return reply.code(500).send({ error: 'Server error' });
+        }
+    });
 }

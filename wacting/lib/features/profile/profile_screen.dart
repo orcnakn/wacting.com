@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 import '../../app/theme.dart';
 import '../../core/services/api_service.dart';
 import '../../core/utils/format_utils.dart';
@@ -32,6 +34,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   List<dynamic> _txHistory = [];
   bool _walletLoading = true;
 
+  // Location state
+  bool _locationEnabled = false;
+  double _locationOffsetMeters = 0;
+  final _offsetController = TextEditingController(text: '0');
+
   bool get _isOwnProfile => widget.viewUserId == null || widget.viewUserId == apiService.userId;
   String get _targetUserId => widget.viewUserId ?? apiService.userId ?? '';
 
@@ -46,6 +53,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   void dispose() {
     _tabController.dispose();
     _nameController.dispose();
+    _offsetController.dispose();
     super.dispose();
   }
 
@@ -331,6 +339,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       ),
                     );
                   }),
+              // ── Location Settings (own profile only) ──
+              if (_isOwnProfile) ...[
+                const SizedBox(height: 20),
+                _buildLocationSection(),
+              ],
               // Follow button for other profiles
               if (!_isOwnProfile) ...[
                 const SizedBox(height: 20),
@@ -550,6 +563,123 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           );
         },
       ),
+    );
+  }
+
+  Widget _buildLocationSection() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderLight),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.location_on, color: AppColors.accentBlue, size: 20),
+          const SizedBox(width: 8),
+          Text('Konum Ayarlari', style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+        ]),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: Text(
+              _locationEnabled ? 'Konumunuz haritada gorunuyor' : 'Konum kapali — haritada gorunmuyorsunuz',
+              style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
+            ),
+          ),
+          Switch(
+            value: _locationEnabled,
+            activeColor: AppColors.accentTeal,
+            onChanged: (val) async {
+              if (val) {
+                // Request geolocation permission
+                try {
+                  final geo = html.window.navigator.geolocation;
+                  final pos = await geo.getCurrentPosition(
+                    enableHighAccuracy: true,
+                    timeout: const Duration(seconds: 10),
+                  );
+                  final lat = pos.coords!.latitude! as double;
+                  final lng = pos.coords!.longitude! as double;
+                  await apiService.updateLocation(
+                    locationEnabled: true,
+                    locationLat: lat,
+                    locationLng: lng,
+                    locationOffsetMeters: _locationOffsetMeters,
+                  );
+                  setState(() => _locationEnabled = true);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Konum aktif edildi')),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Konum izni alinamadi'), backgroundColor: Colors.red),
+                    );
+                  }
+                }
+              } else {
+                await apiService.updateLocation(locationEnabled: false);
+                setState(() => _locationEnabled = false);
+              }
+            },
+          ),
+        ]),
+        if (_locationEnabled) ...[
+          const SizedBox(height: 8),
+          Text('Konum Oteleme (metre)', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 4),
+          Text('Gizlilik icin konumunuz bu kadar metre otelenecek',
+            style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _offsetController,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: '0',
+                  hintStyle: TextStyle(color: AppColors.textTertiary),
+                  suffixText: 'm',
+                  suffixStyle: TextStyle(color: AppColors.textTertiary),
+                  filled: true,
+                  fillColor: AppColors.surfaceWhite,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.borderLight)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accentTeal,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              onPressed: () async {
+                final offset = double.tryParse(_offsetController.text) ?? 0;
+                setState(() => _locationOffsetMeters = offset);
+                try {
+                  await apiService.updateLocation(
+                    locationEnabled: true,
+                    locationOffsetMeters: offset,
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Oteleme: ${offset.toInt()}m olarak ayarlandi')),
+                  );
+                } catch (_) {}
+              },
+              child: const Text('Kaydet'),
+            ),
+          ]),
+        ],
+      ]),
     );
   }
 

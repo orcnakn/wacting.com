@@ -296,6 +296,12 @@ model Icon {
   lastKnownX Float @default(0)
   lastKnownY Float @default(0)
 
+  // Real-world user location (GPS)
+  locationEnabled      Boolean @default(false)
+  locationLat          Float?
+  locationLng          Float?
+  locationOffsetMeters Float   @default(0) // privacy offset in meters
+
   // Geographic Movement Constraints
   restrictedContinents String[]
   restrictedCountries  String[]
