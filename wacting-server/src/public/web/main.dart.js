@@ -99389,7 +99389,7 @@ adL(a){switch(a){case"nearby":return"Bolgemdekiler"
 case"trending":return"Trend"
 case"protested":return"Linclenenler"
 case"newest":return"Yeni"
-default:return"Filtre"}},
+default:return"Tum Kampanyalar"}},
 uB(a,b,c){var s=null,r=this.fy===a,q=r?A.a_(38,B.H.n()>>>16&255,B.H.n()>>>8&255,B.H.n()&255):B.O,p=A.bT(c,r?B.H:B.a3,s,14),o=r?B.H:B.a3
 return A.cT(s,A.bg(s,A.bB(A.b([p,B.aW,A.T(b,s,s,s,s,s,A.X(s,s,o,s,s,s,s,s,s,s,s,12,s,s,r?B.x:B.w,s,s,!0,s,s,s,s,s,s,s,s),s,s)],t.p),B.r,B.m,B.a6),B.l,q,s,s,s,s,s,B.fa,s,s,s),B.K,!1,s,s,s,s,s,s,s,s,s,s,s,s,s,new A.awW(this,a),s,s,s,s,s,s)},
 aog(a,b,c,d){var s,r,q,p={}

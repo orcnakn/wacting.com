@@ -1116,7 +1116,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
       case 'trending': return 'Trend';
       case 'protested': return 'Linclenenler';
       case 'newest': return 'Yeni';
-      default: return 'Filtre';
+      default: return 'Tum Kampanyalar';
     }
   }
 
