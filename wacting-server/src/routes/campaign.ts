@@ -560,6 +560,53 @@ export async function campaignRoutes(fastify: FastifyInstance) {
         }
     });
 
+    // ── Update Campaign Speed (Leader Only) ──────────────────────────────────
+    fastify.post('/:id/speed', async (request, reply) => {
+        try {
+            const user = (request as any).user;
+            const { id } = request.params as { id: string };
+            const body = request.body as { speed: number };
+
+            const campaign = await prisma.campaign.findUnique({ where: { id } });
+            if (!campaign || !campaign.isActive) {
+                return reply.status(404).send({ success: false, error: 'Kampanya bulunamadı.' });
+            }
+            if (campaign.leaderId !== user.id) {
+                return reply.status(403).send({ success: false, error: 'Sadece kampanya lideri hızı değiştirebilir.' });
+            }
+
+            const speed = body.speed;
+            if (speed === undefined || speed < 0 || speed > 1) {
+                return reply.status(400).send({ success: false, error: 'Hız 0-1 arasında olmalı.' });
+            }
+
+            await prisma.campaign.update({
+                where: { id },
+                data: { speed },
+            });
+
+            // Update all campaign member icons in the engine
+            const engine = (fastify as any).engine;
+            if (engine) {
+                const members = await (prisma as any).campaignMember.findMany({
+                    where: { campaignId: id },
+                    select: { userId: true },
+                });
+                for (const m of members) {
+                    const icon = engine.icons.get(m.userId);
+                    if (icon) {
+                        icon.campaignSpeed = speed;
+                    }
+                }
+            }
+
+            return reply.send({ success: true, speed, message: 'Kampanya hızı güncellendi.' });
+        } catch (error: any) {
+            fastify.log.error(error);
+            return reply.status(500).send({ success: false, error: error.message || 'Failed to update speed' });
+        }
+    });
+
     // ── Get Campaign Members ──────────────────────────────────────────────────
     fastify.get('/:id/members', async (request, reply) => {
         try {

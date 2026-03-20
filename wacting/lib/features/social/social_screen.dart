@@ -216,11 +216,14 @@ class _CampaignsTabState extends State<_CampaignsTab>
             final bDate = DateTime.tryParse((b['createdAt'] ?? '').toString()) ?? DateTime(0);
             return bDate.compareTo(aDate);
           });
-          return sorted.map((c) {
+          return sorted.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final c = entry.value;
             final myStaked = double.tryParse((c['myStakedWac'] ?? '0').toString()) ?? 0;
             final totalStaked = double.tryParse((c['totalWacStaked'] ?? '0').toString()) ?? 0;
             final memberCount = (c['memberCount'] ?? c['_count']?['members'] ?? 0) as int;
             final isLeader = c['isLeader'] == true;
+            final speed = (c['speed'] as num?)?.toDouble() ?? 0.5;
 
             return Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -232,6 +235,8 @@ class _CampaignsTabState extends State<_CampaignsTab>
                 totalWacStaked: totalStaked,
                 myStakedWac: myStaked,
                 isLeader: isLeader,
+                rank: idx + 1,
+                speed: speed,
               ),
             );
           });
@@ -611,6 +616,8 @@ class _CampaignsTabState extends State<_CampaignsTab>
     required double totalWacStaked,
     required double myStakedWac,
     required bool isLeader,
+    int? rank,
+    double speed = 0.5,
   }) {
     String fmtWac(double v) => v >= 1000
         ? '${(v / 1000).toStringAsFixed(1)}K'
@@ -626,6 +633,7 @@ class _CampaignsTabState extends State<_CampaignsTab>
         totalWacStaked: totalWacStaked,
         myStakedWac: myStakedWac,
         isLeader: isLeader,
+        speed: speed,
       ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -663,6 +671,17 @@ class _CampaignsTabState extends State<_CampaignsTab>
               style: TextStyle(color: AppColors.textTertiary, fontSize: 11),
             ),
             Icon(Icons.people_alt_outlined, color: AppColors.textTertiary, size: 14),
+            if (rank != null) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.accentTeal.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text('#$rank', style: TextStyle(color: AppColors.accentTeal, fontSize: 10, fontWeight: FontWeight.bold)),
+              ),
+            ],
             const SizedBox(width: 4),
             Icon(Icons.chevron_right, color: AppColors.textTertiary, size: 16),
           ],
@@ -679,24 +698,92 @@ class _CampaignsTabState extends State<_CampaignsTab>
     required double totalWacStaked,
     required double myStakedWac,
     required bool isLeader,
+    double speed = 0.5,
   }) {
+    double currentSpeed = speed;
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surfaceWhite,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-        child: _buildDetailedCampaignCard(
-          campaignId: campaignId,
-          title: title,
-          slogan: slogan,
-          participants: participants,
-          totalWacStaked: totalWacStaked,
-          myStakedWac: myStakedWac,
-          isRac: false,
-          hasActivePoll: _myPolls.isNotEmpty,
-          isLeader: isLeader,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModal) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            _buildDetailedCampaignCard(
+              campaignId: campaignId,
+              title: title,
+              slogan: slogan,
+              participants: participants,
+              totalWacStaked: totalWacStaked,
+              myStakedWac: myStakedWac,
+              isRac: false,
+              hasActivePoll: _myPolls.isNotEmpty,
+              isLeader: isLeader,
+            ),
+            if (isLeader) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.borderLight),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Icon(Icons.speed, color: AppColors.accentBlue, size: 18),
+                    const SizedBox(width: 8),
+                    Text('Kampanya Hizi', style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+                    const Spacer(),
+                    Text(
+                      currentSpeed == 0 ? 'Sabit' : '${currentSpeed.toStringAsFixed(1)}x',
+                      style: TextStyle(color: AppColors.accentBlue, fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text(
+                    currentSpeed == 0
+                        ? 'Ikon haritada sabit duruyor'
+                        : '1000 km / ${(1 + (1 - currentSpeed) * 10).toStringAsFixed(0)} saniye',
+                    style: TextStyle(color: AppColors.textTertiary, fontSize: 11),
+                  ),
+                  Slider(
+                    value: currentSpeed,
+                    min: 0, max: 1, divisions: 10,
+                    activeColor: AppColors.accentBlue,
+                    label: currentSpeed == 0 ? 'Sabit' : '${currentSpeed.toStringAsFixed(1)}x',
+                    onChanged: (v) => setModal(() => currentSpeed = v),
+                  ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.accentBlue,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: () async {
+                        try {
+                          await apiService.updateCampaignSpeed(campaignId, currentSpeed);
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Hiz guncellendi: ${currentSpeed.toStringAsFixed(1)}x')),
+                          );
+                          _loadData();
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Hata: $e'), backgroundColor: Colors.red),
+                          );
+                        }
+                      },
+                      child: const Text('Hizi Kaydet'),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
+          ]),
         ),
       ),
     );

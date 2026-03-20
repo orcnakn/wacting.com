@@ -188,6 +188,11 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> updateCampaignSpeed(String campaignId, double speed) async {
+    final res = await _dio.post('/campaign/$campaignId/speed', data: {'speed': speed});
+    return res.data as Map<String, dynamic>;
+  }
+
   Future<List<dynamic>> getMyCampaigns() async {
     final res = await _dio.get('/campaign/mine');
     return (res.data as Map<String, dynamic>)['campaigns'] as List<dynamic>;
