@@ -109,8 +109,11 @@ class LodManager {
   //   - Own icon: ALWAYS visible at any zoom
 
   /// Dot size for user (non-campaign) icons — ~1/10 of campaign icon at same zoom
+  /// Always visible on world map as tiny dots
   static double userDotSize(double zoom) {
-    if (zoom < 7.0) return 3.0;
+    if (zoom < 3.0) return 2.0;   // World: tiny dots
+    if (zoom < 5.0) return 2.5;   // Continents
+    if (zoom < 7.0) return 3.0;   // Countries
     if (zoom < 10.0) {
       final t = ((zoom - 7.0) / 3.0).clamp(0.0, 1.0);
       return 3.0 + 2.0 * t; // 3→5
@@ -124,18 +127,18 @@ class LodManager {
     return zoom >= 13.0;
   }
 
-  /// Opacity for user icons — fades at very low zoom
+  /// Opacity for user icons — always visible, brighter as zoom increases
   static double userOpacity(double zoom, bool isMyIcon) {
     if (isMyIcon) return 1.0;
-    if (zoom < 3.0) return 0.0;  // Very low zoom: hide
-    if (zoom < 5.0) return 0.3;  // Countries: faint
-    if (zoom < 8.0) return 0.6;  // Regions: visible
-    return 1.0;                   // Cities+: full
+    if (zoom < 2.0) return 0.4;   // World: faint but visible
+    if (zoom < 3.0) return 0.5;   // World zoom
+    if (zoom < 5.0) return 0.6;   // Continents
+    if (zoom < 8.0) return 0.75;  // Regions
+    return 1.0;                    // Cities+: full
   }
 
-  /// Whether a user icon should be rendered at all
+  /// Whether a user icon should be rendered at all — ALWAYS render
   static bool shouldRenderUser(double zoom, bool isMyIcon) {
-    if (isMyIcon) return true;
-    return zoom >= 3.0;
+    return true;
   }
 }
