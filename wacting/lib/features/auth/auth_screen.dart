@@ -17,25 +17,39 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   final TextEditingController _emailController    = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _rePasswordController = TextEditingController();
   final TextEditingController _codeController     = TextEditingController();
+
+  final FocusNode _emailFocus = FocusNode();
+  final FocusNode _passwordFocus = FocusNode();
+  final FocusNode _rePasswordFocus = FocusNode();
+
   bool _isLoading = false;
+  bool _isRegisterMode = false;
+  bool _obscurePassword = true;
+  bool _obscureRePassword = true;
   String? _errorMessage;
   String? _successMessage;
   String? _pendingVerificationEmail;
-
-  // unused — text animation is now on the W marker
 
   @override
   void initState() {
     super.initState();
     socketService.connect(AppConfig.socketUrl);
+    _emailFocus.addListener(() => setState(() {}));
+    _passwordFocus.addListener(() => setState(() {}));
+    _rePasswordFocus.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _rePasswordController.dispose();
     _codeController.dispose();
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
+    _rePasswordFocus.dispose();
     super.dispose();
   }
 
@@ -69,12 +83,17 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _handleSignUp() async {
     final email    = _emailController.text.trim();
     final password = _passwordController.text.trim();
+    final rePassword = _rePasswordController.text.trim();
     if (email.isEmpty || !email.contains('@')) {
       setState(() => _errorMessage = 'Gecerli bir email adresi girin.');
       return;
     }
     if (password.isEmpty || password.length < 6) {
       setState(() => _errorMessage = 'Sifre en az 6 karakter olmali.');
+      return;
+    }
+    if (password != rePassword) {
+      setState(() => _errorMessage = 'Sifreler eslesmiyor.');
       return;
     }
     setState(() { _isLoading = true; _errorMessage = null; _successMessage = null; });
@@ -143,21 +162,16 @@ class _AuthScreenState extends State<AuthScreen> {
     return 'Baglanti hatasi.';
   }
 
-  void _onMerge(bool merging) {
-    // merge event handled inside animation widget now
-  }
+  void _onMerge(bool merging) {}
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0F0C29),
       body: Stack(children: [
-        // ── Animated background ──
         Positioned.fill(
           child: AuthBackgroundAnimation(onMerge: _onMerge),
         ),
-
-        // ── Content ──
         Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
@@ -166,13 +180,12 @@ class _AuthScreenState extends State<AuthScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // ── Social login icons (replacing the D logo) ──
                   _buildSocialIconsRow(),
                   const SizedBox(height: 32),
-
-                  // ── Login / Verification form ──
                   if (_pendingVerificationEmail != null)
                     _buildVerificationCard()
+                  else if (_isRegisterMode)
+                    _buildRegisterCard()
                   else
                     _buildLoginCard(),
                 ],
@@ -183,10 +196,6 @@ class _AuthScreenState extends State<AuthScreen> {
       ]),
     );
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Social login icon row (circular icons)
-  // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildSocialIconsRow() {
     final socials = [
@@ -236,7 +245,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Login card (Divi-style: translucent, rounded fields, gradient button)
+  // Login card
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildLoginCard() {
@@ -255,25 +264,24 @@ class _AuthScreenState extends State<AuthScreen> {
         ],
       ),
       child: Column(children: [
-        // ── Username / Email field ──
         _buildField(
           controller: _emailController,
-          hint: 'Username',
+          focusNode: _emailFocus,
+          hint: 'Email',
           icon: Icons.person_outline,
           keyboardType: TextInputType.emailAddress,
         ),
         const SizedBox(height: 16),
-
-        // ── Password field ──
         _buildField(
           controller: _passwordController,
+          focusNode: _passwordFocus,
           hint: 'Password',
           icon: Icons.lock_outline,
-          obscure: true,
+          obscure: _obscurePassword,
+          onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
         ),
         const SizedBox(height: 24),
 
-        // ── Error message ──
         if (_errorMessage != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 16),
@@ -282,51 +290,19 @@ class _AuthScreenState extends State<AuthScreen> {
                 textAlign: TextAlign.center),
           ),
 
-        // ── Log In button (gradient) ──
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: GestureDetector(
-            onTap: _isLoading ? null : _handleSignIn,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(25),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFFF416C), Color(0xFFFF4B2B)],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFFF416C).withOpacity(0.4),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : const Text('Log In',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1,
-                        )),
-              ),
-            ),
-          ),
-        ),
+        // Log In button
+        _buildGradientButton('Log In', _isLoading ? null : _handleSignIn),
         const SizedBox(height: 16),
 
-        // ── Sign Up link ──
         GestureDetector(
-          onTap: _isLoading ? null : _handleSignUp,
+          onTap: _isLoading ? null : () {
+            setState(() {
+              _isRegisterMode = true;
+              _errorMessage = null;
+              _emailController.clear();
+              _passwordController.clear();
+            });
+          },
           child: Text('Hesabin yok mu? Kayit Ol',
               style: TextStyle(
                 color: Colors.white.withOpacity(0.5),
@@ -334,8 +310,6 @@ class _AuthScreenState extends State<AuthScreen> {
               )),
         ),
         const SizedBox(height: 8),
-
-        // ── Lost your password ──
         GestureDetector(
           onTap: () {},
           child: Text('Lost your password?',
@@ -348,31 +322,182 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Register card
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildRegisterCard() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 30,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(children: [
+        const Text('Kayit Ol',
+            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 24),
+        _buildField(
+          controller: _emailController,
+          focusNode: _emailFocus,
+          hint: 'Email',
+          icon: Icons.email_outlined,
+          keyboardType: TextInputType.emailAddress,
+        ),
+        const SizedBox(height: 16),
+        _buildField(
+          controller: _passwordController,
+          focusNode: _passwordFocus,
+          hint: 'Sifre',
+          icon: Icons.lock_outline,
+          obscure: _obscurePassword,
+          onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
+        ),
+        const SizedBox(height: 16),
+        _buildField(
+          controller: _rePasswordController,
+          focusNode: _rePasswordFocus,
+          hint: 'Sifre Tekrar',
+          icon: Icons.lock_outline,
+          obscure: _obscureRePassword,
+          onToggleObscure: () => setState(() => _obscureRePassword = !_obscureRePassword),
+        ),
+        const SizedBox(height: 24),
+
+        if (_errorMessage != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Text(_errorMessage!,
+                style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 13),
+                textAlign: TextAlign.center),
+          ),
+
+        _buildGradientButton('Kayit Ol', _isLoading ? null : _handleSignUp),
+        const SizedBox(height: 16),
+
+        GestureDetector(
+          onTap: _isLoading ? null : () {
+            setState(() {
+              _isRegisterMode = false;
+              _errorMessage = null;
+              _emailController.clear();
+              _passwordController.clear();
+              _rePasswordController.clear();
+            });
+          },
+          child: Text('Zaten hesabin var mi? Giris Yap',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.5),
+                fontSize: 13,
+              )),
+        ),
+      ]),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Shared field builder with focus highlight + password eye toggle
+  // ─────────────────────────────────────────────────────────────────────────
+
   Widget _buildField({
     required TextEditingController controller,
+    required FocusNode focusNode,
     required String hint,
     required IconData icon,
     TextInputType keyboardType = TextInputType.text,
     bool obscure = false,
+    VoidCallback? onToggleObscure,
   }) {
-    return Container(
+    final isFocused = focusNode.hasFocus;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.12),
         borderRadius: BorderRadius.circular(25),
-        border: Border.all(color: Colors.white.withOpacity(0.15)),
+        border: Border.all(
+          color: isFocused
+              ? const Color(0xFFFF416C)
+              : Colors.white.withOpacity(0.15),
+          width: isFocused ? 1.5 : 1.0,
+        ),
       ),
       child: TextField(
         controller: controller,
+        focusNode: focusNode,
         obscureText: obscure,
         keyboardType: keyboardType,
         style: const TextStyle(color: Colors.white, fontSize: 15),
         decoration: InputDecoration(
-          prefixIcon: Icon(icon, color: Colors.white54, size: 20),
+          prefixIcon: Icon(icon, color: isFocused ? const Color(0xFFFF416C) : Colors.white54, size: 20),
+          suffixIcon: onToggleObscure != null
+              ? IconButton(
+                  icon: Icon(
+                    obscure ? Icons.visibility_off : Icons.visibility,
+                    color: Colors.white38,
+                    size: 20,
+                  ),
+                  onPressed: onToggleObscure,
+                )
+              : null,
           hintText: hint,
           hintStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 15),
           filled: false,
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Gradient button
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildGradientButton(String label, VoidCallback? onTap) {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(25),
+            gradient: const LinearGradient(
+              colors: [Color(0xFFFF416C), Color(0xFFFF4B2B)],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFFF416C).withOpacity(0.4),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Center(
+            child: _isLoading
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : Text(label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1,
+                    )),
+          ),
         ),
       ),
     );
@@ -450,38 +575,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 style: const TextStyle(color: Colors.greenAccent, fontSize: 13),
                 textAlign: TextAlign.center),
           ),
-        // Verify button
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: GestureDetector(
-            onTap: _isLoading ? null : _handleVerifyCode,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(25),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFFF416C), Color(0xFFFF4B2B)],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFFF416C).withOpacity(0.4),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 22, height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('DOGRULA',
-                        style: TextStyle(
-                            color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 1)),
-              ),
-            ),
-          ),
-        ),
+        _buildGradientButton('DOGRULA', _isLoading ? null : _handleVerifyCode),
         const SizedBox(height: 16),
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           TextButton(
