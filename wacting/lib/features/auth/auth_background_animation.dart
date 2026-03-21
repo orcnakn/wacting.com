@@ -32,7 +32,7 @@ class _AuthBackgroundAnimationState extends State<AuthBackgroundAnimation>
   // W traveler — stays near center area (around login)
   LatLng _wPos = const LatLng(35.0, 15.0);
   LatLng _wTarget = const LatLng(40.0, 25.0);
-  final double _wSpeed = 0.15;
+  final double _wSpeed = 0.18;
   double _wScale = 1.0;
 
   // Rotating text phrases
@@ -51,18 +51,24 @@ class _AuthBackgroundAnimationState extends State<AuthBackgroundAnimation>
   String _currentText = 'WACTING';
   bool _isTransitioning = false;
 
-  // Waypoints — tighter orbit near center of visible map
+  // Waypoints — full world coverage so W roams the entire screen
   static const List<LatLng> _waypoints = [
-    LatLng(40.0, 10.0),
-    LatLng(45.0, 30.0),
-    LatLng(35.0, 50.0),
-    LatLng(30.0, 20.0),
-    LatLng(42.0, -5.0),
-    LatLng(38.0, 40.0),
-    LatLng(48.0, 15.0),
-    LatLng(33.0, 35.0),
-    LatLng(44.0, 0.0),
-    LatLng(36.0, 25.0),
+    LatLng(55.0, -100.0),  // North America
+    LatLng(35.0, -80.0),   // East US
+    LatLng(10.0, -60.0),   // South America north
+    LatLng(-25.0, -50.0),  // Brazil
+    LatLng(-35.0, 20.0),   // South Africa
+    LatLng(5.0, 30.0),     // Central Africa
+    LatLng(35.0, 35.0),    // Middle East
+    LatLng(50.0, 10.0),    // Europe
+    LatLng(60.0, 30.0),    // Scandinavia
+    LatLng(55.0, 80.0),    // Russia
+    LatLng(35.0, 105.0),   // China
+    LatLng(20.0, 78.0),    // India
+    LatLng(-10.0, 120.0),  // Indonesia
+    LatLng(-30.0, 140.0),  // Australia
+    LatLng(40.0, 140.0),   // Japan
+    LatLng(65.0, -20.0),   // Iceland
   ];
   int _waypointIndex = 0;
 
@@ -185,9 +191,9 @@ class _AuthBackgroundAnimationState extends State<AuthBackgroundAnimation>
     // Spawn from edges but aim toward center area (near login window)
     final edge = _rng.nextInt(4);
     double lat, lng, dLat, dLng;
-    // Target area: lat 25-50, lng -10 to 50 (center of visible map)
-    final targetLat = 25 + _rng.nextDouble() * 25;
-    final targetLng = -10 + _rng.nextDouble() * 60;
+    // Target area: full map coverage
+    final targetLat = -40 + _rng.nextDouble() * 100;
+    final targetLng = -150 + _rng.nextDouble() * 300;
 
     switch (edge) {
       case 0: // top
@@ -295,22 +301,7 @@ class _AuthBackgroundAnimationState extends State<AuthBackgroundAnimation>
       builder: (context, snapshot) {
         _lastIcons = snapshot.data ?? [];
 
-        // Real icon markers — only tiny dots (max 6px) so they don't clutter the login
-        final markers = _lastIcons.map((icon) {
-          final latLng = _offsetToLatLng(icon.position);
-          const sz = 4.0;
-          return Marker(
-            point: latLng,
-            width: sz,
-            height: sz,
-            child: Container(
-              decoration: BoxDecoration(
-                color: icon.displayColor.withOpacity(0.4),
-                shape: BoxShape.circle,
-              ),
-            ),
-          );
-        }).toList();
+        // Real icon markers removed — only edge icons + W on login bg
 
         // Edge icon markers
         final edgeMarkers = _edgeIcons.map((ei) {
@@ -363,7 +354,6 @@ class _AuthBackgroundAnimationState extends State<AuthBackgroundAnimation>
                     userAgentPackageName: 'com.wacting.app',
                   ),
                   const DayNightLayer(),
-                  MarkerLayer(markers: markers),
                   MarkerLayer(markers: edgeMarkers),
                   // W marker with text
                   MarkerLayer(markers: [
