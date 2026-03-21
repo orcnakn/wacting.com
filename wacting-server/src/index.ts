@@ -41,6 +41,29 @@ const engine = new MovementEngine();
 // Make engine accessible to route handlers
 fastify.decorate('engine', engine);
 
+// Stance-based icon color: SUPPORT=green, PROTEST=red, REFORM=unique per campaign
+const REFORM_PALETTE = [
+    '#E91E63', '#9C27B0', '#673AB7', '#3F51B5', '#2196F3',
+    '#00BCD4', '#009688', '#FF9800', '#FF5722', '#795548',
+    '#607D8B', '#8BC34A', '#CDDC39', '#FFC107', '#03A9F4',
+    '#7C4DFF', '#FF6E40', '#00E676', '#FFD740', '#448AFF',
+];
+function stanceColor(campaign: any, fallback: string): string {
+    if (!campaign) return fallback;
+    if (campaign.stanceType === 'SUPPORT') return '#4CAF50';
+    if (campaign.stanceType === 'PROTEST') return '#FF4444';
+    if (campaign.stanceType === 'REFORM') {
+        // Hash campaign ID to pick a unique color
+        let hash = 0;
+        const id = campaign.id as string;
+        for (let i = 0; i < id.length; i++) {
+            hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
+        }
+        return REFORM_PALETTE[Math.abs(hash) % REFORM_PALETTE.length]!;
+    }
+    return campaign.iconColor ?? fallback;
+}
+
 async function start() {
     try {
         // 1. Initialize Prisma Database Connection (graceful — server starts even without DB)
@@ -152,7 +175,7 @@ async function start() {
                     wacBalance: wacBal,
                     exploreMode: icon.exploreMode,
                     campaignSpeed: campaign?.speed ?? 0.5,
-                    campaignColor: campaign?.iconColor ?? icon.colorHex,
+                    campaignColor: stanceColor(campaign, icon.colorHex),
                     campaignSlogan: campaign?.slogan ?? icon.slogan ?? undefined,
                     pinnedX,
                     pinnedY,

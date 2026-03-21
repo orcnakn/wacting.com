@@ -207,7 +207,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                         slogan: body.slogan,
                         description: body.description ?? null,
                         videoUrl: body.videoUrl ?? null,
-                        iconColor: STANCE_COLORS[body.stanceType] || body.iconColor || '#2C3E50',
+                        iconColor: body.stanceType === 'REFORM' ? (body.iconColor || '#2196F3') : (STANCE_COLORS[body.stanceType] || body.iconColor || '#2C3E50'),
                         iconShape: body.iconShape ?? 0,
                         speed: isEmergency ? 0 : (body.speed ?? 0.5), // Emergency = stationary
                         instagramUrl: body.instagramUrl ?? null,
@@ -239,7 +239,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 await tx.icon.updateMany({
                     where: { userId: user.id },
                     data: {
-                        colorHex: STANCE_COLORS[body.stanceType] || body.iconColor || '#2C3E50',
+                        colorHex: body.stanceType === 'REFORM' ? (body.iconColor || '#2196F3') : (STANCE_COLORS[body.stanceType] || body.iconColor || '#2C3E50'),
                         shapeIndex: body.iconShape ?? 0,
                         slogan: body.slogan.substring(0, 50),
                     },
