@@ -610,12 +610,19 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   void _showSelectionSnackbar(String label) {
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('$label | Toplam: $_totalSelectionCount bolge',
-          style: const TextStyle(color: Colors.white, fontSize: 12)),
-      backgroundColor: AppColors.accentBlue,
-      duration: const Duration(seconds: 2),
+      content: Text('$label | $_totalSelectionCount',
+          style: const TextStyle(color: Colors.white, fontSize: 11),
+          textAlign: TextAlign.center),
+      backgroundColor: AppColors.accentBlue.withOpacity(0.9),
+      duration: const Duration(seconds: 1),
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: EdgeInsets.only(
+        bottom: 20,
+        left: MediaQuery.of(context).size.width * 0.25,
+        right: MediaQuery.of(context).size.width * 0.25,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     ));
   }
 
@@ -877,7 +884,19 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   ),
                   onPositionChanged: (position, hasGesture) {
                     if (position.zoom != null) {
-                      if (mounted) setState(() => _currentZoom = position.zoom!);
+                      final oldZoom = _currentZoom;
+                      final newZoom = position.zoom!;
+                      if (mounted) {
+                        setState(() => _currentZoom = newZoom);
+                        // Auto-pause when entering regions level (zoom >= 7), auto-resume when leaving
+                        if (!_regionSelectMode) {
+                          if (oldZoom < 7 && newZoom >= 7 && !_paused) {
+                            setState(() => _paused = true);
+                          } else if (oldZoom >= 7 && newZoom < 7 && _paused) {
+                            setState(() => _paused = false);
+                          }
+                        }
+                      }
                     }
                   },
                   onTap: (tapPosition, point) {
@@ -1136,38 +1155,72 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                     _paused = true;  // Auto-pause icons for inspection
                   });
                   ScaffoldMessenger.of(context).clearSnackBars();
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text(
-                      '📍 Bölge seçimi AÇIK — haritaya dokunarak seçin.\n'
-                      'Uzaklaş → kıta seç\n'
-                      'Yaklaş → ülke/bölge seç\n'
-                      '❘❘ İkonlar durduruldu',
-                      style: TextStyle(color: Colors.white),
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: const Text(
+                      'Bolge secimi ACIK — haritaya dokunun',
+                      style: TextStyle(color: Colors.white, fontSize: 11),
                     ),
                     backgroundColor: Colors.orange,
-                    duration: Duration(seconds: 3),
+                    duration: const Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    margin: EdgeInsets.only(
+                      bottom: 20,
+                      left: MediaQuery.of(context).size.width * 0.2,
+                      right: MediaQuery.of(context).size.width * 0.2,
+                    ),
                   ));
                 } else {
-                  // Exiting region-select mode — apply selections + auto-resume
+                  // Exiting region-select mode — apply selections + send to server
+                  final continents = _selectedContinents.toList();
+                  final countries = <String>[
+                    ..._selectedCountries,
+                  ];
+                  // Remove excluded countries
+                  countries.removeWhere((c) => _excludedCountries.contains(c));
+                  // Add countries from continents (minus excluded)
+                  for (final cont in continents) {
+                    final members = _continentCountries[cont] ?? [];
+                    for (final m in members) {
+                      if (!_excludedCountries.contains(m) && !countries.contains(m)) {
+                        countries.add(m);
+                      }
+                    }
+                  }
+                  final cities = _selectedCities.map((c) => c.split('|')[0]).toList();
+
                   setState(() {
                     _regionSelectMode = false;
-                    _paused = false;  // Auto-resume icons
+                    _paused = _currentZoom >= 7;  // Stay paused if in regions level
                   });
-                  debugPrint('Applied region bounds: $_selectionSummary');
+
+                  // Send to server
+                  try {
+                    await apiService.restrictBounds(
+                      continents: continents,
+                      countries: countries,
+                      cities: cities,
+                    );
+                  } catch (e) {
+                    debugPrint('Failed to send restrictions: $e');
+                  }
+
                   ScaffoldMessenger.of(context).clearSnackBars();
                   if (_totalSelectionCount > 0) {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                       content: Text(
-                        '✅ Seçim uygulandı: $_selectionSummary\n'
-                        '▶ İkonlar devam ediyor',
-                        style: const TextStyle(color: Colors.white),
+                        'Secim uygulandi: $_selectionSummary',
+                        style: const TextStyle(color: Colors.white, fontSize: 11),
                       ),
                       backgroundColor: Colors.cyan,
+                      duration: const Duration(seconds: 2),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ));
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('▶ Bölge seçimi kapandı — ikonlar devam ediyor',
-                        style: TextStyle(color: Colors.white)),
+                      content: Text('Bolge secimi kapandi',
+                        style: TextStyle(color: Colors.white, fontSize: 11)),
                       backgroundColor: Colors.cyan,
                       duration: Duration(seconds: 2),
                     ));

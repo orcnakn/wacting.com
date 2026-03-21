@@ -50,8 +50,17 @@ export async function iconRoutes(fastify: FastifyInstance) {
 
             fastify.log.info(`Updated geo-bounds for User ${userId}`);
 
-            // Note: The Brownian Movement engine polls Prisma or Redis to know the boundaries.
-            // For real-time updates without polling, we ideally inject a memory event here in a future step.
+            // Update in-memory engine icon immediately
+            const engine = (fastify as any).engine;
+            if (engine) {
+                const iconState = engine.icons.get(userId);
+                if (iconState) {
+                    iconState.restrictedContinents = data.restrictedContinents || [];
+                    iconState.restrictedCountries = data.restrictedCountries || [];
+                    iconState.restrictedCities = data.restrictedCities || [];
+                    iconState._allowedIso3 = undefined; // Force recalculation
+                }
+            }
 
             return reply.send({ success: true, icon: updatedIcon });
 

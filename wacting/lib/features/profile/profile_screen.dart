@@ -343,6 +343,20 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               if (_isOwnProfile) ...[
                 const SizedBox(height: 20),
                 _buildLocationSection(),
+                const SizedBox(height: 24),
+                Center(
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.accentRed,
+                    ),
+                    icon: const Icon(Icons.logout, size: 18),
+                    label: const Text('Cikis Yap'),
+                    onPressed: () {
+                      apiService.clearAuth();
+                      html.window.location.reload();
+                    },
+                  ),
+                ),
               ],
               // Follow button for other profiles
               if (!_isOwnProfile) ...[

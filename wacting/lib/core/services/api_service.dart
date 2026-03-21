@@ -283,6 +283,20 @@ class ApiService {
     await _dio.put('/api/notifications/read-all');
   }
 
+  // ── Icon Restrictions ───────────────────────────────────────────────────────
+
+  Future<void> restrictBounds({
+    List<String> continents = const [],
+    List<String> countries = const [],
+    List<String> cities = const [],
+  }) async {
+    await _dio.post('/api/icons/restrict_bounds', data: {
+      'restrictedContinents': continents,
+      'restrictedCountries': countries,
+      'restrictedCities': cities,
+    });
+  }
+
   // ── Profile ──────────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getProfileById(String userId) async {

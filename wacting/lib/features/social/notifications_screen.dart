@@ -70,18 +70,32 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return Scaffold(
       backgroundColor: AppColors.pageBackground,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Text('Bildirimler', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: IconThemeData(color: AppColors.textPrimary),
         actions: [
-          TextButton(
-            onPressed: () async {
-              await apiService.markAllNotificationsRead();
-              _loadNotifications();
-            },
-            child: Text('Tumunu Oku', style: TextStyle(color: AppColors.accentTeal, fontSize: 12)),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                height: 28,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  icon: Icon(Icons.arrow_forward, color: AppColors.textPrimary, size: 20),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+              GestureDetector(
+                onTap: () async {
+                  await apiService.markAllNotificationsRead();
+                  _loadNotifications();
+                },
+                child: Text('Tumunu Oku', style: TextStyle(color: AppColors.accentTeal, fontSize: 10)),
+              ),
+            ],
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: _loading
