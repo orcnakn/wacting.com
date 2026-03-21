@@ -1774,6 +1774,7 @@ class _GlobalTabState extends State<_GlobalTab> {
   Widget _buildCampaignCard(dynamic c, int rank) {
     final title = (c['title'] ?? '') as String;
     final slogan = (c['slogan'] ?? '') as String;
+    final campaignId = (c['id'] ?? '') as String;
     final stanceType = (c['stanceType'] ?? 'SUPPORT') as String;
     final categoryType = (c['categoryType'] ?? '') as String;
     final memberCount = (c['memberCount'] ?? 0) as int;
@@ -1784,76 +1785,380 @@ class _GlobalTabState extends State<_GlobalTab> {
     final stanceLabel = _stanceLabels[stanceType] ?? stanceType;
     final categoryLabel = _categories[categoryType] ?? categoryType;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceLight,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: stanceColor.withOpacity(0.3), width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header row: rank + title + stance badge
-          Row(
-            children: [
-              Container(
-                width: 28, height: 28,
-                decoration: BoxDecoration(
-                  color: stanceColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
+    return GestureDetector(
+      onTap: () => _openCampaignDetail(campaignId),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: stanceColor.withOpacity(0.3), width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 28, height: 28,
+                  decoration: BoxDecoration(
+                    color: stanceColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Center(child: Text(
+                    '#$rank',
+                    style: TextStyle(color: stanceColor, fontSize: 11, fontWeight: FontWeight.bold),
+                  )),
                 ),
-                child: Center(child: Text(
-                  '#$rank',
-                  style: TextStyle(color: stanceColor, fontSize: 11, fontWeight: FontWeight.bold),
-                )),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(title, style: TextStyle(
-                  color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold,
-                ), maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: stanceColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(6),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(title, style: TextStyle(
+                    color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold,
+                  ), maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
-                child: Text(stanceLabel, style: TextStyle(
-                  color: stanceColor, fontSize: 10, fontWeight: FontWeight.bold,
-                )),
-              ),
-            ],
-          ),
-          if (slogan.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(slogan, style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
-                maxLines: 1, overflow: TextOverflow.ellipsis),
-          ],
-          const SizedBox(height: 8),
-          // Stats row
-          Row(
-            children: [
-              Icon(Icons.people, size: 14, color: AppColors.textTertiary),
-              const SizedBox(width: 4),
-              Text('$memberCount uye', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-              const SizedBox(width: 16),
-              Icon(Icons.account_balance_wallet, size: 14, color: AppColors.textTertiary),
-              const SizedBox(width: 4),
-              Text('$totalWac WAC', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-              const SizedBox(width: 16),
-              Icon(Icons.category, size: 14, color: AppColors.textTertiary),
-              const SizedBox(width: 4),
-              Text(categoryLabel, style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-              const Spacer(),
-              Text(leaderName, style: TextStyle(color: AppColors.accentTeal, fontSize: 11, fontWeight: FontWeight.w500),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: stanceColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(stanceLabel, style: TextStyle(
+                    color: stanceColor, fontSize: 10, fontWeight: FontWeight.bold,
+                  )),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right, color: AppColors.textTertiary, size: 16),
+              ],
+            ),
+            if (slogan.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(slogan, style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
             ],
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.people, size: 14, color: AppColors.textTertiary),
+                const SizedBox(width: 4),
+                Text('$memberCount uye', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                const SizedBox(width: 16),
+                Icon(Icons.account_balance_wallet, size: 14, color: AppColors.textTertiary),
+                const SizedBox(width: 4),
+                Text('$totalWac WAC', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                const SizedBox(width: 16),
+                Icon(Icons.category, size: 14, color: AppColors.textTertiary),
+                const SizedBox(width: 4),
+                Text(categoryLabel, style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                const Spacer(),
+                Text(leaderName, style: TextStyle(color: AppColors.accentTeal, fontSize: 11, fontWeight: FontWeight.w500),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openCampaignDetail(String campaignId) async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surfaceWhite,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => _CampaignDetailSheet(campaignId: campaignId, onChanged: _loadData),
+    );
+  }
+}
+
+// ─── Campaign Detail Bottom Sheet ───────────────────────────────────────────
+class _CampaignDetailSheet extends StatefulWidget {
+  final String campaignId;
+  final VoidCallback onChanged;
+  const _CampaignDetailSheet({required this.campaignId, required this.onChanged});
+  @override
+  State<_CampaignDetailSheet> createState() => _CampaignDetailSheetState();
+}
+
+class _CampaignDetailSheetState extends State<_CampaignDetailSheet> {
+  bool _loading = true;
+  Map<String, dynamic>? _campaign;
+  List<dynamic> _members = [];
+  bool _isMember = false;
+  bool _isLeader = false;
+  bool _joining = false;
+  bool _leaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final results = await Future.wait([
+        apiService.getCampaign(widget.campaignId),
+        apiService.getCampaignMembers(widget.campaignId),
+      ]);
+      final campData = results[0] as Map<String, dynamic>;
+      final membersData = results[1] as Map<String, dynamic>;
+      final members = (membersData['members'] as List?) ?? [];
+      final myId = apiService.userId;
+      if (mounted) {
+        setState(() {
+          _campaign = campData['campaign'] as Map<String, dynamic>?;
+          _members = members;
+          _isMember = members.any((m) => m['userId'] == myId);
+          _isLeader = _campaign?['leaderId'] == myId;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _joinCampaign() async {
+    setState(() => _joining = true);
+    try {
+      await apiService.joinCampaign(widget.campaignId);
+      await _load();
+      widget.onChanged();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_extractError(e))),
+        );
+      }
+    }
+    if (mounted) setState(() => _joining = false);
+  }
+
+  Future<void> _leaveCampaign() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Kampanyadan Ayril'),
+        content: const Text('Kampanyadan ayrilmak istediginize emin misiniz?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Iptal')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Ayril', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
     );
+    if (confirm != true) return;
+    setState(() => _leaving = true);
+    try {
+      await apiService.leaveCampaign(widget.campaignId);
+      await _load();
+      widget.onChanged();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_extractError(e))),
+        );
+      }
+    }
+    if (mounted) setState(() => _leaving = false);
+  }
+
+  String _extractError(dynamic e) {
+    if (e is DioException && e.response?.data != null) {
+      final data = e.response!.data;
+      if (data is Map<String, dynamic>) return data['error']?.toString() ?? 'Bir hata olustu.';
+    }
+    return 'Baglanti hatasi.';
+  }
+
+  String _fmtWac(dynamic v) {
+    final d = double.tryParse(v.toString()) ?? 0;
+    return d >= 1000 ? '${(d / 1000).toStringAsFixed(1)}K' : d.toStringAsFixed(1);
+  }
+
+  static const _stanceColors = {
+    'SUPPORT': Color(0xFF4CAF50),
+    'REFORM': Color(0xFF2196F3),
+    'PROTEST': Color(0xFFFF4444),
+    'EMERGENCY': Color(0xFFFF0000),
+  };
+  static const _stanceLabels = {
+    'SUPPORT': 'Destek',
+    'REFORM': 'Reform',
+    'PROTEST': 'Protesto',
+    'EMERGENCY': 'Acil',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.all(48),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_campaign == null) {
+      return const Padding(
+        padding: EdgeInsets.all(48),
+        child: Center(child: Text('Kampanya bulunamadi.')),
+      );
+    }
+    final c = _campaign!;
+    final title = (c['title'] ?? '') as String;
+    final slogan = (c['slogan'] ?? '') as String;
+    final description = (c['description'] ?? '') as String;
+    final stanceType = (c['stanceType'] ?? 'SUPPORT') as String;
+    final totalWac = c['totalWacStaked']?.toString() ?? '0';
+    final memberCount = (c['_count'] as Map?)?['members'] ?? _members.length;
+    final leader = c['leader'] as Map<String, dynamic>?;
+    final leaderName = (leader?['slogan'] ?? leader?['displayName'] ?? 'Lider') as String;
+    final stanceColor = _stanceColors[stanceType] ?? AppColors.accentBlue;
+    final stanceLabel = _stanceLabels[stanceType] ?? stanceType;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Drag handle
+            Center(
+              child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(color: AppColors.borderLight, borderRadius: BorderRadius.circular(2))),
+            ),
+            // Title + stance badge
+            Row(children: [
+              Expanded(child: Text(title, style: TextStyle(
+                color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold,
+              ))),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: stanceColor.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                child: Text(stanceLabel, style: TextStyle(color: stanceColor, fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+            ]),
+            if (slogan.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(slogan, style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+            ],
+            if (description.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(description, style: TextStyle(color: AppColors.textTertiary, fontSize: 13)),
+            ],
+            const SizedBox(height: 16),
+            // Stats row
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(children: [
+                _statItem(Icons.people, '$memberCount', 'Uye'),
+                _statItem(Icons.account_balance_wallet, _fmtWac(totalWac), 'WAC'),
+                _statItem(Icons.person, leaderName, 'Lider'),
+              ]),
+            ),
+            const SizedBox(height: 16),
+            // Join / Leave buttons
+            if (!_isLeader) ...[
+              if (!_isMember)
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _joining ? null : _joinCampaign,
+                    icon: _joining
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.add, size: 18),
+                    label: Text(_joining ? 'Katiliniyor...' : 'Kampanyaya Katil'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: stanceColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                )
+              else
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _leaving ? null : _leaveCampaign,
+                    icon: _leaving
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.exit_to_app, size: 18),
+                    label: Text(_leaving ? 'Ayrılınıyor...' : 'Kampanyadan Ayril'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
+            ],
+            // Members list
+            Text('Uyeler (Siralama)', style: TextStyle(
+              color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.bold,
+            )),
+            const SizedBox(height: 8),
+            ..._members.asMap().entries.map((entry) {
+              final i = entry.key;
+              final m = entry.value as Map<String, dynamic>;
+              final user = m['user'] as Map<String, dynamic>?;
+              final name = (user?['slogan'] ?? user?['email'] ?? 'Kullanici') as String;
+              final stakedWac = m['stakedWac']?.toString() ?? '0';
+              final isLeaderMember = m['userId'] == c['leaderId'];
+              final isMe = m['userId'] == apiService.userId;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isMe ? stanceColor.withOpacity(0.08) : AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(8),
+                  border: isMe ? Border.all(color: stanceColor.withOpacity(0.3)) : null,
+                ),
+                child: Row(children: [
+                  SizedBox(width: 24, child: Text(
+                    '#${i + 1}',
+                    style: TextStyle(color: AppColors.textTertiary, fontSize: 12, fontWeight: FontWeight.bold),
+                  )),
+                  if (isLeaderMember)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: Icon(Icons.star, size: 14, color: AppColors.accentAmber),
+                    ),
+                  Expanded(child: Text(
+                    name + (isMe ? ' (Sen)' : ''),
+                    style: TextStyle(
+                      color: isMe ? stanceColor : AppColors.textPrimary,
+                      fontSize: 13, fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
+                    ),
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                  )),
+                  Text(_fmtWac(stakedWac) + ' WAC',
+                    style: TextStyle(color: AppColors.accentAmber, fontSize: 11, fontWeight: FontWeight.w600)),
+                ]),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statItem(IconData icon, String value, String label) {
+    return Expanded(child: Column(children: [
+      Icon(icon, size: 18, color: AppColors.textTertiary),
+      const SizedBox(height: 4),
+      Text(value, style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+          maxLines: 1, overflow: TextOverflow.ellipsis),
+      Text(label, style: TextStyle(color: AppColors.textTertiary, fontSize: 10)),
+    ]));
   }
 }

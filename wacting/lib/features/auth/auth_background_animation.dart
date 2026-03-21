@@ -162,7 +162,7 @@ class _AuthBackgroundAnimationState extends State<AuthBackgroundAnimation>
 
       // ── Spawn edge icons more frequently ──
       _edgeSpawnCounter++;
-      if (_edgeSpawnCounter >= 60) {
+      if (_edgeSpawnCounter >= 120) {
         _edgeSpawnCounter = 0;
         _spawnEdgeIcon();
       }
@@ -228,8 +228,8 @@ class _AuthBackgroundAnimationState extends State<AuthBackgroundAnimation>
       dLat: dLat,
       dLng: dLng,
       color: color,
-      size: 4.0 + _rng.nextDouble() * 8.0,
-      life: 400 + _rng.nextInt(400),
+      size: 2.0 + _rng.nextDouble() * 3.0,
+      life: 300 + _rng.nextInt(300),
     ));
   }
 
