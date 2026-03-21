@@ -101,37 +101,41 @@ class LodManager {
   }
 
   // ─── User icon LOD (non-campaign members) ──────────────────────────────────
-  // User icons are much smaller than campaign icons:
-  //   - regions level (zoom < 10): tiny dot = 1/10 of campaign dot
-  //   - cities level (zoom >= 10): full personal icon visible
+  // User icons: colored dots, 1/10 of campaign icon size at that zoom level
+  //   - zoom < 7:  ~3px dot (campaigns are ~30px rect → 1/10 ≈ 3px)
+  //   - zoom 7-10: grow 3→5px
+  //   - zoom 10-13: grow 5→8px
+  //   - zoom >= 13: full detail (small rect)
   //   - Own icon: ALWAYS visible at any zoom
 
-  /// Dot size for user (non-campaign) icons
+  /// Dot size for user (non-campaign) icons — ~1/10 of campaign icon at same zoom
   static double userDotSize(double zoom) {
-    // At regions and below: 1/10 of campaign uniform dot
-    if (zoom < 10.0) return _uniformDotSize / 10.0;
-    // Cities level: grow to normal dot size
+    if (zoom < 7.0) return 3.0;
+    if (zoom < 10.0) {
+      final t = ((zoom - 7.0) / 3.0).clamp(0.0, 1.0);
+      return 3.0 + 2.0 * t; // 3→5
+    }
     final t = ((zoom - 10.0) / 3.0).clamp(0.0, 1.0);
-    return (_uniformDotSize / 10.0) + (_uniformDotSize - _uniformDotSize / 10.0) * t;
+    return 5.0 + 3.0 * t; // 5→8
   }
 
   /// Whether a user icon should show full detail (cities zoom)
   static bool isUserFullDetail(double zoom) {
-    return zoom >= 13.0; // Only at very high zoom show user icon details
+    return zoom >= 13.0;
   }
 
   /// Opacity for user icons — fades at very low zoom
   static double userOpacity(double zoom, bool isMyIcon) {
-    if (isMyIcon) return 1.0; // Own icon always fully visible
-    if (zoom < 4.0) return 0.0; // Continents: hide other users
-    if (zoom < 7.0) return 0.3; // Countries: faint dots
-    if (zoom < 10.0) return 0.6; // Regions: small dots
-    return 1.0; // Cities: full visibility
+    if (isMyIcon) return 1.0;
+    if (zoom < 3.0) return 0.0;  // Very low zoom: hide
+    if (zoom < 5.0) return 0.3;  // Countries: faint
+    if (zoom < 8.0) return 0.6;  // Regions: visible
+    return 1.0;                   // Cities+: full
   }
 
   /// Whether a user icon should be rendered at all
   static bool shouldRenderUser(double zoom, bool isMyIcon) {
-    if (isMyIcon) return true; // Own icon always rendered
-    return zoom >= 4.0; // Other users visible from countries level
+    if (isMyIcon) return true;
+    return zoom >= 3.0;
   }
 }
