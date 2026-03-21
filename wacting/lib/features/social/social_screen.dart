@@ -1629,6 +1629,7 @@ class _GlobalTabState extends State<_GlobalTab> {
   List<dynamic> _campaigns = [];
   bool _loading = true;
   String? _selectedCategory;
+  String? _selectedStance;
 
   static const _categories = <String, String>{
     'GLOBAL_PEACE': 'Baris',
@@ -1669,6 +1670,7 @@ class _GlobalTabState extends State<_GlobalTab> {
     try {
       final campaigns = await apiService.getAllCampaigns(
         category: _selectedCategory,
+        stance: _selectedStance,
         sort: 'members',
       );
       if (mounted) {
@@ -1690,16 +1692,39 @@ class _GlobalTabState extends State<_GlobalTab> {
     _loadData();
   }
 
+  void _onStanceChanged(String? stance) {
+    setState(() {
+      _selectedStance = stance;
+      _loading = true;
+    });
+    _loadData();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Category filter chips
+        // Stance filter chips
         SizedBox(
-          height: 44,
+          height: 40,
           child: ListView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            children: [
+              _stanceChip(null, 'Tumu'),
+              _stanceChip('SUPPORT', 'Destek'),
+              _stanceChip('REFORM', 'Reform'),
+              _stanceChip('PROTEST', 'Protesto'),
+              _stanceChip('EMERGENCY', 'Acil'),
+            ],
+          ),
+        ),
+        // Category filter chips
+        SizedBox(
+          height: 40,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             children: [
               _filterChip(null, 'Tumu'),
               ..._categories.entries.map((e) => _filterChip(e.key, e.value)),
@@ -1750,6 +1775,35 @@ class _GlobalTabState extends State<_GlobalTab> {
               color: selected ? AppColors.accentBlue : AppColors.borderLight,
               width: 0.5,
             ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? Colors.white : AppColors.textSecondary,
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _stanceChip(String? stance, String label) {
+    final selected = _selectedStance == stance;
+    final stanceColor = stance != null ? (_stanceColors[stance] ?? AppColors.accentBlue) : AppColors.accentBlue;
+    final chipColor = selected ? stanceColor : AppColors.surfaceLight;
+    final borderColor = selected ? stanceColor : AppColors.borderLight;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: GestureDetector(
+        onTap: () => _onStanceChanged(stance),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: chipColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor, width: 0.5),
           ),
           child: Text(
             label,
