@@ -843,6 +843,11 @@ async function seedBots() {
     await prisma.transaction.deleteMany({ where: { userId: { in: botIds } } });
     await prisma.userRac.deleteMany({ where: { userId: { in: botIds } } });
     await prisma.userWac.deleteMany({ where: { userId: { in: botIds } } });
+    // Delete icon dependencies first
+    const botIconIds = (await prisma.icon.findMany({ where: { userId: { in: botIds } }, select: { id: true } })).map(i => i.id);
+    if (botIconIds.length > 0) {
+      await (prisma as any).iconCountryVisit.deleteMany({ where: { iconId: { in: botIconIds } } });
+    }
     await prisma.icon.deleteMany({ where: { userId: { in: botIds } } });
     await prisma.devNote.deleteMany({ where: { userId: { in: botIds } } });
     await prisma.user.deleteMany({ where: { isBot: true } });
