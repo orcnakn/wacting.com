@@ -369,10 +369,16 @@ class _GridScreenState extends ConsumerState<GridScreen> {
     return 'cities';
   }
 
+  // ── Excluded regions: regions removed from a selected country ──
+  final Set<String> _excludedRegions = {};  // "region|country" keys
+
   // ── Check if a country polygon is selected (directly or via continent) ──
   bool _isCountrySelected(String countryName) {
-    // Excluded countries are never selected (even if their continent is)
-    if (_excludedCountries.contains(countryName)) return false;
+    if (_excludedCountries.contains(countryName)) {
+      // Even if excluded from continent, check if re-included via all regions
+      // (not implemented — user can re-include individual regions instead)
+      return false;
+    }
     if (_selectedCountries.contains(countryName)) return true;
     final cont = _continentForCountry(countryName);
     if (cont != null && _selectedContinents.contains(cont)) return true;
@@ -382,9 +388,21 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   // Check if an admin-1 region is selected
   bool _isRegionSelected(String regionName, String? parentCountry) {
     final key = '$regionName|$parentCountry';
+    // Explicitly excluded from a selected country?
+    if (_excludedRegions.contains(key)) return false;
+    // Explicitly selected?
     if (_selectedRegions.contains(key)) return true;
-    // Also selected if its parent country is selected
+    // Parent country is selected → region is implicitly selected
     if (parentCountry != null && _isCountrySelected(parentCountry)) return true;
+    return false;
+  }
+
+  // Check if a city is selected
+  bool _isCitySelected(String cityName, String? country) {
+    final key = '$cityName|$country';
+    if (_selectedCities.contains(key)) return true;
+    // Implicitly selected if parent country or a region covering it is selected
+    // (cities are always explicit for now)
     return false;
   }
 
@@ -414,8 +432,20 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   }
 
   // ── Handle tap in region-select mode ──
+  // Smart hierarchical selection:
+  //   Continent tap: toggle entire continent. If already selected, deselect all.
+  //                  If not selected, select it (absorbs individual country selections).
+  //   Country tap:   If country is part of selected continent → exclude just this country.
+  //                  If country is excluded from continent → re-include it.
+  //                  If country is individually selected → deselect it.
+  //                  Otherwise → select it individually.
+  //   Region tap:    If region's parent country is selected → exclude just this region.
+  //                  If region is excluded → re-include it.
+  //                  If region is individually selected → deselect it.
+  //                  If parent country is excluded from continent → re-include this region.
+  //                  Otherwise → select region individually.
+  //   City tap:      Toggle city selection (always explicit).
   void _handleRegionTap(LatLng rawPoint) {
-    // Normalize longitude so taps on any world copy map to the same region
     final point = _normalizeLng(rawPoint);
     final level = _zoomLevel;
 
@@ -424,22 +454,35 @@ class _GridScreenState extends ConsumerState<GridScreen> {
       if (country == null) return;
       final continent = _continentForCountry(country);
       if (continent == null) return;
+      final members = _continentCountries[continent] ?? [];
 
       setState(() {
         if (_selectedContinents.contains(continent)) {
+          // Deselect entire continent
           _selectedContinents.remove(continent);
-          final members = _continentCountries[continent] ?? [];
           _selectedCountries.removeAll(members);
-          _excludedCountries.removeAll(members); // Clear exclusions too
+          _excludedCountries.removeAll(members);
+          // Also clean up regions/cities for these countries
+          _selectedRegions.removeWhere((r) {
+            final parts = r.split('|');
+            return parts.length >= 2 && members.contains(parts[1]);
+          });
+          _excludedRegions.removeWhere((r) {
+            final parts = r.split('|');
+            return parts.length >= 2 && members.contains(parts[1]);
+          });
         } else {
+          // Select entire continent — absorb individual country selections
           _selectedContinents.add(continent);
-          // Clear any individual selections for countries in this continent
-          // since the continent selection covers them all
-          final members = _continentCountries[continent] ?? [];
           _selectedCountries.removeAll(members);
+          _excludedCountries.removeAll(members);
+          _excludedRegions.removeWhere((r) {
+            final parts = r.split('|');
+            return parts.length >= 2 && members.contains(parts[1]);
+          });
         }
       });
-      _showSelectionSnackbar('🌍 $continent');
+      _showSelectionSnackbar('$continent');
     } else if (level == 'countries') {
       final country = _findCountryAtPoint(point);
       if (country == null) return;
@@ -449,21 +492,41 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
       setState(() {
         if (_excludedCountries.contains(country)) {
+          // Re-include: was excluded from continent selection
           _excludedCountries.remove(country);
+          // Clean up any region-level re-inclusions for this country
+          _selectedRegions.removeWhere((r) {
+            final parts = r.split('|');
+            return parts.length >= 2 && parts[1] == country;
+          });
+          _showSelectionSnackbar('$country (tekrar dahil)');
+          return;
         } else if (isViaContinent) {
+          // Exclude from continent: only this country removed
           _excludedCountries.add(country);
+          _showSelectionSnackbar('$country (cikarildi)');
+          return;
         } else if (_selectedCountries.contains(country)) {
+          // Deselect individual country
           _selectedCountries.remove(country);
+          _selectedRegions.removeWhere((r) {
+            final parts = r.split('|');
+            return parts.length >= 2 && parts[1] == country;
+          });
+          _excludedRegions.removeWhere((r) {
+            final parts = r.split('|');
+            return parts.length >= 2 && parts[1] == country;
+          });
         } else {
+          // Select individual country
           _selectedCountries.add(country);
         }
       });
-      final excluded = _excludedCountries.contains(country);
-      _showSelectionSnackbar(excluded ? '$country (cikarildi)' : country);
+      _showSelectionSnackbar(country);
     } else if (level == 'cities') {
-      // First check if tap is on land
       final country = _findCountryAtPoint(point);
       if (country != null) {
+        // Try city first
         if (_isCitiesLoaded) {
           final city = _findNearestCity(point);
           if (city != null) {
@@ -479,49 +542,20 @@ class _GridScreenState extends ConsumerState<GridScreen> {
             return;
           }
         }
+        // Fallback: region
         if (_isAdmin1Loaded) {
-          final region = _findAdmin1AtPoint(point);
-          if (region != null) {
-            final key = '${region.name}|${region.parentCountry}';
-            setState(() {
-              if (_selectedRegions.contains(key)) {
-                _selectedRegions.remove(key);
-              } else {
-                _selectedRegions.add(key);
-              }
-            });
-            _showSelectionSnackbar('${region.name} (${region.parentCountry})');
-            return;
-          }
+          _handleRegionToggle(point, country);
         }
       }
     } else {
-      // Regions zoom (>=7) — select admin-1 state/province
-      // First check if on land
+      // Regions zoom — admin-1 state/province
       final country = _findCountryAtPoint(point);
       if (country != null) {
         if (_isAdmin1Loaded) {
-          final region = _findAdmin1AtPoint(point);
-          if (region != null) {
-            final key = '${region.name}|${region.parentCountry}';
-            final parentCountry = region.parentCountry;
-
-            setState(() {
-              if (_selectedRegions.contains(key)) {
-                _selectedRegions.remove(key);
-              } else if (parentCountry != null && _excludedCountries.contains(parentCountry)) {
-                _selectedRegions.add(key);
-              } else if (parentCountry != null && _isCountrySelected(parentCountry)) {
-                _selectedRegions.add(key);
-              } else {
-                _selectedRegions.add(key);
-              }
-            });
-            _showSelectionSnackbar('${region.name} (${region.parentCountry})');
-            return;
-          }
+          final handled = _handleRegionToggle(point, country);
+          if (handled) return;
         }
-        // Fallback: country-level selection
+        // Fallback: country-level
         setState(() {
           if (_selectedCountries.contains(country)) {
             _selectedCountries.remove(country);
@@ -532,6 +566,45 @@ class _GridScreenState extends ConsumerState<GridScreen> {
         _showSelectionSnackbar(country);
       }
     }
+  }
+
+  /// Toggle a region within a country. Returns true if a region was found.
+  bool _handleRegionToggle(LatLng point, String country) {
+    final region = _findAdmin1AtPoint(point);
+    if (region == null) return false;
+
+    final key = '${region.name}|${region.parentCountry}';
+    final parentCountry = region.parentCountry;
+    final parentSelected = parentCountry != null && _isCountrySelected(parentCountry);
+    final parentExcluded = parentCountry != null && _excludedCountries.contains(parentCountry);
+
+    setState(() {
+      if (_excludedRegions.contains(key)) {
+        // Re-include excluded region
+        _excludedRegions.remove(key);
+      } else if (_selectedRegions.contains(key)) {
+        // Deselect explicitly selected region
+        _selectedRegions.remove(key);
+      } else if (parentSelected) {
+        // Parent country is selected → exclude just this region
+        _excludedRegions.add(key);
+      } else if (parentExcluded) {
+        // Parent country is excluded from continent → re-include this region
+        _selectedRegions.add(key);
+      } else {
+        // No parent selected → select region individually
+        _selectedRegions.add(key);
+      }
+    });
+
+    final isExcluded = _excludedRegions.contains(key);
+    final isSelected = _selectedRegions.contains(key) || (parentSelected && !isExcluded);
+    _showSelectionSnackbar(isExcluded
+        ? '${region.name} (cikarildi)'
+        : isSelected
+            ? '${region.name}'
+            : '${region.name} (kaldirildi)');
+    return true;
   }
 
   void _showSelectionSnackbar(String label) {
@@ -574,15 +647,15 @@ class _GridScreenState extends ConsumerState<GridScreen> {
     for (final c in _selectedCountries) {
       final cont = _continentForCountry(c);
       if (cont != null && _selectedContinents.contains(cont)) continue;
-      final regionExclusions = _selectedRegions.where((r) {
+      final excRegions = _excludedRegions.where((r) {
         final split = r.split('|');
         return split.length >= 2 && split[1] == c;
       }).toList();
-      if (regionExclusions.isEmpty) {
+      if (excRegions.isEmpty) {
         parts.add(c);
       } else {
-        final regStr = regionExclusions.map((r) => r.split('|')[0]).join(', ');
-        parts.add('$c ($regStr dahil)');
+        final excStr = excRegions.map((r) => r.split('|')[0]).join(', ');
+        parts.add('$c ($excStr haric)');
       }
     }
     for (final r in _selectedRegions) {
@@ -607,7 +680,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
       all.addAll(_continentCountries[c] ?? []);
     }
     all.removeAll(_excludedCountries);
-    return all.length + _selectedRegions.length + _selectedCities.length;
+    return all.length + _selectedRegions.length + _selectedCities.length - _excludedRegions.length;
   }
 
   // Active polygons based on zoom level
@@ -758,7 +831,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                 if (_currentZoom < 7 && _isAdmin1Loaded) {
                   for (final cp in _admin1Polygons) {
                     final key = '${cp.name}|${cp.parentCountry}';
-                    if (_selectedRegions.contains(key) && !_renderedSelected.contains(key)) {
+                    if (_selectedRegions.contains(key) && !_excludedRegions.contains(key) && !_renderedSelected.contains(key)) {
                       polygonWidgets.addAll(_multiWorldPolygon(
                         cp,
                         Colors.cyan.withOpacity(0.30),
