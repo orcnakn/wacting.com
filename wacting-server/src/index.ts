@@ -176,7 +176,7 @@ async function start() {
                     exploreMode: icon.exploreMode,
                     campaignSpeed: campaign?.speed ?? 0.5,
                     campaignColor: stanceColor(campaign, icon.colorHex),
-                    campaignSlogan: campaign?.slogan ?? icon.slogan ?? undefined,
+                    campaignSlogan: campaign ? campaign.slogan : undefined,
                     pinnedX,
                     pinnedY,
                     isCampaignLeader: isLeader ?? false,

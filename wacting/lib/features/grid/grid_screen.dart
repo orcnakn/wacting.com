@@ -767,7 +767,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   final bool isCampaignIcon = icon.campaignSlogan != null;
                   final bool isMyIcon = icon.userId == myId;
 
-                  // User icons (no campaign): smaller dots, only visible at cities zoom
+                  // User icons (no campaign): small dots, person icon at cities zoom
                   if (!isCampaignIcon && !isMyIcon) {
                     if (!LodManager.shouldRenderUser(zoom, false)) continue;
                     final double userOpacity = LodManager.userOpacity(zoom, false);
@@ -775,7 +775,28 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
                     for (final worldOffset in _worldOffsets) {
                       final offsetPoint = LatLng(latLng.latitude, latLng.longitude + worldOffset);
-                      markerDots.add(Marker(
+
+                      if (LodManager.isUserFullDetail(zoom)) {
+                        // Cities zoom: person icon
+                        markerDots.add(Marker(
+                          point: offsetPoint,
+                          width: 22,
+                          height: 22,
+                          child: Opacity(
+                            opacity: userOpacity,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: displayColor.withOpacity(0.8),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 1.5),
+                              ),
+                              child: const Icon(Icons.person, color: Colors.white, size: 13),
+                            ),
+                          ),
+                        ));
+                      } else {
+                        // Below cities: colored dot
+                        markerDots.add(Marker(
                           point: offsetPoint,
                           width: dotSize + 4,
                           height: dotSize + 4,
@@ -793,7 +814,8 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                               ),
                             ),
                           ),
-                      ));
+                        ));
+                      }
                     }
                     continue;
                   }
