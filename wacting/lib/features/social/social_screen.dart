@@ -681,33 +681,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                 ]),
               ),
             ],
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.accentTeal,
-                  side: BorderSide(color: AppColors.accentTeal),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                icon: Icon(Icons.my_location, size: 18),
-                label: const Text('Konuma Git', style: TextStyle(fontWeight: FontWeight.bold)),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  if (pinnedLat != null && pinnedLng != null && globalMapNavigateTo != null) {
-                    globalSwitchTab?.call(0);
-                    Future.delayed(const Duration(milliseconds: 200), () {
-                      globalMapNavigateTo!(pinnedLat!, pinnedLng!, zoom: 8.0);
-                    });
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('$title icin konum belirlenmemis')),
-                    );
-                  }
-                },
-              ),
-            ),
+            // Konuma Git — gecici olarak gizlendi
           ]),
         ),
       ),
@@ -813,40 +787,19 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                     : '%0.0',
                 style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
             ]),
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text('Cikis Cezasi (%30)', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
-              Text('${_fmtWac(myStakedWac * 0.30)} WAC',
-                  style: TextStyle(color: AppColors.accentRed, fontWeight: FontWeight.bold, fontSize: 14)),
-            ]),
+            // Cikis cezasi — gecici olarak gizlendi
+            // Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            //   Text('Cikis Cezasi (%30)', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+            //   Text('${_fmtWac(myStakedWac * 0.30)} WAC',
+            //       style: TextStyle(color: AppColors.accentRed, fontWeight: FontWeight.bold, fontSize: 14)),
+            // ]),
           ]),
         ),
 
         // Buttons
         const SizedBox(height: 12),
         Row(children: [
-          if (hasActivePoll && !isLeader) Expanded(
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.accentAmber.withOpacity(0.1),
-                  foregroundColor: AppColors.accentAmber),
-              icon: const Icon(Icons.how_to_vote, size: 18),
-              label: const Text('Oy Ver'),
-              onPressed: () {},
-            ),
-          ),
-          if (isLeader) ...[
-            Expanded(
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.accentGreen.withOpacity(0.1),
-                    foregroundColor: AppColors.accentGreen),
-                icon: const Icon(Icons.add_circle_outline, size: 18),
-                label: const Text('Oylama Baslat'),
-                onPressed: () => _showCreatePollModal(context, campaignId),
-              ),
-            ),
-          ],
-          const SizedBox(width: 8),
+          // Oylama butonlari — gecici olarak gizlendi
           // Stake Ekle butonu
           Expanded(
             child: ElevatedButton.icon(
