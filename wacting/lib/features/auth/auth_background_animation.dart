@@ -295,23 +295,18 @@ class _AuthBackgroundAnimationState extends State<AuthBackgroundAnimation>
       builder: (context, snapshot) {
         _lastIcons = snapshot.data ?? [];
 
-        // Real icon markers
+        // Real icon markers — only tiny dots (max 6px) so they don't clutter the login
         final markers = _lastIcons.map((icon) {
           final latLng = _offsetToLatLng(icon.position);
-          final sz = (icon.size * 2).clamp(4.0, 50.0).toDouble();
+          const sz = 4.0;
           return Marker(
             point: latLng,
             width: sz,
             height: sz,
             child: Container(
               decoration: BoxDecoration(
-                color: icon.displayColor,
+                color: icon.displayColor.withOpacity(0.4),
                 shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                      color: icon.displayColor.withOpacity(0.5),
-                      blurRadius: sz / 2.0),
-                ],
               ),
             ),
           );
