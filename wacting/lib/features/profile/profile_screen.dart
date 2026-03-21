@@ -295,28 +295,29 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     ),
                   ),
                 const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        setState(() => _showFollowers = !_showFollowers);
-                        if (_showFollowers && _followersList.isEmpty) _loadFollowers();
-                      },
-                      child: _statCol('Takipci', '$followerCount', _showFollowers),
-                    ),
-                    const SizedBox(width: 32),
-                    GestureDetector(
-                      onTap: () {
-                        setState(() => _showFollowing = !_showFollowing);
-                        if (_showFollowing && _followingList.isEmpty) _loadFollowing();
-                      },
-                      child: _statCol('Takip', '$followingCount', _showFollowing),
-                    ),
-                  ],
-                ),
-                if (_showFollowers) _buildFollowList(_followersList, isFollower: true),
-                if (_showFollowing) _buildFollowList(_followingList, isFollower: false),
+                // Gecici olarak kaldirildi (sonra kullanilacak)
+                // Row(
+                //   mainAxisAlignment: MainAxisAlignment.center,
+                //   children: [
+                //     GestureDetector(
+                //       onTap: () {
+                //         setState(() => _showFollowers = !_showFollowers);
+                //         if (_showFollowers && _followersList.isEmpty) _loadFollowers();
+                //       },
+                //       child: _statCol('Takipci', '$followerCount', _showFollowers),
+                //     ),
+                //     const SizedBox(width: 32),
+                //     GestureDetector(
+                //       onTap: () {
+                //         setState(() => _showFollowing = !_showFollowing);
+                //         if (_showFollowing && _followingList.isEmpty) _loadFollowing();
+                //       },
+                //       child: _statCol('Takip', '$followingCount', _showFollowing),
+                //     ),
+                //   ],
+                // ),
+                // if (_showFollowers) _buildFollowList(_followersList, isFollower: true),
+                // if (_showFollowing) _buildFollowList(_followingList, isFollower: false),
                 const SizedBox(height: 24),
                 Text('Aktif Kampanyalar',
                     style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 14)),
@@ -378,31 +379,32 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                 ),
               ],
               // Follow button for other profiles
-              if (!_isOwnProfile) ...[
-                const SizedBox(height: 20),
-                Center(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isFollowedByViewer ? AppColors.surfaceLight : AppColors.accentBlue,
-                      foregroundColor: isFollowedByViewer ? AppColors.textPrimary : Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                    ),
-                    icon: Icon(isFollowedByViewer ? Icons.person_remove : Icons.person_add, size: 18),
-                    label: Text(isFollowedByViewer ? 'Takibi Birak' : 'Takip Et'),
-                    onPressed: () async {
-                      try {
-                        if (isFollowedByViewer) {
-                          await apiService.unfollowUser(_targetUserId);
-                        } else {
-                          await apiService.followUser(_targetUserId);
-                        }
-                        _loadProfile();
-                      } catch (_) {}
-                    },
-                  ),
-                ),
-              ],
+              // Gecici olarak kaldirildi
+              // if (!_isOwnProfile) ...[
+              //   const SizedBox(height: 20),
+              //   Center(
+              //     child: ElevatedButton.icon(
+              //       style: ElevatedButton.styleFrom(
+              //         backgroundColor: isFollowedByViewer ? AppColors.surfaceLight : AppColors.accentBlue,
+              //         foregroundColor: isFollowedByViewer ? AppColors.textPrimary : Colors.white,
+              //         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              //         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+              //       ),
+              //       icon: Icon(isFollowedByViewer ? Icons.person_remove : Icons.person_add, size: 18),
+              //       label: Text(isFollowedByViewer ? 'Takibi Birak' : 'Takip Et'),
+              //       onPressed: () async {
+              //         try {
+              //           if (isFollowedByViewer) {
+              //             await apiService.unfollowUser(_targetUserId);
+              //           } else {
+              //             await apiService.followUser(_targetUserId);
+              //           }
+              //           _loadProfile();
+              //         } catch (_) {}
+              //       },
+              //     ),
+              //   ),
+              // ],
               ],
             ),
           );
