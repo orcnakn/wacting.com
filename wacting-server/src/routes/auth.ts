@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { PrismaClient, Prisma } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { z } from 'zod';
+import { z, ZodError } from 'zod';
 import { sendVerificationCode, sendWelcomeEmail } from '../services/email_service.js';
 import { recordChainedTransaction } from '../engine/chain_engine.js';
 const prisma = new PrismaClient();
@@ -150,8 +150,12 @@ export async function authRoutes(fastify: FastifyInstance) {
                 message: 'Aktivasyon kodu email adresinize gönderildi.',
             });
         } catch (err: any) {
-            fastify.log.error(`Email registration failed: ${err}`);
-            return reply.code(400).send({ error: err.message || 'Geçersiz veri' });
+            fastify.log.error(`Email registration failed: ${err?.stack || err}`);
+            if (err instanceof ZodError) {
+                const msg = err.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ');
+                return reply.code(400).send({ error: `Geçersiz veri: ${msg}` });
+            }
+            return reply.code(400).send({ error: err.message || 'Kayıt sırasında bir hata oluştu.' });
         }
     });
 
@@ -274,8 +278,12 @@ export async function authRoutes(fastify: FastifyInstance) {
             const token = jwt.sign({ userId: user.id, sessionId }, JWT_SECRET, { expiresIn: '30d' });
             return reply.send({ token, userId: user.id, emailVerified: true, sessionId });
         } catch (err: any) {
-            fastify.log.error(`Email login failed: ${err}`);
-            return reply.code(400).send({ error: 'Geçersiz veri' });
+            fastify.log.error(`Email login failed: ${err?.stack || err}`);
+            if (err instanceof ZodError) {
+                const msg = err.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ');
+                return reply.code(400).send({ error: `Geçersiz veri: ${msg}` });
+            }
+            return reply.code(400).send({ error: err.message || 'Giriş sırasında bir hata oluştu.' });
         }
     });
 
