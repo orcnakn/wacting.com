@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
+import wc from 'which-country';
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_dev_key';
@@ -355,6 +356,7 @@ function seededRng(userId: string): () => number {
 
 /**
  * Generate a deterministic random lat/lng based on userId and their selected regions.
+ * Ensures position is always on land using which-country validation.
  */
 function generateRandomPosition(
     userId: string,
@@ -369,7 +371,6 @@ function generateRandomPosition(
 
     // Priority: country > continent > world
     if (restrictedCountries.length > 0) {
-        // Pick a country deterministically
         const idx = Math.floor(rng() * restrictedCountries.length);
         const country = restrictedCountries[idx]!;
         bounds = COUNTRY_BOUNDS[country] || null;
@@ -385,9 +386,15 @@ function generateRandomPosition(
         bounds = WORLD_LAND_BOUNDS;
     }
 
-    // Generate random point within bounds
-    const lat = bounds.minLat + rng() * (bounds.maxLat - bounds.minLat);
-    const lng = bounds.minLng + rng() * (bounds.maxLng - bounds.minLng);
+    // Try up to 50 times to land on a valid country
+    for (let attempt = 0; attempt < 50; attempt++) {
+        const lat = bounds.minLat + rng() * (bounds.maxLat - bounds.minLat);
+        const lng = bounds.minLng + rng() * (bounds.maxLng - bounds.minLng);
+        if (wc([lng, lat]) != null) {
+            return { lat, lng };
+        }
+    }
 
-    return { lat, lng };
+    // Fallback: Istanbul
+    return { lat: 41.0082, lng: 28.9784 };
 }

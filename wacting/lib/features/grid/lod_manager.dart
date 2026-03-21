@@ -109,17 +109,17 @@ class LodManager {
   //   - Own icon: ALWAYS visible at any zoom
 
   /// Dot size for user (non-campaign) icons — ~1/10 of campaign icon at same zoom
-  /// Always visible on world map as tiny dots
+  /// Always visible on world map, 2x larger for visibility
   static double userDotSize(double zoom) {
-    if (zoom < 3.0) return 2.0;   // World: tiny dots
-    if (zoom < 5.0) return 2.5;   // Continents
-    if (zoom < 7.0) return 3.0;   // Countries
+    if (zoom < 3.0) return 4.0;   // World: visible dots
+    if (zoom < 5.0) return 5.0;   // Continents
+    if (zoom < 7.0) return 6.0;   // Countries
     if (zoom < 10.0) {
       final t = ((zoom - 7.0) / 3.0).clamp(0.0, 1.0);
-      return 3.0 + 2.0 * t; // 3→5
+      return 6.0 + 4.0 * t; // 6→10
     }
     final t = ((zoom - 10.0) / 3.0).clamp(0.0, 1.0);
-    return 5.0 + 3.0 * t; // 5→8
+    return 10.0 + 6.0 * t; // 10→16
   }
 
   /// Whether a user icon should show full detail (cities zoom)
