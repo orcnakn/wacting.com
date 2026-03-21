@@ -167,7 +167,7 @@ export async function feedRoutes(fastify: FastifyInstance) {
         // Mock data logic until real area sorting is available
         const popular = await prisma.icon.findMany({
             take: 10,
-            // Skip order by auraRadius since it's not generated in schema yet
+            // Order by follower count for now
             include: { user: true }
         });
         return reply.send({ success: true, popular });

@@ -99,4 +99,39 @@ class LodManager {
   static double focusZoom(double wacSize) {
     return zoomForFullDetail(wacSize) + 1.0;
   }
+
+  // ─── User icon LOD (non-campaign members) ──────────────────────────────────
+  // User icons are much smaller than campaign icons:
+  //   - regions level (zoom < 10): tiny dot = 1/10 of campaign dot
+  //   - cities level (zoom >= 10): full personal icon visible
+  //   - Own icon: ALWAYS visible at any zoom
+
+  /// Dot size for user (non-campaign) icons
+  static double userDotSize(double zoom) {
+    // At regions and below: 1/10 of campaign uniform dot
+    if (zoom < 10.0) return _uniformDotSize / 10.0;
+    // Cities level: grow to normal dot size
+    final t = ((zoom - 10.0) / 3.0).clamp(0.0, 1.0);
+    return (_uniformDotSize / 10.0) + (_uniformDotSize - _uniformDotSize / 10.0) * t;
+  }
+
+  /// Whether a user icon should show full detail (cities zoom)
+  static bool isUserFullDetail(double zoom) {
+    return zoom >= 13.0; // Only at very high zoom show user icon details
+  }
+
+  /// Opacity for user icons — fades at very low zoom
+  static double userOpacity(double zoom, bool isMyIcon) {
+    if (isMyIcon) return 1.0; // Own icon always fully visible
+    if (zoom < 4.0) return 0.0; // Continents: hide other users
+    if (zoom < 7.0) return 0.3; // Countries: faint dots
+    if (zoom < 10.0) return 0.6; // Regions: small dots
+    return 1.0; // Cities: full visibility
+  }
+
+  /// Whether a user icon should be rendered at all
+  static bool shouldRenderUser(double zoom, bool isMyIcon) {
+    if (isMyIcon) return true; // Own icon always rendered
+    return zoom >= 4.0; // Other users visible from countries level
+  }
 }

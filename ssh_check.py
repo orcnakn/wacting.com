@@ -10,8 +10,8 @@ def run(cmd):
     print(o.read().decode(errors='replace').strip() or e.read().decode(errors='replace').strip() or '(empty)')
 
 run('cd /opt/wacting && git fetch origin main && git reset --hard origin/main 2>&1 | tail -1')
-run('cd /opt/wacting/wacting-server && npx prisma generate 2>&1 | tail -2')
-run('cd /opt/wacting/wacting-server && npx prisma db push --accept-data-loss 2>&1 | tail -3')
+run('cd /opt/wacting/wacting-server && npx prisma generate 2>&1 | tail -3')
+run('cd /opt/wacting/wacting-server && npx prisma db push --accept-data-loss 2>&1')
 run('cd /opt/wacting/wacting-server && npm run build 2>&1 | tail -2')
 run('cp -rf /opt/wacting/wacting-server/dist/public/web/. /var/www/wacting/ && echo "Copied"')
 run('pm2 restart wacting-server 2>&1 | grep "online"')

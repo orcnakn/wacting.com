@@ -44,8 +44,35 @@ const STANCE_COLORS: Record<string, string> = {
     PROTEST: '#FF4444',
     SUPPORT: '#4CAF50',
     REFORM: '#2196F3',
-    EMERGENCY: '#FF9800',
+    EMERGENCY: '#FF0000',
 };
+
+// Emergency campaign constants
+const EMERGENCY_DAYS_PER_WAC = 3;         // 1 WAC = 3 days duration
+const EMERGENCY_AREA_PER_WAC = 10_000;    // 1 WAC = 10,000 m² logo area
+const EMERGENCY_LEADER_SHARE = 0.70;      // 70% to leader pool
+const EMERGENCY_DEV_SHARE = 0.15;         // 15% to developer
+const EMERGENCY_BURN_SHARE = 0.15;        // 15% burned
+
+// Initial multiplier per stance type
+const INITIAL_MULTIPLIER: Record<string, number> = {
+    SUPPORT: 10.0,    // 10x hype ranking boost
+    REFORM: 0.5,      // 0.5x incubation period
+    PROTEST: 1.0,     // standard
+    EMERGENCY: 1.0,   // N/A (no rewards)
+};
+
+// REFORM minimum stake per campaign size tier
+const REFORM_MIN_STAKE: { minMembers: number; minWac: string }[] = [
+    { minMembers: 10_000, minWac: '20.000000' },
+    { minMembers: 1_000, minWac: '10.000000' },
+    { minMembers: 100, minWac: '5.000000' },
+    { minMembers: 0, minWac: '1.000000' },
+];
+
+// REFORM exit penalty: 50% (25% burn + 25% dev)
+const REFORM_EXIT_PENALTY = 0.50;
+const REFORM_EXIT_BURN_SHARE = 0.50;  // 50% of penalty = 25% of total
 
 export async function campaignRoutes(fastify: FastifyInstance) {
 
@@ -72,6 +99,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 websiteUrl?: string;
                 stanceType: string;
                 categoryType: string;
+                targetCampaignId?: string;
             };
 
             if (!body.title || !body.slogan) {
@@ -108,6 +136,19 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 });
             }
 
+            // PROTEST requires a target campaign
+            if (body.stanceType === 'PROTEST') {
+                if (!body.targetCampaignId) {
+                    return reply.status(400).send({ success: false, error: 'Protesto kampanyası için hedef kampanya (targetCampaignId) gereklidir.' });
+                }
+                const target = await prisma.campaign.findUnique({ where: { id: body.targetCampaignId } });
+                if (!target || !target.isActive) {
+                    return reply.status(400).send({ success: false, error: 'Hedef kampanya bulunamadı veya aktif değil.' });
+                }
+            }
+
+            const isEmergency = body.stanceType === 'EMERGENCY';
+
             // Atomic: deduct WAC, create campaign, add leader as member with stake
             const campaign = await prisma.$transaction(async (tx) => {
                 // Deduct WAC from user balance
@@ -119,7 +160,46 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                     },
                 });
 
-                // Create campaign with initial WAC staked
+                // Emergency: split WAC — 70% to pool, 15% dev, 15% burn
+                let emergencyWacPool = new Prisma.Decimal(0);
+                let emergencyExpiresAt: Date | null = null;
+                let emergencyAreaM2 = 0;
+
+                if (isEmergency) {
+                    const poolAmount = stakeAmount.mul(EMERGENCY_LEADER_SHARE.toString()).toDecimalPlaces(6);
+                    const burnAmount = stakeAmount.mul(EMERGENCY_BURN_SHARE.toString()).toDecimalPlaces(6);
+                    const devAmount = stakeAmount.sub(poolAmount).sub(burnAmount);
+
+                    emergencyWacPool = poolAmount;
+                    // Initial area and duration from pool WAC
+                    emergencyAreaM2 = Number(poolAmount) * EMERGENCY_AREA_PER_WAC;
+                    emergencyExpiresAt = new Date(Date.now() + Number(poolAmount) * EMERGENCY_DAYS_PER_WAC * 86_400_000);
+
+                    // Burn + Dev fee
+                    await tx.treasury.upsert({
+                        where: { id: 'singleton' },
+                        update: {
+                            burnedTotal: { increment: burnAmount },
+                            devBalance: { increment: devAmount },
+                        },
+                        create: { id: 'singleton', burnedTotal: burnAmount, devBalance: devAmount },
+                    });
+
+                    await recordChainedTransaction(tx, {
+                        userId: user.id,
+                        amount: burnAmount,
+                        type: 'WAC_BURN' as any,
+                        note: `Emergency campaign creation — 15% burned (${burnAmount.toFixed(6)} WAC)`,
+                    });
+                    await recordChainedTransaction(tx, {
+                        userId: user.id,
+                        amount: devAmount,
+                        type: 'WAC_DEV_FEE' as any,
+                        note: `Emergency campaign creation — 15% dev fee (${devAmount.toFixed(6)} WAC)`,
+                    });
+                }
+
+                // Create campaign
                 const c = await (tx as any).campaign.create({
                     data: {
                         leaderId: user.id,
@@ -129,7 +209,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                         videoUrl: body.videoUrl ?? null,
                         iconColor: STANCE_COLORS[body.stanceType] || body.iconColor || '#2C3E50',
                         iconShape: body.iconShape ?? 0,
-                        speed: body.speed ?? 0.5,
+                        speed: isEmergency ? 0 : (body.speed ?? 0.5), // Emergency = stationary
                         instagramUrl: body.instagramUrl ?? null,
                         twitterUrl: body.twitterUrl ?? null,
                         facebookUrl: body.facebookUrl ?? null,
@@ -137,16 +217,21 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                         websiteUrl: body.websiteUrl ?? null,
                         stanceType: body.stanceType as any,
                         categoryType: body.categoryType as any,
-                        totalWacStaked: stakeAmount,
+                        targetCampaignId: body.stanceType === 'PROTEST' ? body.targetCampaignId : null,
+                        totalWacStaked: isEmergency ? emergencyWacPool : stakeAmount,
+                        emergencyWacPool: isEmergency ? emergencyWacPool : new Prisma.Decimal(0),
+                        emergencyAreaM2: emergencyAreaM2,
+                        emergencyExpiresAt: emergencyExpiresAt,
                     },
                 });
 
-                // Leader is first member with stake
+                // Leader is first member with stake + initial multiplier
                 await (tx as any).campaignMember.create({
                     data: {
                         campaignId: c.id,
                         userId: user.id,
                         stakedWac: stakeAmount,
+                        multiplier: INITIAL_MULTIPLIER[body.stanceType] ?? 1.0,
                     },
                 });
 
@@ -219,6 +304,23 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 return reply.status(409).send({ success: false, error: 'Already a member of this campaign.' });
             }
 
+            // REFORM: enforce minimum stake based on campaign size
+            if (campaign.stanceType === 'REFORM') {
+                const currentMembers = await (prisma as any).campaignMember.count({ where: { campaignId: id } });
+                for (const tier of REFORM_MIN_STAKE) {
+                    if (currentMembers >= tier.minMembers) {
+                        const required = new Prisma.Decimal(tier.minWac);
+                        if (stakeAmount.lt(required)) {
+                            return reply.status(400).send({
+                                success: false,
+                                error: `Bu Reform kampanyasına katılmak için en az ${required} WAC gerekli (${currentMembers} üyeli kampanya).`,
+                            });
+                        }
+                        break;
+                    }
+                }
+            }
+
             // Check WAC balance
             const userWac = await prisma.userWac.findUnique({ where: { userId: user.id } });
             if (!userWac || !userWac.isActive || userWac.wacBalance.lt(stakeAmount)) {
@@ -230,6 +332,8 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 });
             }
 
+            const isEmergency = campaign.stanceType === 'EMERGENCY';
+
             await prisma.$transaction(async (tx) => {
                 // Deduct WAC from user
                 await tx.userWac.update({
@@ -240,19 +344,61 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                     },
                 });
 
-                // Add member with stake
+                if (isEmergency) {
+                    // Emergency: 70% to leader pool, 15% dev, 15% burn
+                    const poolAmount = stakeAmount.mul(EMERGENCY_LEADER_SHARE.toString()).toDecimalPlaces(6);
+                    const burnAmount = stakeAmount.mul(EMERGENCY_BURN_SHARE.toString()).toDecimalPlaces(6);
+                    const devAmount = stakeAmount.sub(poolAmount).sub(burnAmount);
+
+                    // Add to campaign emergency pool
+                    await tx.campaign.update({
+                        where: { id },
+                        data: {
+                            emergencyWacPool: { increment: poolAmount },
+                            totalWacStaked: { increment: poolAmount },
+                        },
+                    });
+
+                    // Burn + Dev fee
+                    await tx.treasury.upsert({
+                        where: { id: 'singleton' },
+                        update: {
+                            burnedTotal: { increment: burnAmount },
+                            devBalance: { increment: devAmount },
+                        },
+                        create: { id: 'singleton', burnedTotal: burnAmount, devBalance: devAmount },
+                    });
+
+                    await recordChainedTransaction(tx, {
+                        userId: user.id,
+                        amount: burnAmount,
+                        type: 'WAC_BURN' as any,
+                        note: `Emergency join — 15% burned (${burnAmount.toFixed(6)} WAC)`,
+                        campaignId: id,
+                    });
+                    await recordChainedTransaction(tx, {
+                        userId: user.id,
+                        amount: devAmount,
+                        type: 'WAC_DEV_FEE' as any,
+                        note: `Emergency join — 15% dev fee (${devAmount.toFixed(6)} WAC)`,
+                        campaignId: id,
+                    });
+                } else {
+                    // Normal: full stake goes to campaign
+                    await tx.campaign.update({
+                        where: { id },
+                        data: { totalWacStaked: { increment: stakeAmount } },
+                    });
+                }
+
+                // Add member with stake + initial multiplier
                 await (tx as any).campaignMember.create({
                     data: {
                         campaignId: id,
                         userId: user.id,
                         stakedWac: stakeAmount,
+                        multiplier: INITIAL_MULTIPLIER[campaign.stanceType] ?? 1.0,
                     },
-                });
-
-                // Update campaign total staked
-                await tx.campaign.update({
-                    where: { id },
-                    data: { totalWacStaked: { increment: stakeAmount } },
                 });
 
                 // Chained transaction record
@@ -385,12 +531,102 @@ export async function campaignRoutes(fastify: FastifyInstance) {
             const stakedWac = member.stakedWac;
             const isLeader = campaign.leaderId === user.id;
             const memberCount = campaign.members.length;
+            const isEmergency = campaign.stanceType === 'EMERGENCY';
 
-            // Tokenomics: 30% penalty, 70% return, 2x penalty as RAC
-            const penalty = stakedWac.mul('0.30').toDecimalPlaces(6);
-            const returnAmount = stakedWac.mul('0.70').toDecimalPlaces(6);
-            const burnAmount = penalty.mul('0.50').toDecimalPlaces(6);   // 15% of total
-            const devAmount = penalty.sub(burnAmount);                    // 15% of total
+            // ── Emergency campaign leave ──
+            if (isEmergency) {
+                await prisma.$transaction(async (tx) => {
+                    // Remove member
+                    await (tx as any).campaignMember.delete({
+                        where: { campaignId_userId: { campaignId: id, userId: user.id } },
+                    });
+
+                    if (isLeader) {
+                        if (memberCount <= 1) {
+                            await tx.campaign.update({
+                                where: { id },
+                                data: { isActive: false },
+                            });
+                        } else {
+                            // Transfer pool to successor with 15/15 cut
+                            const currentPool = (campaign as any).emergencyWacPool as Prisma.Decimal;
+                            const burnAmt = currentPool.mul(EMERGENCY_BURN_SHARE.toString()).toDecimalPlaces(6);
+                            const devAmt = currentPool.mul(EMERGENCY_DEV_SHARE.toString()).toDecimalPlaces(6);
+                            const newPool = currentPool.sub(burnAmt).sub(devAmt);
+
+                            const successor = campaign.members.find((m) => m.userId !== user.id);
+                            if (successor) {
+                                await tx.campaign.update({
+                                    where: { id },
+                                    data: {
+                                        leaderId: successor.userId,
+                                        emergencyWacPool: newPool,
+                                        totalWacStaked: newPool,
+                                    },
+                                });
+
+                                await tx.treasury.upsert({
+                                    where: { id: 'singleton' },
+                                    update: { burnedTotal: { increment: burnAmt }, devBalance: { increment: devAmt } },
+                                    create: { id: 'singleton', burnedTotal: burnAmt, devBalance: devAmt },
+                                });
+
+                                await recordChainedTransaction(tx, {
+                                    userId: user.id, amount: burnAmt,
+                                    type: 'WAC_BURN' as any,
+                                    note: `Emergency leader exit — 15% burned on pool transfer`,
+                                    campaignId: id,
+                                });
+                                await recordChainedTransaction(tx, {
+                                    userId: user.id, amount: devAmt,
+                                    type: 'WAC_DEV_FEE' as any,
+                                    note: `Emergency leader exit — 15% dev fee on pool transfer`,
+                                    campaignId: id,
+                                });
+                            }
+                        }
+                    }
+
+                    await (tx as any).campaignHistory.create({
+                        data: { userId: user.id, campaignId: id, joinedAt: member.joinedAt, totalEarned: new Prisma.Decimal(0) },
+                    });
+                });
+
+                await notify(prisma, user.id, 'CAMPAIGN_CHANGE',
+                    'Acil Durum Kampanyasindan Ayrildiniz',
+                    `"${campaign.title}" kampanyasindan ayrildiniz.`,
+                    JSON.stringify({ campaignId: id }),
+                );
+
+                if (isLeader && memberCount > 1) {
+                    const successor = campaign.members.find((m) => m.userId !== user.id);
+                    if (successor) {
+                        await notify(prisma, successor.userId, 'CAMPAIGN_CHANGE',
+                            'Acil Durum Liderligi Devredildi',
+                            `"${campaign.title}" kampanyasinin yeni lideri siz oldunuz!`,
+                            JSON.stringify({ campaignId: id }),
+                        );
+                    }
+                }
+
+                return reply.send({
+                    success: true,
+                    totalStaked: stakedWac.toFixed(6),
+                    returned: '0.000000', burned: '0.000000', devFee: '0.000000', racMinted: 0,
+                    message: isLeader && memberCount <= 1
+                        ? 'Acil durum kampanyasi kapatildi.'
+                        : isLeader ? 'Liderlik ve WAC havuzu devredildi.' : 'Kampanyadan ayrildiniz.',
+                });
+            }
+
+            // ── Normal campaign leave ──
+            // REFORM: 50% penalty (25% burn + 25% dev). Others: 30% penalty (15% burn + 15% dev)
+            const isReform = campaign.stanceType === 'REFORM';
+            const penaltyRate = isReform ? REFORM_EXIT_PENALTY : 0.30;
+            const penalty = stakedWac.mul(penaltyRate.toString()).toDecimalPlaces(6);
+            const returnAmount = stakedWac.sub(penalty).toDecimalPlaces(6);
+            const burnAmount = penalty.mul(isReform ? REFORM_EXIT_BURN_SHARE.toString() : '0.50').toDecimalPlaces(6);
+            const devAmount = penalty.sub(burnAmount);
             const racReward = BigInt(penalty.mul('2').floor().toFixed(0)); // 2x penalty as RAC
 
             await prisma.$transaction(async (tx) => {
@@ -685,6 +921,90 @@ export async function campaignRoutes(fastify: FastifyInstance) {
         }
     });
 
+    // ── Emergency: Spend WAC (extend duration or grow logo) ─────────────────
+    fastify.post('/:id/emergency-spend', async (request, reply) => {
+        try {
+            const user = (request as any).user;
+            const { id } = request.params as { id: string };
+            const body = request.body as { amount: string; target: 'duration' | 'area' };
+
+            if (!body.amount || !body.target || !['duration', 'area'].includes(body.target)) {
+                return reply.status(400).send({ success: false, error: 'amount ve target (duration/area) gerekli.' });
+            }
+
+            const amount = new Prisma.Decimal(body.amount);
+            if (amount.lte(0)) {
+                return reply.status(400).send({ success: false, error: 'Miktar 0\'dan büyük olmalı.' });
+            }
+
+            const campaign = await prisma.campaign.findUnique({ where: { id } });
+            if (!campaign || !campaign.isActive || campaign.stanceType !== 'EMERGENCY') {
+                return reply.status(404).send({ success: false, error: 'Acil durum kampanyası bulunamadı.' });
+            }
+            if (campaign.leaderId !== user.id) {
+                return reply.status(403).send({ success: false, error: 'Sadece lider WAC harcayabilir.' });
+            }
+
+            const currentPool = (campaign as any).emergencyWacPool as Prisma.Decimal;
+            if (currentPool.lt(amount)) {
+                return reply.status(400).send({
+                    success: false,
+                    error: 'Yetersiz WAC havuzu.',
+                    available: currentPool.toFixed(6),
+                });
+            }
+
+            const updateData: any = {
+                emergencyWacPool: { decrement: amount },
+                totalWacStaked: { decrement: amount },
+            };
+
+            if (body.target === 'duration') {
+                // 1 WAC = 3 days extension
+                const daysToAdd = Number(amount) * EMERGENCY_DAYS_PER_WAC;
+                const currentExpiry = (campaign as any).emergencyExpiresAt as Date | null;
+                const baseDate = currentExpiry && currentExpiry > new Date() ? currentExpiry : new Date();
+                updateData.emergencyExpiresAt = new Date(baseDate.getTime() + daysToAdd * 86_400_000);
+            } else {
+                // 1 WAC = 10,000 m² area
+                const areaToAdd = Number(amount) * EMERGENCY_AREA_PER_WAC;
+                updateData.emergencyAreaM2 = { increment: areaToAdd };
+            }
+
+            await prisma.$transaction(async (tx) => {
+                await tx.campaign.update({ where: { id }, data: updateData });
+
+                await recordChainedTransaction(tx, {
+                    userId: user.id,
+                    amount,
+                    type: 'WAC_BURN' as any,
+                    note: `Emergency spend: ${amount} WAC → ${body.target === 'duration' ? 'süre uzatma' : 'logo büyütme'}`,
+                    campaignId: id,
+                });
+            });
+
+            // Check if pool is now empty → auto-close when fully spent AND expired
+            const updated = await prisma.campaign.findUnique({ where: { id } });
+            const remainingPool = Number((updated as any).emergencyWacPool);
+            const expiresAt = (updated as any).emergencyExpiresAt as Date | null;
+
+            return reply.send({
+                success: true,
+                spent: amount.toFixed(6),
+                target: body.target,
+                remainingPool: remainingPool.toFixed(6),
+                emergencyAreaM2: (updated as any).emergencyAreaM2,
+                emergencyExpiresAt: expiresAt?.toISOString(),
+                message: body.target === 'duration'
+                    ? `Süre ${(Number(amount) * EMERGENCY_DAYS_PER_WAC).toFixed(0)} gün uzatıldı.`
+                    : `Logo ${(Number(amount) * EMERGENCY_AREA_PER_WAC).toLocaleString()} m² büyütüldü.`,
+            });
+        } catch (error: any) {
+            fastify.log.error(error);
+            return reply.status(500).send({ success: false, error: error.message || 'Failed to spend WAC' });
+        }
+    });
+
     // ── Get Campaign Members ──────────────────────────────────────────────────
     fastify.get('/:id/members', async (request, reply) => {
         try {
@@ -761,25 +1081,69 @@ export async function campaignRoutes(fastify: FastifyInstance) {
         }
     });
 
-    // ── List All Active Campaigns ─────────────────────────────────────────────
-    fastify.get('/all', async (_request, reply) => {
+    // ── List All Active Campaigns (with filters) ────────────────────────────
+    // Query params: ?category=ECOLOGY_NATURE&stance=SUPPORT&sort=members|wac|newest&take=50
+    fastify.get('/all', async (request, reply) => {
         try {
+            const query = request.query as {
+                category?: string;
+                stance?: string;
+                sort?: string;
+                take?: string;
+            };
+
+            const where: any = { isActive: true };
+
+            // Category filter
+            if (query.category && ['GLOBAL_PEACE', 'JUSTICE_RIGHTS', 'ECOLOGY_NATURE', 'TECH_FUTURE', 'SOLIDARITY_RELIEF', 'ECONOMY_LABOR', 'AWARENESS', 'ENTERTAINMENT'].includes(query.category)) {
+                where.categoryType = query.category;
+            }
+
+            // Stance filter
+            if (query.stance && ['PROTEST', 'SUPPORT', 'REFORM', 'EMERGENCY'].includes(query.stance)) {
+                where.stanceType = query.stance;
+            }
+
+            // Sort order
+            let orderBy: any;
+            switch (query.sort) {
+                case 'newest':
+                    orderBy = { createdAt: 'desc' };
+                    break;
+                case 'wac':
+                    orderBy = { totalWacStaked: 'desc' };
+                    break;
+                case 'members':
+                default:
+                    // Sort by member count — need to fetch all and sort in JS
+                    orderBy = { totalWacStaked: 'desc' }; // fallback for DB query
+                    break;
+            }
+
+            const take = Math.min(Number(query.take) || 50, 100);
+
             const campaigns = await prisma.campaign.findMany({
-                where: { isActive: true },
-                orderBy: { totalWacStaked: 'desc' },
-                take: 50,
+                where,
+                orderBy,
+                take: query.sort === 'members' ? undefined : take, // fetch all if sorting by members
                 include: {
-                    leader: { select: { id: true, slogan: true, avatarUrl: true } },
+                    leader: { select: { id: true, slogan: true, avatarUrl: true, displayName: true } },
                     _count: { select: { members: true, polls: true } },
                 },
             });
 
-            const enriched = campaigns.map((c) => ({
+            let enriched = campaigns.map((c) => ({
                 ...c,
                 totalWacStaked: c.totalWacStaked.toFixed(6),
                 memberCount: c._count.members,
                 pollCount: c._count.polls,
             }));
+
+            // Sort by member count if requested
+            if (query.sort === 'members' || !query.sort) {
+                enriched.sort((a, b) => b.memberCount - a.memberCount);
+                enriched = enriched.slice(0, take);
+            }
 
             return reply.send({ success: true, campaigns: enriched });
         } catch (error: any) {

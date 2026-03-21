@@ -146,7 +146,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
                     linkedinUrl: true,
                     socialLinksOrder: true,
                     walletId: true,
-                    icon: { select: { lastKnownX: true, lastKnownY: true, auraRadius: true, exploreMode: true } },
+                    icon: { select: { lastKnownX: true, lastKnownY: true, exploreMode: true } },
                     campaignMemberships: {
                         select: {
                             campaignId: true,

@@ -19,6 +19,8 @@ class IconModel extends Equatable {
   final bool isCampaignLeader;  // true if this user is the campaign leader
   final double? pinnedLat;      // Campaign leader pinned latitude
   final double? pinnedLng;      // Campaign leader pinned longitude
+  final bool isEmergency;       // Emergency campaign flag (red + radio wave)
+  final double emergencyAreaM2; // Emergency logo area in m²
 
   const IconModel({
     required this.id,
@@ -36,6 +38,8 @@ class IconModel extends Equatable {
     this.isCampaignLeader = false,
     this.pinnedLat,
     this.pinnedLng,
+    this.isEmergency = false,
+    this.emergencyAreaM2 = 0,
   });
 
   factory IconModel.fromJson(Map<String, dynamic> json) {
@@ -65,6 +69,8 @@ class IconModel extends Equatable {
       isCampaignLeader: json['isCampaignLeader'] as bool? ?? false,
       pinnedLat: (json['pinnedLat'] as num?)?.toDouble(),
       pinnedLng: (json['pinnedLng'] as num?)?.toDouble(),
+      isEmergency: json['isEmergency'] as bool? ?? false,
+      emergencyAreaM2: (json['emergencyAreaM2'] as num?)?.toDouble() ?? 0,
     );
   }
 
@@ -94,5 +100,7 @@ class IconModel extends Equatable {
         isCampaignLeader,
         pinnedLat,
         pinnedLng,
+        isEmergency,
+        emergencyAreaM2,
       ];
 }

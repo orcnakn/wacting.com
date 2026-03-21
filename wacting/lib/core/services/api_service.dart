@@ -193,13 +193,24 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> emergencySpendWac(String campaignId, {required String amount, required String target}) async {
+    final res = await _dio.post('/campaign/$campaignId/emergency-spend', data: {
+      'amount': amount,
+      'target': target,
+    });
+    return res.data as Map<String, dynamic>;
+  }
+
   Future<List<dynamic>> getMyCampaigns() async {
     final res = await _dio.get('/campaign/mine');
     return (res.data as Map<String, dynamic>)['campaigns'] as List<dynamic>;
   }
 
-  Future<List<dynamic>> getAllCampaigns() async {
-    final res = await _dio.get('/campaign/all');
+  Future<List<dynamic>> getAllCampaigns({String? category, String? stance, String sort = 'members', int take = 50}) async {
+    final params = <String, dynamic>{'sort': sort, 'take': take};
+    if (category != null) params['category'] = category;
+    if (stance != null) params['stance'] = stance;
+    final res = await _dio.get('/campaign/all', queryParameters: params);
     return (res.data as Map<String, dynamic>)['campaigns'] as List<dynamic>;
   }
 

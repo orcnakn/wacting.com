@@ -120,7 +120,7 @@ export interface IconState {
     vy: number;       // velocity y
     baseSpeed: number; // 1.0 default, modified by WAC balance
     size: number;
-    wacBalance: number; // WAC balance — drives aura/visibility
+    wacBalance: number; // WAC balance — drives visibility
     exploreMode: number; // 0=City, 1=Country, 2=World
     // Campaign data — drives icon movement speed, color, and slogan display
     campaignSpeed?: number;  // 0-1: 1x=1000km/s, 0.6x=5s/1000km, 0=stationary
@@ -130,6 +130,8 @@ export interface IconState {
     pinnedX?: number | null;
     pinnedY?: number | null;
     isCampaignLeader?: boolean;
+    isEmergency?: boolean;          // Emergency campaign flag (red + radio wave)
+    emergencyAreaM2?: number;       // Emergency logo area in m²
     restrictedContinents?: string[];
     restrictedCountries?: string[];
     restrictedCities?: string[];

@@ -68,20 +68,13 @@ class _CampaignsTab extends StatefulWidget {
   State<_CampaignsTab> createState() => _CampaignsTabState();
 }
 
-class _CampaignsTabState extends State<_CampaignsTab>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
+class _CampaignsTabState extends State<_CampaignsTab> {
   List<dynamic> _myCampaigns = [];
-  List<dynamic> _myPolls = [];
-  List<dynamic> _votingHistory = [];
-  List<dynamic> _followedCampaigns = [];
   bool _loadingCampaigns = true;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
     _loadData();
   }
 
@@ -92,26 +85,9 @@ class _CampaignsTabState extends State<_CampaignsTab>
     }
     try {
       final campaigns = await apiService.getMyCampaigns();
-      // Load polls for ALL my campaigns (not userId)
-      List<dynamic> polls = [];
-      for (final c in campaigns) {
-        final cid = c['id'] as String?;
-        if (cid == null) continue;
-        try {
-          final campaignPolls = await apiService.getCampaignPolls(cid);
-          polls.addAll(campaignPolls);
-        } catch (_) {}
-      }
-      List<dynamic> history = [];
-      try { history = await apiService.getVotingHistory(); } catch (_) {}
-      List<dynamic> followedCampaigns = [];
-      try { followedCampaigns = await apiService.getFollowedCampaigns(); } catch (_) {}
       if (mounted) {
         setState(() {
           _myCampaigns = campaigns;
-          _myPolls = polls;
-          _votingHistory = history;
-          _followedCampaigns = followedCampaigns;
           _loadingCampaigns = false;
         });
       }
@@ -120,10 +96,31 @@ class _CampaignsTabState extends State<_CampaignsTab>
     }
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+  Widget _emergencyInfoTile(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(children: [
+        Text(label, style: TextStyle(color: AppColors.textTertiary, fontSize: 10)),
+        const SizedBox(height: 2),
+        Text(value, style: TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold)),
+      ]),
+    );
+  }
+
+  String _formatEmergencyExpiry(String isoDate) {
+    try {
+      final dt = DateTime.parse(isoDate);
+      final diff = dt.difference(DateTime.now());
+      if (diff.isNegative) return 'Suresi doldu';
+      if (diff.inDays > 0) return '${diff.inDays} gun kaldi';
+      return '${diff.inHours}sa ${diff.inMinutes.remainder(60)}dk kaldi';
+    } catch (_) {
+      return isoDate;
+    }
   }
 
   String _formatCountdown(DateTime endsAt) {
@@ -134,41 +131,9 @@ class _CampaignsTabState extends State<_CampaignsTab>
     return '${h}sa ${m}dk kaldi';
   }
 
-  void _navigateToVotingHistory() {
-    _tabController.animateTo(2); // Oylama tab (index 2)
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        TabBar(
-          controller: _tabController,
-          indicatorColor: AppColors.accentTeal,
-          labelColor: AppColors.accentTeal,
-          unselectedLabelColor: AppColors.textTertiary,
-          isScrollable: true,
-          tabAlignment: TabAlignment.center,
-          tabs: const [
-            Tab(text: 'Aktif'),
-            Tab(text: 'Takip Edilenler'),
-            Tab(text: 'Oylama'),
-            Tab(text: 'Gecmis'),
-          ],
-        ),
-        Expanded(
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              _buildActiveCampaigns(),
-              _buildFollowedCampaigns(),
-              _buildVotingHistory(),
-              _buildPassiveCampaigns(),
-            ],
-          ),
-        ),
-      ],
-    );
+    return _buildActiveCampaigns();
   }
 
   // ── Aktif Kampanyalar ──────────────────────────────────────────────────────
@@ -241,6 +206,12 @@ class _CampaignsTabState extends State<_CampaignsTab>
                 speed: speed,
                 pinnedLat: (c['pinnedLat'] as num?)?.toDouble(),
                 pinnedLng: (c['pinnedLng'] as num?)?.toDouble(),
+                isEmergency: c['stanceType'] == 'EMERGENCY',
+                emergencyWacPool: (c['emergencyWacPool'] is String)
+                    ? double.tryParse(c['emergencyWacPool']) ?? 0
+                    : (c['emergencyWacPool'] as num?)?.toDouble() ?? 0,
+                emergencyAreaM2: (c['emergencyAreaM2'] as num?)?.toDouble() ?? 0,
+                emergencyExpiresAt: c['emergencyExpiresAt'] as String?,
               ),
             );
           });
@@ -319,6 +290,7 @@ class _CampaignsTabState extends State<_CampaignsTab>
             totalWacStaked: totalStaked,
             myStakedWac: 0,
             isLeader: false,
+            isEmergency: c['stanceType'] == 'EMERGENCY',
           ),
         );
       }).toList(),
@@ -624,6 +596,10 @@ class _CampaignsTabState extends State<_CampaignsTab>
     double speed = 0.5,
     double? pinnedLat,
     double? pinnedLng,
+    bool isEmergency = false,
+    double emergencyWacPool = 0,
+    double emergencyAreaM2 = 0,
+    String? emergencyExpiresAt,
   }) {
     String fmtWac(double v) => v >= 1000
         ? '${(v / 1000).toStringAsFixed(1)}K'
@@ -642,6 +618,10 @@ class _CampaignsTabState extends State<_CampaignsTab>
         speed: speed,
         pinnedLat: pinnedLat,
         pinnedLng: pinnedLng,
+        isEmergency: isEmergency,
+        emergencyWacPool: emergencyWacPool,
+        emergencyAreaM2: emergencyAreaM2,
+        emergencyExpiresAt: emergencyExpiresAt,
       ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -709,8 +689,14 @@ class _CampaignsTabState extends State<_CampaignsTab>
     double speed = 0.5,
     double? pinnedLat,
     double? pinnedLng,
+    bool isEmergency = false,
+    double emergencyWacPool = 0,
+    double emergencyAreaM2 = 0,
+    String? emergencyExpiresAt,
   }) {
     double currentSpeed = speed;
+    double spendAmount = 1.0;
+    String spendTarget = 'duration'; // duration or area
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surfaceWhite,
@@ -731,7 +717,130 @@ class _CampaignsTabState extends State<_CampaignsTab>
               hasActivePoll: _myPolls.isNotEmpty,
               isLeader: isLeader,
             ),
-            if (isLeader) ...[
+            // ── Emergency campaign controls ──
+            if (isEmergency && isLeader) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    const Icon(Icons.warning_rounded, color: Colors.red, size: 18),
+                    const SizedBox(width: 8),
+                    Text('Acil Durum Ayarlari', style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+                  ]),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(child: _emergencyInfoTile('WAC Havuzu', emergencyWacPool.toStringAsFixed(2))),
+                    const SizedBox(width: 8),
+                    Expanded(child: _emergencyInfoTile('Logo Alani', '${(emergencyAreaM2 / 1000).toStringAsFixed(1)}K m\u00B2')),
+                  ]),
+                  const SizedBox(height: 6),
+                  if (emergencyExpiresAt != null)
+                    _emergencyInfoTile('Bitis', _formatEmergencyExpiry(emergencyExpiresAt)),
+                  const SizedBox(height: 12),
+                  Text('WAC Harcama', style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setModal(() => spendTarget = 'duration'),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: spendTarget == 'duration' ? Colors.red.withOpacity(0.15) : AppColors.surfaceLight,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: spendTarget == 'duration' ? Colors.red : AppColors.borderLight),
+                          ),
+                          child: Column(children: [
+                            Icon(Icons.timer, color: spendTarget == 'duration' ? Colors.red : AppColors.textTertiary, size: 20),
+                            const SizedBox(height: 2),
+                            Text('Sure Uzat', style: TextStyle(
+                              color: spendTarget == 'duration' ? Colors.red : AppColors.textSecondary,
+                              fontSize: 11, fontWeight: FontWeight.w600,
+                            )),
+                            Text('1 WAC = 3 gun', style: TextStyle(color: AppColors.textTertiary, fontSize: 9)),
+                          ]),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setModal(() => spendTarget = 'area'),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: spendTarget == 'area' ? Colors.red.withOpacity(0.15) : AppColors.surfaceLight,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: spendTarget == 'area' ? Colors.red : AppColors.borderLight),
+                          ),
+                          child: Column(children: [
+                            Icon(Icons.zoom_out_map, color: spendTarget == 'area' ? Colors.red : AppColors.textTertiary, size: 20),
+                            const SizedBox(height: 2),
+                            Text('Logo Buyut', style: TextStyle(
+                              color: spendTarget == 'area' ? Colors.red : AppColors.textSecondary,
+                              fontSize: 11, fontWeight: FontWeight.w600,
+                            )),
+                            Text('1 WAC = 10K m\u00B2', style: TextStyle(color: AppColors.textTertiary, fontSize: 9)),
+                          ]),
+                        ),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 8),
+                  Text('Miktar: ${spendAmount.toStringAsFixed(1)} WAC',
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  Slider(
+                    value: spendAmount.clamp(0.1, emergencyWacPool.clamp(0.1, double.infinity)),
+                    min: 0.1,
+                    max: emergencyWacPool > 0 ? emergencyWacPool : 0.1,
+                    divisions: emergencyWacPool > 1 ? (emergencyWacPool * 10).toInt().clamp(1, 100) : 1,
+                    activeColor: Colors.red,
+                    label: '${spendAmount.toStringAsFixed(1)} WAC',
+                    onChanged: (v) => setModal(() => spendAmount = v),
+                  ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: Icon(spendTarget == 'duration' ? Icons.timer : Icons.zoom_out_map, size: 18),
+                      onPressed: emergencyWacPool <= 0 ? null : () async {
+                        try {
+                          final result = await apiService.emergencySpendWac(
+                            campaignId,
+                            amount: spendAmount.toStringAsFixed(6),
+                            target: spendTarget,
+                          );
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(result['message'] ?? 'Basarili')),
+                          );
+                          _loadData();
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Hata: $e'), backgroundColor: Colors.red),
+                          );
+                        }
+                      },
+                      label: Text(spendTarget == 'duration'
+                        ? 'Sure Uzat (${(spendAmount * 3).toStringAsFixed(0)} gun)'
+                        : 'Logo Buyut (${(spendAmount * 10000).toStringAsFixed(0)} m\u00B2)'),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
+            // ── Normal campaign speed control ──
+            if (!isEmergency && isLeader) ...[
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -875,7 +984,7 @@ class _CampaignsTabState extends State<_CampaignsTab>
         if (hasActivePoll) ...[
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: _navigateToVotingHistory,
+            onTap: () {},
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1232,7 +1341,6 @@ class _CampaignsTabState extends State<_CampaignsTab>
                         try {
                           await apiService.castVote(poll['id'], selectedOptionId!);
                           Navigator.pop(ctx);
-                          _navigateToVotingHistory();
                           _loadData(); // Refresh
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -1861,9 +1969,34 @@ class _GlobalTab extends StatefulWidget {
 }
 
 class _GlobalTabState extends State<_GlobalTab> {
-  List<dynamic> _following = [];
-  List<dynamic> _campaignFollowers = [];
+  List<dynamic> _campaigns = [];
   bool _loading = true;
+  String? _selectedCategory;
+
+  static const _categories = <String, String>{
+    'GLOBAL_PEACE': 'Baris',
+    'JUSTICE_RIGHTS': 'Adalet',
+    'ECOLOGY_NATURE': 'Doga',
+    'TECH_FUTURE': 'Teknoloji',
+    'SOLIDARITY_RELIEF': 'Dayanisma',
+    'ECONOMY_LABOR': 'Ekonomi',
+    'AWARENESS': 'Farkindalik',
+    'ENTERTAINMENT': 'Eglence',
+  };
+
+  static const _stanceColors = <String, Color>{
+    'SUPPORT': Color(0xFF4CAF50),
+    'REFORM': Color(0xFF2196F3),
+    'PROTEST': Color(0xFFFF4444),
+    'EMERGENCY': Color(0xFFFF0000),
+  };
+
+  static const _stanceLabels = <String, String>{
+    'SUPPORT': 'Destek',
+    'REFORM': 'Reform',
+    'PROTEST': 'Protesto',
+    'EMERGENCY': 'Acil',
+  };
 
   @override
   void initState() {
@@ -1877,16 +2010,13 @@ class _GlobalTabState extends State<_GlobalTab> {
       return;
     }
     try {
-      final following = await apiService.getFollowing();
-      List<dynamic> campaignFollowers = [];
-      try {
-        final res = await apiService.getFollowers();
-        campaignFollowers = res;
-      } catch (_) {}
+      final campaigns = await apiService.getAllCampaigns(
+        category: _selectedCategory,
+        sort: 'members',
+      );
       if (mounted) {
         setState(() {
-          _following = following;
-          _campaignFollowers = campaignFollowers;
+          _campaigns = campaigns;
           _loading = false;
         });
       }
@@ -1895,166 +2025,169 @@ class _GlobalTabState extends State<_GlobalTab> {
     }
   }
 
+  void _onCategoryChanged(String? category) {
+    setState(() {
+      _selectedCategory = category;
+      _loading = true;
+    });
+    _loadData();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return _loading
-        ? Center(child: CircularProgressIndicator(color: AppColors.accentBlue))
-        : RefreshIndicator(
-      onRefresh: _loadData,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
+    return Column(
+      children: [
+        // Category filter chips
+        SizedBox(
+          height: 44,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            children: [
+              _filterChip(null, 'Tumu'),
+              ..._categories.entries.map((e) => _filterChip(e.key, e.value)),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _loading
+              ? Center(child: CircularProgressIndicator(color: AppColors.accentBlue))
+              : RefreshIndicator(
+                  onRefresh: _loadData,
+                  child: _campaigns.isEmpty
+                      ? ListView(children: [
+                          Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Center(child: Text(
+                              _selectedCategory != null
+                                  ? 'Bu kategoride kampanya bulunamadi.'
+                                  : 'Henuz aktif kampanya yok.',
+                              style: TextStyle(color: AppColors.textTertiary),
+                              textAlign: TextAlign.center,
+                            )),
+                          ),
+                        ])
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          itemCount: _campaigns.length,
+                          itemBuilder: (ctx, i) => _buildCampaignCard(_campaigns[i], i + 1),
+                        ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _filterChip(String? category, String label) {
+    final selected = _selectedCategory == category;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: GestureDetector(
+        onTap: () => _onCategoryChanged(category),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.accentBlue : AppColors.surfaceLight,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected ? AppColors.accentBlue : AppColors.borderLight,
+              width: 0.5,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? Colors.white : AppColors.textSecondary,
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCampaignCard(dynamic c, int rank) {
+    final title = (c['title'] ?? '') as String;
+    final slogan = (c['slogan'] ?? '') as String;
+    final stanceType = (c['stanceType'] ?? 'SUPPORT') as String;
+    final categoryType = (c['categoryType'] ?? '') as String;
+    final memberCount = (c['memberCount'] ?? 0) as int;
+    final totalWac = c['totalWacStaked']?.toString() ?? '0';
+    final leader = c['leader'] as Map<String, dynamic>?;
+    final leaderName = (leader?['displayName'] ?? leader?['slogan'] ?? 'Lider') as String;
+    final stanceColor = _stanceColors[stanceType] ?? AppColors.accentBlue;
+    final stanceLabel = _stanceLabels[stanceType] ?? stanceType;
+    final categoryLabel = _categories[categoryType] ?? categoryType;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: stanceColor.withOpacity(0.3), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header row: rank + title + stance badge
           Row(
             children: [
-              Icon(Icons.person_add, color: AppColors.accentBlue),
-              const SizedBox(width: 8),
-              Text('Takip Edilenler', style: TextStyle(color: AppColors.accentBlue, fontSize: 16, fontWeight: FontWeight.bold)),
-              const Spacer(),
-              Text('${_following.length}', style: TextStyle(color: AppColors.textTertiary, fontSize: 13)),
+              Container(
+                width: 28, height: 28,
+                decoration: BoxDecoration(
+                  color: stanceColor.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(child: Text(
+                  '#$rank',
+                  style: TextStyle(color: stanceColor, fontSize: 11, fontWeight: FontWeight.bold),
+                )),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(title, style: TextStyle(
+                  color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold,
+                ), maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: stanceColor.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(stanceLabel, style: TextStyle(
+                  color: stanceColor, fontSize: 10, fontWeight: FontWeight.bold,
+                )),
+              ),
             ],
           ),
-          const SizedBox(height: 12),
-          if (_following.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Center(child: Text('Henuz kimseyi takip etmiyorsun.',
-                  style: TextStyle(color: AppColors.textTertiary))),
-            )
-          else
-            ...(_following.map((f) {
-              final user = f['following'] as Map<String, dynamic>?;
-              if (user == null) return const SizedBox.shrink();
-              final name = (user['displayName'] ?? user['slogan'] ?? 'Kullanici') as String;
-              final slogan = (user['slogan'] ?? '') as String;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: GestureDetector(
-                  onTap: () {
-                    final uid = user['id'] as String?;
-                    if (uid != null) {
-                      Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => ProfileScreen(viewUserId: uid),
-                      ));
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceLight,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppColors.borderLight, width: 0.5),
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 16,
-                          backgroundColor: AppColors.accentBlue.withOpacity(0.1),
-                          child: Icon(Icons.person, size: 16, color: AppColors.accentBlue),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(name, style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
-                              if (slogan.isNotEmpty)
-                                Text(slogan, style: TextStyle(color: AppColors.textTertiary, fontSize: 11),
-                                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                            ],
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () async {
-                            try {
-                              await apiService.unfollowUser(user['id']);
-                              _loadData();
-                            } catch (_) {}
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppColors.accentRed.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text('Birak', style: TextStyle(color: AppColors.accentRed, fontSize: 11, fontWeight: FontWeight.bold)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            })),
-
-          const SizedBox(height: 24),
-          Divider(color: AppColors.borderLight),
-          const SizedBox(height: 16),
-
+          if (slogan.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(slogan, style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+          ],
+          const SizedBox(height: 8),
+          // Stats row
           Row(
             children: [
-              Icon(Icons.people, color: AppColors.accentTeal),
-              const SizedBox(width: 8),
-              Text('Takipciler', style: TextStyle(color: AppColors.accentTeal, fontSize: 16, fontWeight: FontWeight.bold)),
+              Icon(Icons.people, size: 14, color: AppColors.textTertiary),
+              const SizedBox(width: 4),
+              Text('$memberCount uye', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+              const SizedBox(width: 16),
+              Icon(Icons.account_balance_wallet, size: 14, color: AppColors.textTertiary),
+              const SizedBox(width: 4),
+              Text('$totalWac WAC', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+              const SizedBox(width: 16),
+              Icon(Icons.category, size: 14, color: AppColors.textTertiary),
+              const SizedBox(width: 4),
+              Text(categoryLabel, style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
               const Spacer(),
-              Text('${_campaignFollowers.length}', style: TextStyle(color: AppColors.textTertiary, fontSize: 13)),
+              Text(leaderName, style: TextStyle(color: AppColors.accentTeal, fontSize: 11, fontWeight: FontWeight.w500),
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
             ],
           ),
-          const SizedBox(height: 12),
-          if (_campaignFollowers.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Center(child: Text('Henuz takipcin yok.',
-                  style: TextStyle(color: AppColors.textTertiary))),
-            )
-          else
-            ...(_campaignFollowers.map((f) {
-              final user = f['follower'] as Map<String, dynamic>?;
-              if (user == null) return const SizedBox.shrink();
-              final name = (user['displayName'] ?? user['slogan'] ?? 'Kullanici') as String;
-              final slogan = (user['slogan'] ?? '') as String;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: GestureDetector(
-                  onTap: () {
-                    final uid = user['id'] as String?;
-                    if (uid != null) {
-                      Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => ProfileScreen(viewUserId: uid),
-                      ));
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceLight,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppColors.borderLight, width: 0.5),
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 16,
-                          backgroundColor: AppColors.accentTeal.withOpacity(0.1),
-                          child: Icon(Icons.person, size: 16, color: AppColors.accentTeal),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(name, style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
-                              if (slogan.isNotEmpty)
-                                Text(slogan, style: TextStyle(color: AppColors.textTertiary, fontSize: 11),
-                                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            })),
         ],
       ),
     );

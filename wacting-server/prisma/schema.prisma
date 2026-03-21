@@ -546,6 +546,16 @@ model Campaign {
   totalWacStaked     Decimal  @default(0) @db.Decimal(30, 6)  // Total WAC locked by members
   dailyRankingPoints Decimal  @default(0) @db.Decimal(30, 6)  // Daily reward (offsets RAC decay)
   racPool            RacPool?                                   // Protest pool against this campaign
+
+  // PROTEST: target campaign for RAC attack
+  targetCampaignId   String?
+  targetCampaign     Campaign?  @relation("ProtestTarget", fields: [targetCampaignId], references: [id])
+  protestsAgainst    Campaign[] @relation("ProtestTarget")
+
+  // Emergency campaign fields
+  emergencyWacPool   Decimal  @default(0) @db.Decimal(30, 6)  // Spendable WAC pool for leader
+  emergencyAreaM2    Float    @default(0)                       // Current logo area in m²
+  emergencyExpiresAt DateTime?                                  // When the campaign expires
 }
 
 /// Campaign membership — tracks who is in a campaign and enables leader succession.
@@ -557,6 +567,7 @@ model CampaignMember {
   userId     String
   user       User     @relation(fields: [userId], references: [id])
   stakedWac  Decimal  @default(0) @db.Decimal(30, 6)  // WAC this member staked
+  multiplier Float    @default(1.0)                     // Dynamic power multiplier (SUPPORT=10x hype, REFORM=time-based)
   joinedAt   DateTime @default(now())
 
   @@unique([campaignId, userId])

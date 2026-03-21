@@ -201,40 +201,64 @@ export async function iconRoutes(fastify: FastifyInstance) {
         }
     });
 
-    // ── Get users with location enabled (for map pins) ─────────────────────
+    // ── Get ALL users for map pins ─────────────────────────────────────────
+    // - Location enabled + has coords → real location (with privacy offset)
+    // - Location disabled + has restricted regions → random position in selected regions
+    // - No regions selected → random position anywhere on land
     fastify.get('/icons/locations', async (request, reply) => {
         try {
             const icons = await prisma.icon.findMany({
-                where: { locationEnabled: true, locationLat: { not: null }, locationLng: { not: null } },
                 select: {
                     userId: true,
+                    locationEnabled: true,
                     locationLat: true,
                     locationLng: true,
                     locationOffsetMeters: true,
                     colorHex: true,
                     slogan: true,
+                    restrictedContinents: true,
+                    restrictedCountries: true,
+                    restrictedCities: true,
                     user: { select: { displayName: true, slogan: true, avatarUrl: true } },
                 },
             });
 
-            // Apply privacy offset — random direction, fixed distance
             const result = icons.map(icon => {
-                const offsetM = icon.locationOffsetMeters || 0;
-                let lat = icon.locationLat!;
-                let lng = icon.locationLng!;
-                if (offsetM > 0) {
-                    // Deterministic offset based on userId hash (consistent per user)
-                    const hash = icon.userId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-                    const angle = (hash % 360) * (Math.PI / 180);
-                    const mPerDegLat = 111_320;
-                    const mPerDegLng = 111_320 * Math.cos(lat * Math.PI / 180);
-                    lat += (offsetM * Math.sin(angle)) / mPerDegLat;
-                    lng += (offsetM * Math.cos(angle)) / (mPerDegLng || 1);
+                let lat: number;
+                let lng: number;
+                let isRealLocation = false;
+
+                if (icon.locationEnabled && icon.locationLat != null && icon.locationLng != null) {
+                    // Real GPS location with privacy offset
+                    lat = icon.locationLat;
+                    lng = icon.locationLng;
+                    isRealLocation = true;
+                    const offsetM = icon.locationOffsetMeters || 0;
+                    if (offsetM > 0) {
+                        const hash = icon.userId.split('').reduce((a: number, c: string) => a + c.charCodeAt(0), 0);
+                        const angle = (hash % 360) * (Math.PI / 180);
+                        const mPerDegLat = 111_320;
+                        const mPerDegLng = 111_320 * Math.cos(lat * Math.PI / 180);
+                        lat += (offsetM * Math.sin(angle)) / mPerDegLat;
+                        lng += (offsetM * Math.cos(angle)) / (mPerDegLng || 1);
+                    }
+                } else {
+                    // Generate deterministic random position based on userId
+                    const pos = generateRandomPosition(
+                        icon.userId,
+                        icon.restrictedContinents || [],
+                        icon.restrictedCountries || [],
+                        icon.restrictedCities || [],
+                    );
+                    lat = pos.lat;
+                    lng = pos.lng;
                 }
+
                 return {
                     userId: icon.userId,
                     lat,
                     lng,
+                    isRealLocation,
                     colorHex: icon.colorHex,
                     slogan: icon.slogan,
                     displayName: icon.user?.displayName || icon.user?.slogan || '',
@@ -248,4 +272,122 @@ export async function iconRoutes(fastify: FastifyInstance) {
             return reply.code(500).send({ error: 'Server error' });
         }
     });
+}
+
+// ── Continent bounding boxes (lat/lng) ──────────────────────────────────────
+const CONTINENT_BOUNDS: Record<string, { minLat: number; maxLat: number; minLng: number; maxLng: number }> = {
+    'Europe':        { minLat: 35, maxLat: 71, minLng: -25, maxLng: 45 },
+    'Asia':          { minLat: -10, maxLat: 55, minLng: 25, maxLng: 150 },
+    'Africa':        { minLat: -35, maxLat: 37, minLng: -18, maxLng: 52 },
+    'North America': { minLat: 7, maxLat: 72, minLng: -170, maxLng: -50 },
+    'South America': { minLat: -56, maxLat: 13, minLng: -82, maxLng: -34 },
+    'Oceania':       { minLat: -47, maxLat: -10, minLng: 110, maxLng: 180 },
+    'Antarctica':    { minLat: -85, maxLat: -60, minLng: -180, maxLng: 180 },
+};
+
+// Major country bounding boxes for random placement
+const COUNTRY_BOUNDS: Record<string, { minLat: number; maxLat: number; minLng: number; maxLng: number }> = {
+    'Turkey':        { minLat: 36, maxLat: 42, minLng: 26, maxLng: 45 },
+    'Germany':       { minLat: 47, maxLat: 55, minLng: 6, maxLng: 15 },
+    'France':        { minLat: 42, maxLat: 51, minLng: -5, maxLng: 8 },
+    'United Kingdom':{ minLat: 50, maxLat: 59, minLng: -8, maxLng: 2 },
+    'Italy':         { minLat: 36, maxLat: 47, minLng: 6, maxLng: 19 },
+    'Spain':         { minLat: 36, maxLat: 44, minLng: -9, maxLng: 4 },
+    'United States of America': { minLat: 25, maxLat: 49, minLng: -125, maxLng: -67 },
+    'United States': { minLat: 25, maxLat: 49, minLng: -125, maxLng: -67 },
+    'Canada':        { minLat: 42, maxLat: 70, minLng: -141, maxLng: -52 },
+    'Brazil':        { minLat: -33, maxLat: 5, minLng: -74, maxLng: -35 },
+    'Russia':        { minLat: 41, maxLat: 77, minLng: 27, maxLng: 180 },
+    'China':         { minLat: 18, maxLat: 54, minLng: 73, maxLng: 135 },
+    'India':         { minLat: 6, maxLat: 36, minLng: 68, maxLng: 97 },
+    'Japan':         { minLat: 24, maxLat: 46, minLng: 123, maxLng: 146 },
+    'Australia':     { minLat: -44, maxLat: -10, minLng: 113, maxLng: 154 },
+    'Mexico':        { minLat: 14, maxLat: 33, minLng: -118, maxLng: -87 },
+    'Argentina':     { minLat: -55, maxLat: -22, minLng: -73, maxLng: -53 },
+    'Egypt':         { minLat: 22, maxLat: 32, minLng: 25, maxLng: 37 },
+    'South Africa':  { minLat: -35, maxLat: -22, minLng: 16, maxLng: 33 },
+    'Nigeria':       { minLat: 4, maxLat: 14, minLng: 3, maxLng: 15 },
+    'Indonesia':     { minLat: -11, maxLat: 6, minLng: 95, maxLng: 141 },
+    'South Korea':   { minLat: 33, maxLat: 39, minLng: 124, maxLng: 132 },
+    'Saudi Arabia':  { minLat: 16, maxLat: 32, minLng: 34, maxLng: 56 },
+    'Iran':          { minLat: 25, maxLat: 40, minLng: 44, maxLng: 64 },
+    'Pakistan':      { minLat: 24, maxLat: 37, minLng: 61, maxLng: 77 },
+    'Bangladesh':    { minLat: 20, maxLat: 27, minLng: 88, maxLng: 93 },
+    'Thailand':      { minLat: 5, maxLat: 21, minLng: 97, maxLng: 106 },
+    'Vietnam':       { minLat: 8, maxLat: 24, minLng: 102, maxLng: 110 },
+    'Philippines':   { minLat: 5, maxLat: 21, minLng: 117, maxLng: 127 },
+    'Poland':        { minLat: 49, maxLat: 55, minLng: 14, maxLng: 24 },
+    'Ukraine':       { minLat: 44, maxLat: 52, minLng: 22, maxLng: 40 },
+    'Netherlands':   { minLat: 51, maxLat: 54, minLng: 3, maxLng: 7 },
+    'Belgium':       { minLat: 49, maxLat: 52, minLng: 2, maxLng: 7 },
+    'Sweden':        { minLat: 55, maxLat: 69, minLng: 11, maxLng: 24 },
+    'Norway':        { minLat: 58, maxLat: 71, minLng: 5, maxLng: 31 },
+    'Greece':        { minLat: 35, maxLat: 42, minLng: 19, maxLng: 30 },
+    'Portugal':      { minLat: 37, maxLat: 42, minLng: -10, maxLng: -6 },
+    'Switzerland':   { minLat: 46, maxLat: 48, minLng: 6, maxLng: 10 },
+    'Austria':       { minLat: 46, maxLat: 49, minLng: 10, maxLng: 17 },
+    'Colombia':      { minLat: -4, maxLat: 14, minLng: -79, maxLng: -67 },
+    'Peru':          { minLat: -18, maxLat: 0, minLng: -81, maxLng: -69 },
+    'Chile':         { minLat: -56, maxLat: -17, minLng: -76, maxLng: -67 },
+    'New Zealand':   { minLat: -47, maxLat: -34, minLng: 166, maxLng: 179 },
+};
+
+// Default world land bounds (excluding deep ocean/poles)
+const WORLD_LAND_BOUNDS = { minLat: -50, maxLat: 65, minLng: -170, maxLng: 175 };
+
+/**
+ * Deterministic pseudo-random number generator (mulberry32) seeded by userId.
+ * Returns a function that produces values in [0, 1).
+ */
+function seededRng(userId: string): () => number {
+    let seed = 0;
+    for (let i = 0; i < userId.length; i++) {
+        seed = ((seed << 5) - seed + userId.charCodeAt(i)) | 0;
+    }
+    return () => {
+        seed |= 0;
+        seed = (seed + 0x6D2B79F5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+/**
+ * Generate a deterministic random lat/lng based on userId and their selected regions.
+ */
+function generateRandomPosition(
+    userId: string,
+    restrictedContinents: string[],
+    restrictedCountries: string[],
+    restrictedCities: string[],
+): { lat: number; lng: number } {
+    const rng = seededRng(userId);
+
+    // Try to find a bounding box from restricted regions
+    let bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number } | null = null;
+
+    // Priority: country > continent > world
+    if (restrictedCountries.length > 0) {
+        // Pick a country deterministically
+        const idx = Math.floor(rng() * restrictedCountries.length);
+        const country = restrictedCountries[idx]!;
+        bounds = COUNTRY_BOUNDS[country] || null;
+    }
+
+    if (!bounds && restrictedContinents.length > 0) {
+        const idx = Math.floor(rng() * restrictedContinents.length);
+        const continent = restrictedContinents[idx]!;
+        bounds = CONTINENT_BOUNDS[continent] || null;
+    }
+
+    if (!bounds) {
+        bounds = WORLD_LAND_BOUNDS;
+    }
+
+    // Generate random point within bounds
+    const lat = bounds.minLat + rng() * (bounds.maxLat - bounds.minLat);
+    const lng = bounds.minLng + rng() * (bounds.maxLng - bounds.minLng);
+
+    return { lat, lng };
 }

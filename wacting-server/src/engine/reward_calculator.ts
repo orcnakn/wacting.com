@@ -1,12 +1,30 @@
 /**
- * reward_calculator.ts — Campaign-based Daily Reward System
+ * reward_calculator.ts — Tier-Based Member Reward System
  *
- * Formula (from tokenomics plan):
- *   dailyPool = √(totalSystemStaked) × 2
- *   campaignShare = (campaignStaked / totalSystemStaked) × dailyPool
+ * Each member's reward is determined by their RANK within the campaign.
+ * Rank = sorted by effectiveWac (stakedWac × multiplier) descending.
  *
- * This replaces the old tier-based system. Rewards are proportional
- * to each campaign's WAC stake relative to the total system.
+ * Reward tiers unlock as campaign membership grows:
+ *
+ *   Members  | Top 100 | 101-1K | 1K-10K | 10K-100K | 100K-1M
+ *   ---------|---------|--------|--------|----------|--------
+ *   100      | 1 WAC   |   —    |   —    |    —     |   —
+ *   1K       | 3 WAC   | 1 WAC  |   —    |    —     |   —
+ *   10K      | 15 WAC  | 3 WAC  | 1 WAC  |    —     |   —
+ *   100K     | 40 WAC  | 15 WAC | 3 WAC  | 1 WAC    |   —
+ *   1M       | 100 WAC | 40 WAC | 15 WAC | 3 WAC    | 1 WAC
+ *
+ * SUPPORT:  Full WAC reward. Hype multiplier 10x (decays -1/day, min 1.0)
+ * REFORM:   WAC reward × time multiplier (0.5x→10x over 180 days)
+ * PROTEST:  Half WAC + half RAC (e.g. 15 WAC tier → 7.5 WAC + 7.5 RAC)
+ * EMERGENCY: No rewards (excluded from snapshot)
+ *
+ * REFORM time multiplier tiers:
+ *   0-14 days:  0.5x
+ *   14-30 days: 1.0x
+ *   30-90 days: 3.0x
+ *   90-180 days: 5.0x
+ *   180+ days:  10.0x
  *
  * RAC Decay formula (-1 Rule):
  *   dailyDecay = protestorCount × 1
@@ -15,14 +33,206 @@
  */
 
 export function formatWac(value: number): string {
-  // Floor at 6th decimal place
-  const floored = Math.floor(value * 1000000) / 1000000;
-  // Format to 6 decimal places then remove trailing zeros
-  let str = floored.toFixed(6);
-  // Remove trailing zeros after decimal point
-  str = str.replace(/\.?0+$/, '');
-  return str;
+    const floored = Math.floor(value * 1000000) / 1000000;
+    let str = floored.toFixed(6);
+    str = str.replace(/\.?0+$/, '');
+    return str;
 }
+
+// ─── Tier Reward Table ──────────────────────────────────────────────────────
+
+/** Reward tiers: [maxRank, rewardWac] pairs for each campaign size bracket */
+interface RewardBracket {
+    minMembers: number;
+    tiers: { maxRank: number; reward: number }[];
+}
+
+const REWARD_TABLE: RewardBracket[] = [
+    {
+        minMembers: 1_000_000,
+        tiers: [
+            { maxRank: 100, reward: 100 },
+            { maxRank: 1_000, reward: 40 },
+            { maxRank: 10_000, reward: 15 },
+            { maxRank: 100_000, reward: 3 },
+            { maxRank: 1_000_000, reward: 1 },
+        ],
+    },
+    {
+        minMembers: 100_000,
+        tiers: [
+            { maxRank: 100, reward: 40 },
+            { maxRank: 1_000, reward: 15 },
+            { maxRank: 10_000, reward: 3 },
+            { maxRank: 100_000, reward: 1 },
+        ],
+    },
+    {
+        minMembers: 10_000,
+        tiers: [
+            { maxRank: 100, reward: 15 },
+            { maxRank: 1_000, reward: 3 },
+            { maxRank: 10_000, reward: 1 },
+        ],
+    },
+    {
+        minMembers: 1_000,
+        tiers: [
+            { maxRank: 100, reward: 3 },
+            { maxRank: 1_000, reward: 1 },
+        ],
+    },
+    {
+        minMembers: 1, // any campaign with at least 1 member
+        tiers: [
+            { maxRank: 100, reward: 1 },
+        ],
+    },
+];
+
+/**
+ * Get the base WAC reward for a member at a given rank within a campaign of a given size.
+ */
+export function getMemberReward(memberCount: number, rank: number): number {
+    for (const bracket of REWARD_TABLE) {
+        if (memberCount >= bracket.minMembers) {
+            for (const tier of bracket.tiers) {
+                if (rank <= tier.maxRank) {
+                    return tier.reward;
+                }
+            }
+            return 0; // rank exceeds all tiers
+        }
+    }
+    return 0;
+}
+
+// ─── REFORM Time Multiplier ─────────────────────────────────────────────────
+
+export interface ReformTier {
+    minDays: number;
+    multiplier: number;
+}
+
+export const REFORM_TIERS: ReformTier[] = [
+    { minDays: 180, multiplier: 10.0 },
+    { minDays: 90, multiplier: 5.0 },
+    { minDays: 30, multiplier: 3.0 },
+    { minDays: 14, multiplier: 1.0 },
+    { minDays: 0, multiplier: 0.5 },
+];
+
+/**
+ * Get the REFORM time-based multiplier based on days since joining.
+ */
+export function getReformMultiplier(daysSinceJoin: number): number {
+    for (const tier of REFORM_TIERS) {
+        if (daysSinceJoin >= tier.minDays) return tier.multiplier;
+    }
+    return 0.5;
+}
+
+// ─── Member Reward Computation ──────────────────────────────────────────────
+
+export interface MemberRewardInput {
+    userId: string;
+    campaignId: string;
+    stakedWac: number;
+    multiplier: number;
+    stanceType: 'SUPPORT' | 'REFORM' | 'PROTEST' | 'EMERGENCY';
+    daysSinceJoin: number;
+}
+
+export interface MemberRewardResult {
+    userId: string;
+    campaignId: string;
+    effectiveWac: number;
+    rank: number;
+    wacReward: number;
+    racReward: number;
+    newMultiplier: number;
+}
+
+/**
+ * Compute rewards for all members within a single campaign.
+ *
+ * 1. Sort members by effectiveWac (stakedWac × multiplier) descending
+ * 2. Assign rank (1-based)
+ * 3. Get base reward from tier table
+ * 4. Apply stance-specific modifiers:
+ *    - SUPPORT: full WAC, no RAC
+ *    - REFORM:  WAC × reform time multiplier, no RAC
+ *    - PROTEST: 50% WAC + 50% RAC
+ * 5. Compute new multiplier for next day
+ */
+export function computeCampaignMemberRewards(
+    members: MemberRewardInput[],
+): MemberRewardResult[] {
+    if (members.length === 0) return [];
+
+    // Calculate effective WAC and sort descending
+    const sorted = members
+        .map((m) => ({
+            ...m,
+            effectiveWac: m.stakedWac * m.multiplier,
+        }))
+        .sort((a, b) => {
+            if (b.effectiveWac !== a.effectiveWac) return b.effectiveWac - a.effectiveWac;
+            return 0; // tie-break handled by joinedAt in DB query
+        });
+
+    const memberCount = sorted.length;
+
+    return sorted.map((m, i) => {
+        const rank = i + 1;
+        const baseReward = getMemberReward(memberCount, rank);
+
+        let wacReward = 0;
+        let racReward = 0;
+        let newMultiplier = m.multiplier;
+
+        switch (m.stanceType) {
+            case 'SUPPORT':
+                // Full WAC reward, reward is based on rank position (1x)
+                wacReward = baseReward;
+                // Hype decay: -1.0/day, min 1.0
+                newMultiplier = Math.max(1.0, m.multiplier - 1.0);
+                break;
+
+            case 'REFORM': {
+                // WAC reward × reform time multiplier
+                const reformMul = getReformMultiplier(m.daysSinceJoin);
+                wacReward = Math.round(baseReward * reformMul * 1_000_000) / 1_000_000;
+                // Multiplier is set by time tier (not incremental)
+                newMultiplier = reformMul;
+                break;
+            }
+
+            case 'PROTEST':
+                // Half WAC + half RAC
+                wacReward = Math.round(baseReward * 0.5 * 1_000_000) / 1_000_000;
+                racReward = Math.round(baseReward * 0.5 * 1_000_000) / 1_000_000;
+                newMultiplier = 1.0; // PROTEST stays at 1.0
+                break;
+
+            case 'EMERGENCY':
+                // No rewards
+                break;
+        }
+
+        return {
+            userId: m.userId,
+            campaignId: m.campaignId,
+            effectiveWac: m.effectiveWac,
+            rank,
+            wacReward,
+            racReward,
+            newMultiplier,
+        };
+    });
+}
+
+// ─── Campaign-level reward (legacy — still used for dailyRankingPoints) ─────
 
 export interface CampaignRewardInput {
     campaignId: string;
@@ -38,25 +248,11 @@ export interface CampaignRewardEntry {
     sharePercent: number;
 }
 
-/**
- * Computes the daily reward pool size.
- * Formula: √(totalSystemStaked) × 2
- * This provides logarithmic growth — rewards scale with system size
- * but don't grow linearly (prevents hyperinflation).
- */
 export function computeDailyPool(totalSystemStaked: number): number {
     if (totalSystemStaked <= 0) return 0;
     return Math.sqrt(totalSystemStaked) * 2;
 }
 
-/**
- * Computes rewards for all active campaigns in one pass.
- * Each campaign gets a proportional share of the daily pool.
- *
- * @param campaigns - Active campaigns with WAC staked
- * @param circulatingSupply - Current total WAC in circulation
- * @param maxSupply - Maximum WAC supply guard (default: Infinity for unlimited supply)
- */
 export function computeAllCampaignRewards(
     campaigns: CampaignRewardInput[],
     circulatingSupply = 0,
@@ -78,7 +274,6 @@ export function computeAllCampaignRewards(
         const sharePercent = c.totalWacStaked / totalSystemStaked;
         const reward = Math.round(sharePercent * dailyPool * 1_000_000) / 1_000_000;
 
-        // Max supply guard
         const clampedReward = Math.min(reward, maxSupply - runningSupply);
         if (clampedReward <= 0) {
             return { ...c, rewardWac: 0, sharePercent };
@@ -113,23 +308,13 @@ export interface RacDecayResult {
     shouldDeactivate: boolean;
 }
 
-/**
- * Computes RAC decay for a protest pool.
- *
- * -1 Rule: Each protestor causes 1 RAC/day to decay.
- * Life-Water: Daily ranking points offset the decay.
- *
- * Net decay = (protestorCount × 1) - floor(dailyRankingPoints)
- * If net ≤ 0, no decay (the campaign's ranking bonus saves the pool).
- */
 export function computeRacDecay(input: RacDecayInput): RacDecayResult {
-    const decayAmount = BigInt(input.protestorCount); // -1 per protestor
-    const bonusAmount = BigInt(Math.floor(input.dailyRankingPoints)); // ranking points as RAC bonus
+    const decayAmount = BigInt(input.protestorCount);
+    const bonusAmount = BigInt(Math.floor(input.dailyRankingPoints));
 
     const netDecayRaw = decayAmount - bonusAmount;
     const netDecay = netDecayRaw > 0n ? netDecayRaw : 0n;
 
-    // Can't decay more than what's in the pool
     const actualDecay = netDecay > input.totalRacBalance ? input.totalRacBalance : netDecay;
     const newBalance = input.totalRacBalance - actualDecay;
 
@@ -144,7 +329,7 @@ export function computeRacDecay(input: RacDecayInput): RacDecayResult {
     };
 }
 
-// ─── Legacy exports (backward compat for existing tests) ─────────────────────
+// ─── Legacy exports (backward compat) ───────────────────────────────────────
 
 export const BASE_REWARD = 1;
 

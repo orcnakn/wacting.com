@@ -59,6 +59,9 @@ export async function racRoutes(fastify: FastifyInstance) {
             if (!campaign || !campaign.isActive) {
                 return reply.code(404).send({ error: 'Kampanya bulunamadı.' });
             }
+            if (campaign.stanceType === 'EMERGENCY') {
+                return reply.code(400).send({ error: 'Acil durum kampanyaları protesto edilemez.' });
+            }
             if (campaign.members.length > 0) {
                 return reply.code(400).send({ error: 'Kendi kampanyanızı protesto edemezsiniz.' });
             }

@@ -15,6 +15,7 @@ import '../../app/constants.dart';
 import '../../app/theme.dart';
 import 'day_night_layer.dart';
 import 'lod_manager.dart';
+import 'emergency_marker.dart';
 
 // ─── Continent → Country mapping ─────────────────────────────────────────────
 const Map<String, List<String>> _continentCountries = {
@@ -120,6 +121,11 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   // ── Map filter state ──
   String _mapFilter = 'all'; // all, nearby, trending, protested, newest
   bool _filterDropdownOpen = false;
+
+  // ── Active campaigns panel ──
+  bool _campaignPanelOpen = false;
+  List<dynamic> _activeCampaigns = [];
+  bool _campaignsLoading = false;
 
   // ── User location pins ──
   List<Map<String, dynamic>> _userLocations = [];
@@ -367,6 +373,13 @@ class _GridScreenState extends ConsumerState<GridScreen> {
     if (_currentZoom < 7) return 'countries';
     if (_currentZoom < 10) return 'regions';
     return 'cities';
+  }
+
+  /// Own icon dot size: always visible, slightly larger than other users
+  double _myIconDotSize(double zoom) {
+    if (zoom < 4) return 6.0;   // Continents: small but visible
+    if (zoom < 7) return 8.0;   // Countries: medium dot
+    return 10.0;                 // Regions: standard dot
   }
 
   // ── Excluded regions: regions removed from a selected country ──
@@ -718,15 +731,128 @@ class _GridScreenState extends ConsumerState<GridScreen> {
               _lastIcons = _paused ? _pausedSnapshot : liveIcons;
               final icons = _lastIcons!;
 
-              const circleAuras = <CircleMarker>[];
-
               final zoom = _currentZoom;
 
-              final markerDots = <Marker>[];
+              // Separate emergency icons from normal icons
+              final emergencyMarkers = <Marker>[];
               for (final icon in icons) {
+                if (icon.isEmergency) {
+                  final latLng = _offsetToLatLng(icon.position);
+                  final double logoSize = (math.sqrt(icon.emergencyAreaM2) / 10).clamp(12.0, 60.0);
+                  final double markerSize = logoSize * 3;
+                  emergencyMarkers.add(Marker(
+                    point: latLng,
+                    width: markerSize,
+                    height: markerSize,
+                    child: EmergencyMarker(
+                      color: Colors.red,
+                      areaM2: icon.emergencyAreaM2,
+                      slogan: icon.campaignSlogan,
+                      onTap: () {
+                        final userSlogan = icon.campaignSlogan ?? 'Acil Durum';
+                        _showPublicProfile(context, icon, userSlogan);
+                      },
+                    ),
+                  ));
+                }
+              }
+
+              final markerDots = <Marker>[];
+              final myId = apiService.userId;
+              for (final icon in icons) {
+                if (icon.isEmergency) continue; // Skip — rendered in emergency layer
                   final latLng = _offsetToLatLng(icon.position);
                   final Color displayColor = icon.displayColor;
                   final double wacSize = icon.size;
+                  final bool isCampaignIcon = icon.campaignSlogan != null;
+                  final bool isMyIcon = icon.userId == myId;
+
+                  // User icons (no campaign): smaller dots, only visible at cities zoom
+                  if (!isCampaignIcon && !isMyIcon) {
+                    if (!LodManager.shouldRenderUser(zoom, false)) continue;
+                    final double userOpacity = LodManager.userOpacity(zoom, false);
+                    final double dotSize = LodManager.userDotSize(zoom);
+
+                    for (final worldOffset in _worldOffsets) {
+                      final offsetPoint = LatLng(latLng.latitude, latLng.longitude + worldOffset);
+                      markerDots.add(Marker(
+                          point: offsetPoint,
+                          width: dotSize + 4,
+                          height: dotSize + 4,
+                          child: Opacity(
+                            opacity: userOpacity,
+                            child: Center(
+                              child: Container(
+                                width: dotSize,
+                                height: dotSize,
+                                decoration: BoxDecoration(
+                                  color: displayColor,
+                                  shape: BoxShape.circle,
+                                  border: dotSize > 3 ? Border.all(color: Colors.white, width: 0.5) : null,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ));
+                    }
+                    continue;
+                  }
+
+                  // Own icon (no campaign): always visible, personal size
+                  if (!isCampaignIcon && isMyIcon) {
+                    final double myOpacity = 1.0;
+                    final double dotSize = zoom >= 10 ? LodManager.dotSizeAtZoom(zoom, wacSize) : _myIconDotSize(zoom);
+
+                    for (final worldOffset in _worldOffsets) {
+                      final offsetPoint = LatLng(latLng.latitude, latLng.longitude + worldOffset);
+
+                      if (zoom >= 13.0) {
+                        // Full detail at high zoom
+                        final double rectW = LodManager.rectWidth(wacSize.clamp(1, 100), zoom);
+                        final double rectH = LodManager.rectHeight(wacSize.clamp(1, 100), zoom);
+                        markerDots.add(Marker(
+                            point: offsetPoint,
+                            width: rectW + 4,
+                            height: rectH + 4,
+                            child: Opacity(
+                              opacity: myOpacity,
+                              child: Container(
+                                width: rectW,
+                                height: rectH,
+                                decoration: BoxDecoration(
+                                  color: displayColor,
+                                  borderRadius: BorderRadius.circular(2),
+                                  border: Border.all(color: Colors.white, width: 1.5),
+                                ),
+                              ),
+                            ),
+                        ));
+                      } else {
+                        markerDots.add(Marker(
+                            point: offsetPoint,
+                            width: dotSize + 6,
+                            height: dotSize + 6,
+                            child: Opacity(
+                              opacity: myOpacity,
+                              child: Center(
+                                child: Container(
+                                  width: dotSize,
+                                  height: dotSize,
+                                  decoration: BoxDecoration(
+                                    color: displayColor,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 1.5),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ));
+                      }
+                    }
+                    continue;
+                  }
+
+                  // Campaign icons: existing LOD behavior
                   final double baseOpacity = LodManager.opacityForWac(wacSize, zoom);
 
                   for (final worldOffset in _worldOffsets) {
@@ -917,12 +1043,10 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                               : 'World exploration mode.';
                           final iconPoint = _offsetToLatLng(icon.position);
                           final dist = const Distance().as(LengthUnit.Kilometer, normalizedTapPoint, iconPoint);
-                          final double tokenPower = icon.size > 1.0 ? (icon.size - 1.0) : 0.0;
-                          // Tap radius = actual aura radius (10km per tokenPower) + 5km base for the dot
-                          final auraRadiusKm = tokenPower * 10.0;
-                          final touchRadiusKm = auraRadiusKm + 5.0; // 5km grace for the dot itself
+                          // Simple tap detection: 20km radius at base, scales with zoom
+                          final touchRadiusKm = 20.0;
                           if (dist < touchRadiusKm) {
-                              _showPublicProfile(context, icon, userSlogan, displayIcons);
+                              _showPublicProfile(context, icon, userSlogan);
                               break;
                           }
                       }
@@ -938,9 +1062,8 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   // Only show polygon overlay in region-select mode
                   if (polygonWidgets.isNotEmpty)
                     PolygonLayer(polygons: polygonWidgets),
-                  CircleLayer(circles: circleAuras),
                   MarkerLayer(markers: markerDots),
-                  // ── User location pins ──
+                  // ── User location pins (all users as human icons) ──
                   if (_userLocations.isNotEmpty)
                     MarkerLayer(
                       markers: _userLocations.map((loc) {
@@ -956,7 +1079,10 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                             onTap: () {
                               ScaffoldMessenger.of(context).clearSnackBars();
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(name.isNotEmpty ? name : 'Kullanici'), duration: const Duration(seconds: 2)),
+                                SnackBar(
+                                  content: Text(name.isNotEmpty ? name : 'Kullanici'),
+                                  duration: const Duration(seconds: 2),
+                                ),
                               );
                             },
                             child: Container(
@@ -971,6 +1097,9 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                         );
                       }).toList(),
                     ),
+                  // ── Emergency campaign icons (always visible, bypass filters) ──
+                  if (emergencyMarkers.isNotEmpty)
+                    MarkerLayer(markers: emergencyMarkers),
                 ],
               );
             }
@@ -979,47 +1108,44 @@ class _GridScreenState extends ConsumerState<GridScreen> {
           // ── Semantic Zoom Overlay ──
           Positioned(
             top: 40,
-            left: MediaQuery.of(context).size.width / 2 - 100,
+            left: MediaQuery.of(context).size.width / 2 - 80,
             child: IgnorePointer(
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 300),
-                opacity: 1.0,
-                child: Container(
-                  width: 200,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(
+              child: Container(
+                width: 160,
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                decoration: BoxDecoration(
+                  color: _regionSelectMode
+                      ? Colors.orange.withOpacity(0.25)
+                      : AppColors.accentBlue.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
                     color: _regionSelectMode
-                        ? Colors.orange.withOpacity(0.3)
-                        : AppColors.accentBlue.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: _regionSelectMode
-                          ? Colors.orangeAccent
-                          : AppColors.accentBlue.withOpacity(0.5),
-                    ),
+                        ? Colors.orangeAccent.withOpacity(0.6)
+                        : AppColors.accentBlue.withOpacity(0.3),
                   ),
-                  child: Center(
-                    child: Text(
-                      _regionSelectMode
-                          ? (_zoomLevel == 'continents'
-                              ? 'SELECT CONTINENTS'
-                              : _zoomLevel == 'countries'
-                                  ? 'SELECT COUNTRIES'
-                                  : _zoomLevel == 'cities'
-                                      ? 'SELECT CITIES'
-                                      : 'SELECT REGIONS')
-                          : (_currentZoom < 4
-                              ? 'CONTINENTS'
-                              : _currentZoom < 7
-                                  ? 'COUNTRIES'
-                                  : _currentZoom < 10
-                                      ? 'REGIONS'
-                                      : 'CITIES'),
-                      style: TextStyle(
-                        color: _regionSelectMode ? Colors.orangeAccent : AppColors.accentBlue,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 2,
-                      ),
+                ),
+                child: Center(
+                  child: Text(
+                    _regionSelectMode
+                        ? (_zoomLevel == 'continents'
+                            ? 'SELECT CONTINENTS'
+                            : _zoomLevel == 'countries'
+                                ? 'SELECT COUNTRIES'
+                                : _zoomLevel == 'cities'
+                                    ? 'SELECT CITIES'
+                                    : 'SELECT REGIONS')
+                        : (_currentZoom < 4
+                            ? 'CONTINENTS'
+                            : _currentZoom < 7
+                                ? 'COUNTRIES'
+                                : _currentZoom < 10
+                                    ? 'REGIONS'
+                                    : 'CITIES'),
+                    style: TextStyle(
+                      color: _regionSelectMode ? Colors.orangeAccent : AppColors.accentBlue,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 9,
+                      letterSpacing: 1.5,
                     ),
                   ),
                 ),
@@ -1027,41 +1153,60 @@ class _GridScreenState extends ConsumerState<GridScreen> {
             ),
           ),
 
-          // ── Focus Button (tap: go to my icon, long-press: campaign list) ──
+          // ── Focus Button (tap: go to my icon at cities zoom) ──
           Positioned(
             bottom: 30,
             left: 20,
-            child: FloatingActionButton(
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: FloatingActionButton(
               heroTag: 'center_btn',
               backgroundColor: AppColors.navyPrimary,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: AppColors.accentTeal, width: 2)
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(color: AppColors.accentTeal, width: 1.5)
               ),
-              child: Icon(Icons.center_focus_strong, color: AppColors.accentTeal),
-              onPressed: () => _showCampaignLocationPicker(),
-            ),
+              child: Icon(Icons.center_focus_strong, color: AppColors.accentTeal, size: 18),
+              onPressed: () {
+                final myId = apiService.userId;
+                if (myId != null && _lastIcons != null) {
+                  final myIcon = _lastIcons!.cast<IconModel?>().firstWhere(
+                    (ic) => ic!.userId == myId, orElse: () => null);
+                  if (myIcon != null) {
+                    final pos = _offsetToLatLng(myIcon.position);
+                    _mapController.move(pos, 11.0);
+                    return;
+                  }
+                }
+                _mapController.move(_initialCenter, 11.0);
+              },
+            )),
           ),
 
           // ── Pause/Resume Button ──
           Positioned(
             bottom: 30,
-            left: 80,
-            child: FloatingActionButton(
+            left: 70,
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: FloatingActionButton(
               heroTag: 'pause_btn',
               backgroundColor: _paused
                   ? Colors.amber.shade900
                   : AppColors.navyPrimary,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
                 side: BorderSide(
                   color: _paused ? AppColors.accentAmber : AppColors.accentTeal,
-                  width: 2,
+                  width: 1.5,
                 ),
               ),
               child: Icon(
                 _paused ? Icons.play_arrow : Icons.pause,
                 color: _paused ? AppColors.accentAmber : AppColors.accentTeal,
+                size: 18,
               ),
               onPressed: () {
                 setState(() => _paused = !_paused);
@@ -1084,7 +1229,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ));
               },
-            ),
+            )),
           ),
 
           // ── Selection Badge (always visible when something is selected) ──
@@ -1122,27 +1267,25 @@ class _GridScreenState extends ConsumerState<GridScreen> {
           Positioned(
             bottom: 30,
             right: 20,
-            child: FloatingActionButton.extended(
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: FloatingActionButton(
               heroTag: 'region_toggle_btn',
               backgroundColor: _regionSelectMode
                   ? Colors.orange.shade900
                   : AppColors.navyPrimary,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
                 side: BorderSide(
                   color: _regionSelectMode ? Colors.orangeAccent : AppColors.accentTeal,
-                  width: 2,
+                  width: 1.5,
                 ),
               ),
-              icon: Icon(
+              child: Icon(
                 _regionSelectMode ? Icons.check_circle : Icons.map_outlined,
-                color: Colors.white,
-              ),
-              label: Text(
-                _regionSelectMode
-                    ? 'DONE (${_totalSelectionCount})'
-                    : 'SELECT REGIONS',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                color: _regionSelectMode ? Colors.orangeAccent : AppColors.accentTeal,
+                size: 18,
               ),
               onPressed: () async {
                 if (!_regionSelectMode) {
@@ -1227,7 +1370,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   }
                 }
               },
-            ),
+            )),
           ),
 
           // ── Map Filter Dropdown ──
@@ -1282,6 +1425,121 @@ class _GridScreenState extends ConsumerState<GridScreen> {
               ],
             ),
           ),
+          // ── Active Campaigns Panel ──
+          Positioned(
+            top: (MediaQuery.of(context).size.height - 70) / 2 - 14,
+            left: 16,
+            child: GestureDetector(
+              onTap: () async {
+                if (!_campaignPanelOpen) {
+                  setState(() { _campaignPanelOpen = true; _campaignsLoading = true; });
+                  try {
+                    final campaigns = await apiService.getAllCampaigns();
+                    if (mounted) setState(() { _activeCampaigns = campaigns; _campaignsLoading = false; });
+                  } catch (_) {
+                    if (mounted) setState(() { _campaignsLoading = false; });
+                  }
+                } else {
+                  setState(() => _campaignPanelOpen = false);
+                }
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.navyPrimary.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.accentAmber, width: 1),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.flag, color: AppColors.accentAmber, size: 14),
+                      const SizedBox(width: 6),
+                      Text('Aktif Kampanyalar',
+                        style: TextStyle(color: AppColors.accentAmber, fontSize: 11, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 4),
+                      Icon(_campaignPanelOpen ? Icons.expand_less : Icons.expand_more,
+                          color: AppColors.accentAmber, size: 14),
+                    ]),
+                  ),
+                  if (_campaignPanelOpen)
+                    Container(
+                      margin: const EdgeInsets.only(top: 4),
+                      width: 220,
+                      constraints: const BoxConstraints(maxHeight: 260),
+                      decoration: BoxDecoration(
+                        color: AppColors.navyPrimary.withOpacity(0.95),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.accentAmber.withOpacity(0.5), width: 0.5),
+                      ),
+                      child: _campaignsLoading
+                        ? const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Center(child: SizedBox(width: 16, height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amber))),
+                          )
+                        : _activeCampaigns.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: Text('Aktif kampanya yok', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                            )
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              itemCount: _activeCampaigns.length,
+                              itemBuilder: (_, i) {
+                                final c = _activeCampaigns[i] as Map<String, dynamic>;
+                                final title = c['title'] ?? 'Kampanya';
+                                final slogan = c['slogan'] ?? '';
+                                final colorHex = c['iconColor'] as String?;
+                                final dotColor = (colorHex != null && colorHex.startsWith('#') && colorHex.length == 7)
+                                    ? _hexToColor(colorHex)
+                                    : AppColors.accentAmber;
+                                final pLat = (c['pinnedLat'] as num?)?.toDouble();
+                                final pLng = (c['pinnedLng'] as num?)?.toDouble();
+                                return GestureDetector(
+                                  onTap: () {
+                                    setState(() => _campaignPanelOpen = false);
+                                    if (pLat != null && pLng != null) {
+                                      _mapController.move(LatLng(pLat, pLng), 10.0);
+                                    } else {
+                                      // Find campaign icon from _lastIcons by matching slogan
+                                      final match = _lastIcons?.cast<IconModel?>().firstWhere(
+                                        (ic) => ic!.campaignSlogan == slogan && slogan.isNotEmpty,
+                                        orElse: () => null);
+                                      if (match != null) {
+                                        _mapController.move(_offsetToLatLng(match.position), 10.0);
+                                      }
+                                    }
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    child: Row(children: [
+                                      Container(width: 6, height: 6,
+                                        decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle)),
+                                      const SizedBox(width: 8),
+                                      Expanded(child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(title, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                                          if (slogan.isNotEmpty)
+                                            Text(slogan, style: const TextStyle(color: Colors.white54, fontSize: 9),
+                                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                                        ],
+                                      )),
+                                    ]),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1321,21 +1579,8 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
   // ──────────────────────── PUBLIC PROFILE MODAL ────────────────────────
 
-  void _showPublicProfile(BuildContext context, IconModel icon, String slogan, List<IconModel> allIcons) {
+  void _showPublicProfile(BuildContext context, IconModel icon, String slogan) {
       double tokensToSend = 10.0;
-
-      final double tokenPower = icon.size > 1.0 ? (icon.size - 1.0) : 0.0;
-      final double influenceRadiusKm = (tokenPower * 100).clamp(10, 1500).toDouble();
-      final iconPoint = _offsetToLatLng(icon.position);
-
-      final nearbyUsers = allIcons.where((other) {
-          if (other.id == icon.id) return false;
-          final otherPoint = _offsetToLatLng(other.position);
-          final dist = const Distance().as(LengthUnit.Kilometer, iconPoint, otherPoint);
-          return dist <= influenceRadiusKm;
-      }).toList();
-
-      nearbyUsers.sort((a, b) => b.size.compareTo(a.size));
 
       showModalBottomSheet(
           context: context,
@@ -1366,42 +1611,6 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                                       Text('"$slogan"',
                                           style: TextStyle(color: AppColors.accentTeal, fontSize: 16, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600),
                                           textAlign: TextAlign.center),
-
-                                      if (nearbyUsers.isNotEmpty) ...[
-                                          const SizedBox(height: 24),
-                                          const Align(
-                                            alignment: Alignment.centerLeft,
-                                            child: Text('Under Influence / Nearby',
-                                                style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 14)),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Container(
-                                              height: 120,
-                                              decoration: BoxDecoration(
-                                                  color: AppColors.surfaceLight,
-                                                  borderRadius: BorderRadius.circular(12),
-                                                  border: Border.all(color: AppColors.borderLight)
-                                              ),
-                                              child: ListView.builder(
-                                                  itemCount: nearbyUsers.length,
-                                                  padding: const EdgeInsets.all(8),
-                                                  itemBuilder: (context, index) {
-                                                      final nu = nearbyUsers[index];
-                                                      final nuSlogan = nu.id.startsWith('mock')
-                                                          ? 'Mock Token Billionaire'
-                                                          : 'World domination imminent.';
-                                                      return ListTile(
-                                                          leading: CircleAvatar(radius: 12, backgroundColor: nu.color),
-                                                          title: Text(nu.id, style: TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
-                                                          subtitle: Text('"$nuSlogan"', style: TextStyle(color: AppColors.textTertiary, fontSize: 10, fontStyle: FontStyle.italic), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                                          trailing: Text('${nu.size.toStringAsFixed(1)} Power', style: TextStyle(color: AppColors.accentTeal, fontSize: 10)),
-                                                          dense: true,
-                                                          contentPadding: EdgeInsets.zero,
-                                                      );
-                                                  }
-                                              )
-                                          )
-                                      ],
 
                                       const SizedBox(height: 24),
                                       Divider(color: AppColors.borderLight),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../app/theme.dart';
 import '../../core/services/api_service.dart';
 import '../../core/utils/format_utils.dart';
@@ -47,6 +48,24 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     super.initState();
     _tabController = TabController(length: _isOwnProfile ? 2 : 1, vsync: this);
     _loadProfile();
+    _restoreLocationSettings();
+  }
+
+  Future<void> _restoreLocationSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _locationEnabled = prefs.getBool('wacting_location_enabled') ?? false;
+        _locationOffsetMeters = prefs.getDouble('wacting_location_offset') ?? 0;
+        _offsetController.text = _locationOffsetMeters.toInt().toString();
+      });
+    }
+  }
+
+  Future<void> _persistLocationSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('wacting_location_enabled', _locationEnabled);
+    await prefs.setDouble('wacting_location_offset', _locationOffsetMeters);
   }
 
   @override
@@ -623,6 +642,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     locationOffsetMeters: _locationOffsetMeters,
                   );
                   setState(() => _locationEnabled = true);
+                  _persistLocationSettings();
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Konum aktif edildi')),
@@ -638,6 +658,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               } else {
                 await apiService.updateLocation(locationEnabled: false);
                 setState(() => _locationEnabled = false);
+                _persistLocationSettings();
               }
             },
           ),
@@ -679,6 +700,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               onPressed: () async {
                 final offset = double.tryParse(_offsetController.text) ?? 0;
                 setState(() => _locationOffsetMeters = offset);
+                _persistLocationSettings();
                 try {
                   await apiService.updateLocation(
                     locationEnabled: true,
