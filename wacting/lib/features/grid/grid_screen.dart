@@ -1063,35 +1063,66 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   if (polygonWidgets.isNotEmpty)
                     PolygonLayer(polygons: polygonWidgets),
                   MarkerLayer(markers: markerDots),
-                  // ── User location pins (all users as human icons) ──
-                  if (_userLocations.isNotEmpty)
+                  // ── User location pins (all users as colored dots, zoom-aware) ──
+                  if (_userLocations.isNotEmpty && LodManager.shouldRenderUser(zoom, false))
                     MarkerLayer(
                       markers: _userLocations.map((loc) {
                         final lat = (loc['lat'] as num).toDouble();
                         final lng = (loc['lng'] as num).toDouble();
                         final name = loc['displayName'] ?? '';
                         final color = _hexToColor(loc['colorHex'] ?? '#FFFFFF');
+                        final isOwn = loc['userId'] == apiService.userId;
+                        final dotSize = isOwn ? LodManager.userDotSize(zoom) + 4 : LodManager.userDotSize(zoom);
+                        final opacity = LodManager.userOpacity(zoom, isOwn);
+
+                        if (LodManager.isUserFullDetail(zoom)) {
+                          // High zoom: show person icon with name
+                          return Marker(
+                            point: LatLng(lat, lng),
+                            width: 28,
+                            height: 28,
+                            child: Opacity(
+                              opacity: opacity,
+                              child: GestureDetector(
+                                onTap: () {
+                                  ScaffoldMessenger.of(context).clearSnackBars();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(name.isNotEmpty ? name : 'Kullanici'),
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                },
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: color.withOpacity(0.8),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2),
+                                  ),
+                                  child: const Icon(Icons.person, color: Colors.white, size: 16),
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+
+                        // Low/mid zoom: colored dot
                         return Marker(
                           point: LatLng(lat, lng),
-                          width: 28,
-                          height: 28,
-                          child: GestureDetector(
-                            onTap: () {
-                              ScaffoldMessenger.of(context).clearSnackBars();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(name.isNotEmpty ? name : 'Kullanici'),
-                                  duration: const Duration(seconds: 2),
+                          width: dotSize + 4,
+                          height: dotSize + 4,
+                          child: Opacity(
+                            opacity: opacity,
+                            child: Center(
+                              child: Container(
+                                width: dotSize,
+                                height: dotSize,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  shape: BoxShape.circle,
+                                  border: dotSize > 4 ? Border.all(color: Colors.white, width: 0.5) : null,
                                 ),
-                              );
-                            },
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: color.withOpacity(0.8),
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2),
                               ),
-                              child: const Icon(Icons.person, color: Colors.white, size: 16),
                             ),
                           ),
                         );
