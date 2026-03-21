@@ -152,7 +152,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         } catch (err: any) {
             fastify.log.error(`Email registration failed: ${err?.stack || err}`);
             if (err instanceof ZodError) {
-                const msg = err.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ');
+                const msg = err.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
                 return reply.code(400).send({ error: `Geçersiz veri: ${msg}` });
             }
             return reply.code(400).send({ error: err.message || 'Kayıt sırasında bir hata oluştu.' });
@@ -280,7 +280,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         } catch (err: any) {
             fastify.log.error(`Email login failed: ${err?.stack || err}`);
             if (err instanceof ZodError) {
-                const msg = err.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ');
+                const msg = err.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ');
                 return reply.code(400).send({ error: `Geçersiz veri: ${msg}` });
             }
             return reply.code(400).send({ error: err.message || 'Giriş sırasında bir hata oluştu.' });
