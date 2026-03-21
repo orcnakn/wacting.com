@@ -87,17 +87,63 @@ async function start() {
                 }
             });
 
-            // Helper: find a random position on land
+            // Known cities on major landmasses (guaranteed selectable polygon coverage)
+            const SPAWN_CITIES = [
+                { lat: 40.71, lng: -74.01 },  // New York
+                { lat: 34.05, lng: -118.24 }, // Los Angeles
+                { lat: 41.88, lng: -87.63 },  // Chicago
+                { lat: 51.51, lng: -0.13 },   // London
+                { lat: 48.86, lng: 2.35 },    // Paris
+                { lat: 52.52, lng: 13.41 },   // Berlin
+                { lat: 41.01, lng: 28.98 },   // Istanbul
+                { lat: 41.90, lng: 12.50 },   // Rome
+                { lat: 40.42, lng: -3.70 },   // Madrid
+                { lat: 59.33, lng: 18.07 },   // Stockholm
+                { lat: 55.68, lng: 12.57 },   // Copenhagen
+                { lat: 50.85, lng: 4.35 },    // Brussels
+                { lat: 47.50, lng: 19.04 },   // Budapest
+                { lat: 50.08, lng: 14.44 },   // Prague
+                { lat: 52.37, lng: 4.90 },    // Amsterdam
+                { lat: 35.69, lng: 139.69 },  // Tokyo
+                { lat: 37.57, lng: 126.98 },  // Seoul
+                { lat: 19.08, lng: 72.88 },   // Mumbai
+                { lat: 39.90, lng: 116.41 },  // Beijing
+                { lat: 1.35, lng: 103.82 },   // Singapore
+                { lat: 25.20, lng: 55.27 },   // Dubai
+                { lat: 13.76, lng: 100.50 },  // Bangkok
+                { lat: -23.55, lng: -46.63 }, // São Paulo
+                { lat: -34.60, lng: -58.38 }, // Buenos Aires
+                { lat: 4.71, lng: -74.07 },   // Bogotá
+                { lat: 6.52, lng: 3.38 },     // Lagos
+                { lat: -33.92, lng: 18.42 },  // Cape Town
+                { lat: -1.29, lng: 36.82 },   // Nairobi
+                { lat: -33.87, lng: 151.21 }, // Sydney
+                { lat: 30.04, lng: 31.24 },   // Cairo
+                { lat: 55.75, lng: 37.62 },   // Moscow
+                { lat: 33.86, lng: 35.50 },   // Beirut
+                { lat: -12.05, lng: -77.04 }, // Lima
+                { lat: 19.43, lng: -99.13 },  // Mexico City
+                { lat: 45.46, lng: 9.19 },    // Milan
+                { lat: 38.72, lng: -9.14 },   // Lisbon
+                { lat: 37.98, lng: 23.73 },   // Athens
+                { lat: 48.21, lng: 16.37 },   // Vienna
+                { lat: 60.17, lng: 24.94 },   // Helsinki
+                { lat: 35.68, lng: 51.39 },   // Tehran
+            ];
+
+            // Helper: find a random position on land near known cities
             function randomLandPosition(): { x: number, y: number } {
-                for (let attempt = 0; attempt < 500; attempt++) {
-                    const x = Math.random() * GRID_WIDTH;
-                    const y = Math.random() * GRID_HEIGHT;
-                    const lng = (x / GRID_WIDTH) * 360 - 180;
-                    const lat = 90 - (y / GRID_HEIGHT) * 180;
-                    if (wc([lng, lat]) != null) return { x, y };
+                const city = SPAWN_CITIES[Math.floor(Math.random() * SPAWN_CITIES.length)]!;
+                // Scatter within ~3 degrees of a known city
+                for (let attempt = 0; attempt < 50; attempt++) {
+                    const lat = city.lat + (Math.random() - 0.5) * 6;
+                    const lng = city.lng + (Math.random() - 0.5) * 6;
+                    if (wc([lng, lat]) != null) {
+                        return { x: lngToGridX(lng), y: latToGridY(lat) };
+                    }
                 }
-                // Fallback: Istanbul
-                return { x: (28.9784 + 180) / 360 * GRID_WIDTH, y: (90 - 41.0082) / 180 * GRID_HEIGHT };
+                // Fallback: exact city position
+                return { x: lngToGridX(city.lng), y: latToGridY(city.lat) };
             }
 
             // Helper: check if grid position is on land

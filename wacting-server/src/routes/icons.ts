@@ -354,9 +354,28 @@ function seededRng(userId: string): () => number {
     };
 }
 
+// Known cities for spawning within selectable polygon areas
+const SPAWN_CITIES = [
+    { lat: 40.71, lng: -74.01 },  { lat: 34.05, lng: -118.24 },
+    { lat: 41.88, lng: -87.63 },  { lat: 51.51, lng: -0.13 },
+    { lat: 48.86, lng: 2.35 },    { lat: 52.52, lng: 13.41 },
+    { lat: 41.01, lng: 28.98 },   { lat: 41.90, lng: 12.50 },
+    { lat: 40.42, lng: -3.70 },   { lat: 59.33, lng: 18.07 },
+    { lat: 35.69, lng: 139.69 },  { lat: 37.57, lng: 126.98 },
+    { lat: 19.08, lng: 72.88 },   { lat: 39.90, lng: 116.41 },
+    { lat: 25.20, lng: 55.27 },   { lat: 13.76, lng: 100.50 },
+    { lat: -23.55, lng: -46.63 }, { lat: -34.60, lng: -58.38 },
+    { lat: 6.52, lng: 3.38 },     { lat: -33.92, lng: 18.42 },
+    { lat: -1.29, lng: 36.82 },   { lat: -33.87, lng: 151.21 },
+    { lat: 30.04, lng: 31.24 },   { lat: 55.75, lng: 37.62 },
+    { lat: 19.43, lng: -99.13 },  { lat: -12.05, lng: -77.04 },
+    { lat: 37.98, lng: 23.73 },   { lat: 48.21, lng: 16.37 },
+    { lat: 60.17, lng: 24.94 },   { lat: 35.68, lng: 51.39 },
+];
+
 /**
  * Generate a deterministic random lat/lng based on userId and their selected regions.
- * Ensures position is always on land using which-country validation.
+ * Ensures position is always within selectable country polygons.
  */
 function generateRandomPosition(
     userId: string,
@@ -366,35 +385,43 @@ function generateRandomPosition(
 ): { lat: number; lng: number } {
     const rng = seededRng(userId);
 
-    // Try to find a bounding box from restricted regions
-    let bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number } | null = null;
-
-    // Priority: country > continent > world
+    // If user has restricted countries, use their bounding boxes
     if (restrictedCountries.length > 0) {
         const idx = Math.floor(rng() * restrictedCountries.length);
         const country = restrictedCountries[idx]!;
-        bounds = COUNTRY_BOUNDS[country] || null;
-    }
-
-    if (!bounds && restrictedContinents.length > 0) {
-        const idx = Math.floor(rng() * restrictedContinents.length);
-        const continent = restrictedContinents[idx]!;
-        bounds = CONTINENT_BOUNDS[continent] || null;
-    }
-
-    if (!bounds) {
-        bounds = WORLD_LAND_BOUNDS;
-    }
-
-    // Try up to 50 times to land on a valid country
-    for (let attempt = 0; attempt < 50; attempt++) {
-        const lat = bounds.minLat + rng() * (bounds.maxLat - bounds.minLat);
-        const lng = bounds.minLng + rng() * (bounds.maxLng - bounds.minLng);
-        if (wc([lng, lat]) != null) {
-            return { lat, lng };
+        const bounds = COUNTRY_BOUNDS[country];
+        if (bounds) {
+            for (let attempt = 0; attempt < 50; attempt++) {
+                const lat = bounds.minLat + rng() * (bounds.maxLat - bounds.minLat);
+                const lng = bounds.minLng + rng() * (bounds.maxLng - bounds.minLng);
+                if (wc([lng, lat]) != null) return { lat, lng };
+            }
         }
     }
 
-    // Fallback: Istanbul
-    return { lat: 41.0082, lng: 28.9784 };
+    // If user has restricted continents, use their bounding boxes
+    if (restrictedContinents.length > 0) {
+        const idx = Math.floor(rng() * restrictedContinents.length);
+        const continent = restrictedContinents[idx]!;
+        const bounds = CONTINENT_BOUNDS[continent];
+        if (bounds) {
+            for (let attempt = 0; attempt < 50; attempt++) {
+                const lat = bounds.minLat + rng() * (bounds.maxLat - bounds.minLat);
+                const lng = bounds.minLng + rng() * (bounds.maxLng - bounds.minLng);
+                if (wc([lng, lat]) != null) return { lat, lng };
+            }
+        }
+    }
+
+    // No restrictions: pick a known city and scatter nearby
+    const cityIdx = Math.floor(rng() * SPAWN_CITIES.length);
+    const city = SPAWN_CITIES[cityIdx]!;
+    for (let attempt = 0; attempt < 50; attempt++) {
+        const lat = city.lat + (rng() - 0.5) * 6;
+        const lng = city.lng + (rng() - 0.5) * 6;
+        if (wc([lng, lat]) != null) return { lat, lng };
+    }
+
+    // Fallback: exact city
+    return { lat: city.lat, lng: city.lng };
 }
