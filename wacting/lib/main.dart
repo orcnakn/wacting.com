@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app/theme.dart';
 import 'core/services/api_service.dart';
+import 'core/services/locale_service.dart';
 import 'features/auth/auth_screen.dart';
 import 'features/root_navigation.dart';
 
@@ -27,10 +28,22 @@ class _WactingAppState extends State<WactingApp> {
   @override
   void initState() {
     super.initState();
-    _checkSession();
+    _init();
+    localeService.addListener(_onLocaleChanged);
   }
 
-  Future<void> _checkSession() async {
+  @override
+  void dispose() {
+    localeService.removeListener(_onLocaleChanged);
+    super.dispose();
+  }
+
+  void _onLocaleChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _init() async {
+    await localeService.init();
     final restored = await ApiService().tryRestoreSession();
     if (mounted) {
       setState(() {

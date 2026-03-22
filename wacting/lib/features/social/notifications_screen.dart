@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../app/theme.dart';
 import '../../core/services/api_service.dart';
+import '../../core/services/locale_service.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({Key? key}) : super(key: key);
@@ -71,7 +72,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       backgroundColor: AppColors.pageBackground,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: Text('Bildirimler', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+        title: Text(t('notifications'), style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
@@ -91,7 +92,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   await apiService.markAllNotificationsRead();
                   _loadNotifications();
                 },
-                child: Text('Tumunu Oku', style: TextStyle(color: AppColors.accentTeal, fontSize: 10)),
+                child: Text(t('mark_all_read'), style: TextStyle(color: AppColors.accentTeal, fontSize: 10)),
               ),
             ],
           ),
@@ -101,7 +102,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       body: _loading
           ? Center(child: CircularProgressIndicator(color: AppColors.accentBlue))
           : _notifications.isEmpty
-              ? Center(child: Text('Bildirim yok', style: TextStyle(color: AppColors.textTertiary)))
+              ? Center(child: Text(t('no_notifications'), style: TextStyle(color: AppColors.textTertiary)))
               : RefreshIndicator(
                   onRefresh: _loadNotifications,
                   child: ListView.separated(
@@ -182,10 +183,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   String _timeAgo(DateTime dt) {
     final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'simdi';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}dk';
-    if (diff.inHours < 24) return '${diff.inHours}sa';
-    if (diff.inDays < 7) return '${diff.inDays}g';
-    return '${(diff.inDays / 7).floor()}h';
+    if (diff.inMinutes < 1) return t('now');
+    if (diff.inMinutes < 60) return '${diff.inMinutes}${localeService.isTr ? 'dk' : 'm'}';
+    if (diff.inHours < 24) return '${diff.inHours}${localeService.isTr ? 'sa' : 'h'}';
+    if (diff.inDays < 7) return '${diff.inDays}${localeService.isTr ? 'g' : 'd'}';
+    return '${(diff.inDays / 7).floor()}${localeService.isTr ? 'h' : 'w'}';
   }
 }

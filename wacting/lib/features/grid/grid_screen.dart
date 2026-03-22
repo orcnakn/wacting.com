@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import 'providers/grid_state.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import '../../core/services/socket_service.dart';
+import '../../core/services/locale_service.dart';
 import '../../core/services/api_service.dart';
 import '../../core/config/app_config.dart';
 import '../../core/models/icon_model.dart';
@@ -749,7 +750,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                       areaM2: icon.emergencyAreaM2,
                       slogan: icon.campaignSlogan,
                       onTap: () {
-                        final userSlogan = icon.campaignSlogan ?? 'Acil Durum';
+                        final userSlogan = icon.campaignSlogan ?? t('emergency_default');
                         _showPublicProfile(context, icon, userSlogan);
                       },
                     ),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../app/theme.dart';
 import '../core/services/api_service.dart';
+import '../core/services/locale_service.dart';
 import '../core/services/socket_service.dart';
 import 'grid/grid_screen.dart';
 import 'social/social_screen.dart';
@@ -98,18 +99,18 @@ class _RootNavigationState extends State<RootNavigation> {
                   _currentIndex = index;
                 });
               },
-              items: const [
+              items: [
                 BottomNavigationBarItem(
-                  icon: Icon(Icons.public),
-                  label: 'WORLD',
+                  icon: const Icon(Icons.public),
+                  label: t('world'),
                 ),
                 BottomNavigationBarItem(
-                  icon: Icon(Icons.people_alt),
-                  label: 'FEED',
+                  icon: const Icon(Icons.people_alt),
+                  label: t('feed'),
                 ),
                 BottomNavigationBarItem(
-                  icon: Icon(Icons.account_circle),
-                  label: 'PROFILE',
+                  icon: const Icon(Icons.account_circle),
+                  label: t('profile_nav'),
                 ),
               ],
             ),

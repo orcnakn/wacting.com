@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import '../../core/services/socket_service.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/oauth_web_service.dart';
+import '../../core/services/locale_service.dart';
 import '../../core/config/app_config.dart';
 import '../root_navigation.dart';
 import 'auth_background_animation.dart';
@@ -28,6 +29,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isRegisterMode = false;
   bool _obscurePassword = true;
   bool _obscureRePassword = true;
+  bool _agreedToTerms = false;
   String? _errorMessage;
   String? _successMessage;
   String? _pendingVerificationEmail;
@@ -39,6 +41,7 @@ class _AuthScreenState extends State<AuthScreen> {
     _emailFocus.addListener(() => setState(() {}));
     _passwordFocus.addListener(() => setState(() {}));
     _rePasswordFocus.addListener(() => setState(() {}));
+    localeService.addListener(_onLocaleChanged);
   }
 
   @override
@@ -50,7 +53,12 @@ class _AuthScreenState extends State<AuthScreen> {
     _emailFocus.dispose();
     _passwordFocus.dispose();
     _rePasswordFocus.dispose();
+    localeService.removeListener(_onLocaleChanged);
     super.dispose();
+  }
+
+  void _onLocaleChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _handleSocialLogin(String provider) async {
@@ -68,7 +76,7 @@ class _AuthScreenState extends State<AuthScreen> {
           );
         }
       } else {
-        if (mounted) setState(() { _isLoading = false; _errorMessage = 'Giris basarisiz.'; });
+        if (mounted) setState(() { _isLoading = false; _errorMessage = t('login_failed'); });
       }
     } catch (e) {
       if (mounted) {
@@ -84,16 +92,20 @@ class _AuthScreenState extends State<AuthScreen> {
     final email    = _emailController.text.trim();
     final password = _passwordController.text.trim();
     final rePassword = _rePasswordController.text.trim();
+    if (!_agreedToTerms) {
+      setState(() => _errorMessage = t('terms_required'));
+      return;
+    }
     if (email.isEmpty || !email.contains('@')) {
-      setState(() => _errorMessage = 'Gecerli bir email adresi girin.');
+      setState(() => _errorMessage = t('valid_email'));
       return;
     }
     if (password.isEmpty || password.length < 6) {
-      setState(() => _errorMessage = 'Sifre en az 6 karakter olmali.');
+      setState(() => _errorMessage = t('password_min'));
       return;
     }
     if (password != rePassword) {
-      setState(() => _errorMessage = 'Sifreler eslesmiyor.');
+      setState(() => _errorMessage = t('passwords_mismatch'));
       return;
     }
     setState(() { _isLoading = true; _errorMessage = null; _successMessage = null; });
@@ -103,7 +115,7 @@ class _AuthScreenState extends State<AuthScreen> {
         setState(() {
           _isLoading = false;
           _pendingVerificationEmail = email;
-          _successMessage = 'Aktivasyon kodu $email adresine gonderildi.';
+          _successMessage = t('activation_sent').replaceAll('{email}', email);
         });
       }
     } catch (e) {
@@ -114,8 +126,8 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _handleSignIn() async {
     final email    = _emailController.text.trim();
     final password = _passwordController.text.trim();
-    if (email.isEmpty) { setState(() => _errorMessage = 'Email gerekli.'); return; }
-    if (password.isEmpty) { setState(() => _errorMessage = 'Sifre gerekli.'); return; }
+    if (email.isEmpty) { setState(() => _errorMessage = t('email_required')); return; }
+    if (password.isEmpty) { setState(() => _errorMessage = t('password_required')); return; }
     setState(() { _isLoading = true; _errorMessage = null; _successMessage = null; });
     try {
       await apiService.emailLogin(email, password);
@@ -123,7 +135,7 @@ class _AuthScreenState extends State<AuthScreen> {
     } on DioException catch (e) {
       final data = e.response?.data;
       if (data is Map && data['needsVerification'] == true) {
-        if (mounted) setState(() { _isLoading = false; _pendingVerificationEmail = email; _successMessage = 'Aktivasyon kodu $email adresine gonderildi.'; });
+        if (mounted) setState(() { _isLoading = false; _pendingVerificationEmail = email; _successMessage = t('activation_sent').replaceAll('{email}', email); });
       } else {
         if (mounted) setState(() { _isLoading = false; _errorMessage = _extractError(e); });
       }
@@ -134,7 +146,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _handleVerifyCode() async {
     final code = _codeController.text.trim();
-    if (code.length != 6) { setState(() => _errorMessage = '6 haneli aktivasyon kodunu girin.'); return; }
+    if (code.length != 6) { setState(() => _errorMessage = t('enter_6digit')); return; }
     setState(() { _isLoading = true; _errorMessage = null; _successMessage = null; });
     try {
       await apiService.verifyCode(_pendingVerificationEmail!, code);
@@ -148,7 +160,7 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() { _isLoading = true; _errorMessage = null; });
     try {
       await apiService.resendVerification(_pendingVerificationEmail!);
-      if (mounted) setState(() { _isLoading = false; _successMessage = 'Yeni kod gonderildi.'; });
+      if (mounted) setState(() { _isLoading = false; _successMessage = t('new_code_sent'); });
     } catch (e) {
       if (mounted) setState(() { _isLoading = false; _errorMessage = _extractError(e); });
     }
@@ -157,9 +169,9 @@ class _AuthScreenState extends State<AuthScreen> {
   String _extractError(dynamic e) {
     if (e is DioException && e.response?.data != null) {
       final data = e.response!.data;
-      if (data is Map<String, dynamic>) return data['error'] ?? 'Bir hata olustu.';
+      if (data is Map<String, dynamic>) return data['error'] ?? t('error_occurred');
     }
-    return 'Baglanti hatasi.';
+    return t('connection_error');
   }
 
   void _onMerge(bool merging) {}
@@ -180,6 +192,9 @@ class _AuthScreenState extends State<AuthScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  // Language switcher
+                  _buildLanguageSwitcher(),
+                  const SizedBox(height: 20),
                   _buildSocialIconsRow(),
                   const SizedBox(height: 32),
                   if (_pendingVerificationEmail != null)
@@ -194,6 +209,39 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
         ),
       ]),
+    );
+  }
+
+  Widget _buildLanguageSwitcher() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _langChip('TR', 'tr'),
+        const SizedBox(width: 8),
+        _langChip('EN', 'en'),
+      ],
+    );
+  }
+
+  Widget _langChip(String label, String locale) {
+    final isSelected = localeService.locale == locale;
+    return GestureDetector(
+      onTap: () => localeService.setLocale(locale),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: isSelected ? const Color(0xFFFF416C) : Colors.white.withOpacity(0.1),
+          border: Border.all(
+            color: isSelected ? const Color(0xFFFF416C) : Colors.white.withOpacity(0.2),
+          ),
+        ),
+        child: Text(label, style: TextStyle(
+          color: isSelected ? Colors.white : Colors.white.withOpacity(0.6),
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        )),
+      ),
     );
   }
 
@@ -267,7 +315,7 @@ class _AuthScreenState extends State<AuthScreen> {
         _buildField(
           controller: _emailController,
           focusNode: _emailFocus,
-          hint: 'Email',
+          hint: t('email'),
           icon: Icons.person_outline,
           keyboardType: TextInputType.emailAddress,
         ),
@@ -275,7 +323,7 @@ class _AuthScreenState extends State<AuthScreen> {
         _buildField(
           controller: _passwordController,
           focusNode: _passwordFocus,
-          hint: 'Password',
+          hint: t('password'),
           icon: Icons.lock_outline,
           obscure: _obscurePassword,
           onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
@@ -290,8 +338,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 textAlign: TextAlign.center),
           ),
 
-        // Log In button
-        _buildGradientButton('Log In', _isLoading ? null : _handleSignIn),
+        _buildGradientButton(t('login'), _isLoading ? null : _handleSignIn),
         const SizedBox(height: 16),
 
         GestureDetector(
@@ -303,7 +350,7 @@ class _AuthScreenState extends State<AuthScreen> {
               _passwordController.clear();
             });
           },
-          child: Text('Hesabin yok mu? Kayit Ol',
+          child: Text(t('no_account'),
               style: TextStyle(
                 color: Colors.white.withOpacity(0.5),
                 fontSize: 13,
@@ -312,7 +359,7 @@ class _AuthScreenState extends State<AuthScreen> {
         const SizedBox(height: 8),
         GestureDetector(
           onTap: () {},
-          child: Text('Lost your password?',
+          child: Text(t('lost_password'),
               style: TextStyle(
                 color: Colors.white.withOpacity(0.35),
                 fontSize: 12,
@@ -342,13 +389,13 @@ class _AuthScreenState extends State<AuthScreen> {
         ],
       ),
       child: Column(children: [
-        const Text('Kayit Ol',
-            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+        Text(t('register'),
+            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
         const SizedBox(height: 24),
         _buildField(
           controller: _emailController,
           focusNode: _emailFocus,
-          hint: 'Email',
+          hint: t('email'),
           icon: Icons.email_outlined,
           keyboardType: TextInputType.emailAddress,
         ),
@@ -356,7 +403,7 @@ class _AuthScreenState extends State<AuthScreen> {
         _buildField(
           controller: _passwordController,
           focusNode: _passwordFocus,
-          hint: 'Sifre',
+          hint: t('password'),
           icon: Icons.lock_outline,
           obscure: _obscurePassword,
           onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
@@ -365,12 +412,56 @@ class _AuthScreenState extends State<AuthScreen> {
         _buildField(
           controller: _rePasswordController,
           focusNode: _rePasswordFocus,
-          hint: 'Sifre Tekrar',
+          hint: t('password_confirm'),
           icon: Icons.lock_outline,
           obscure: _obscureRePassword,
           onToggleObscure: () => setState(() => _obscureRePassword = !_obscureRePassword),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
+
+        // Terms agreement checkbox
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: Checkbox(
+                value: _agreedToTerms,
+                onChanged: (val) => setState(() => _agreedToTerms = val ?? false),
+                activeColor: const Color(0xFFFF416C),
+                checkColor: Colors.white,
+                side: BorderSide(color: Colors.white.withOpacity(0.4), width: 1.5),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _showTermsDialog(),
+                child: RichText(
+                  text: TextSpan(
+                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, height: 1.4),
+                    children: [
+                      TextSpan(text: '${t('terms_agree')} '),
+                      TextSpan(
+                        text: t('read_terms'),
+                        style: const TextStyle(
+                          color: Color(0xFFFF416C),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.underline,
+                          decorationColor: Color(0xFFFF416C),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
 
         if (_errorMessage != null)
           Padding(
@@ -380,7 +471,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 textAlign: TextAlign.center),
           ),
 
-        _buildGradientButton('Kayit Ol', _isLoading ? null : _handleSignUp),
+        _buildGradientButton(t('register'), _isLoading ? null : _handleSignUp),
         const SizedBox(height: 16),
 
         GestureDetector(
@@ -388,18 +479,73 @@ class _AuthScreenState extends State<AuthScreen> {
             setState(() {
               _isRegisterMode = false;
               _errorMessage = null;
+              _agreedToTerms = false;
               _emailController.clear();
               _passwordController.clear();
               _rePasswordController.clear();
             });
           },
-          child: Text('Zaten hesabin var mi? Giris Yap',
+          child: Text(t('has_account'),
               style: TextStyle(
                 color: Colors.white.withOpacity(0.5),
                 fontSize: 13,
               )),
         ),
       ]),
+    );
+  }
+
+  void _showTermsDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: const Color(0xFF1A1533),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 500, maxHeight: 500),
+          padding: const EdgeInsets.all(20),
+          child: Column(children: [
+            Row(children: [
+              const Icon(Icons.description_outlined, color: Color(0xFFFF416C), size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(t('terms_title'),
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white54),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ]),
+            Divider(color: Colors.white.withOpacity(0.1)),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Text(
+                  t('terms_content'),
+                  style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13, height: 1.6),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF416C),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                onPressed: () {
+                  setState(() => _agreedToTerms = true);
+                  Navigator.pop(ctx);
+                },
+                child: Text(t('terms_accept'), style: const TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ]),
+        ),
+      ),
     );
   }
 
@@ -525,13 +671,13 @@ class _AuthScreenState extends State<AuthScreen> {
       child: Column(children: [
         const Icon(Icons.mark_email_read_outlined, size: 48, color: Color(0xFFFF416C)),
         const SizedBox(height: 16),
-        const Text('Email Dogrulama',
-            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+        Text(t('email_verification'),
+            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         Text(_pendingVerificationEmail!,
             style: const TextStyle(color: Color(0xFFFF416C), fontSize: 14, fontWeight: FontWeight.w500)),
         const SizedBox(height: 8),
-        Text('Email adresinize gonderilen 6 haneli kodu girin.',
+        Text(t('verification_hint'),
             style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13),
             textAlign: TextAlign.center),
         const SizedBox(height: 24),
@@ -575,13 +721,13 @@ class _AuthScreenState extends State<AuthScreen> {
                 style: const TextStyle(color: Colors.greenAccent, fontSize: 13),
                 textAlign: TextAlign.center),
           ),
-        _buildGradientButton('DOGRULA', _isLoading ? null : _handleVerifyCode),
+        _buildGradientButton(t('verify'), _isLoading ? null : _handleVerifyCode),
         const SizedBox(height: 16),
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           TextButton(
             onPressed: _isLoading ? null : _handleResendCode,
-            child: const Text('Kodu tekrar gonder',
-                style: TextStyle(color: Color(0xFFFF416C), fontSize: 13)),
+            child: Text(t('resend_code'),
+                style: const TextStyle(color: Color(0xFFFF416C), fontSize: 13)),
           ),
           Text(' | ', style: TextStyle(color: Colors.white.withOpacity(0.2))),
           TextButton(
@@ -591,7 +737,7 @@ class _AuthScreenState extends State<AuthScreen> {
               _successMessage = null;
               _codeController.clear();
             }),
-            child: Text('Geri don',
+            child: Text(t('go_back'),
                 style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
           ),
         ]),

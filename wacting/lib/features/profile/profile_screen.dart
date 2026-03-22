@@ -5,6 +5,7 @@ import 'dart:html' as html;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../app/theme.dart';
 import '../../core/services/api_service.dart';
+import '../../core/services/locale_service.dart';
 import '../../core/utils/format_utils.dart';
 
 import '../social/notifications_screen.dart';
@@ -20,16 +21,13 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   Map<String, dynamic>? _profile;
-  List<dynamic> _dailyRewards = [];
   bool _loading = true;
   bool _editingName = false;
+  bool _editingBio = false;
   final _nameController = TextEditingController();
+  final _bioController = TextEditingController();
 
-  bool _showFollowers = false;
-  bool _showFollowing = false;
-  List<dynamic> _followersList = [];
-  List<dynamic> _followingList = [];
-
+  // Wallet state
   Map<String, dynamic>? _wacStatus;
   Map<String, dynamic>? _racBalance;
   List<dynamic> _txHistory = [];
@@ -40,6 +38,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   double _locationOffsetMeters = 0;
   final _offsetController = TextEditingController(text: '0');
 
+  // Settings state
+  bool _settingsExpanded = false;
+
   bool get _isOwnProfile => widget.viewUserId == null || widget.viewUserId == apiService.userId;
   String get _targetUserId => widget.viewUserId ?? apiService.userId ?? '';
 
@@ -49,6 +50,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     _tabController = TabController(length: _isOwnProfile ? 2 : 1, vsync: this);
     _loadProfile();
     _restoreLocationSettings();
+    localeService.addListener(_onLocaleChanged);
+  }
+
+  void _onLocaleChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _restoreLocationSettings() async {
@@ -72,7 +78,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   void dispose() {
     _tabController.dispose();
     _nameController.dispose();
+    _bioController.dispose();
     _offsetController.dispose();
+    localeService.removeListener(_onLocaleChanged);
     super.dispose();
   }
 
@@ -83,36 +91,17 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     }
     try {
       final profileRes = await apiService.getProfileById(_targetUserId);
-      List<dynamic> rewards = [];
-      try {
-        final rewardsRes = await apiService.getDailyRewards(_targetUserId);
-        rewards = (rewardsRes['campaigns'] as List?) ?? [];
-      } catch (_) {}
       if (mounted) {
         setState(() {
           _profile = profileRes;
-          _dailyRewards = rewards;
           _nameController.text = (_profile?['displayName'] ?? '') as String;
+          _bioController.text = (_profile?['description'] ?? '') as String;
           _loading = false;
         });
       }
     } catch (e) {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  Future<void> _loadFollowers() async {
-    try {
-      final data = await apiService.getFollowers();
-      if (mounted) setState(() => _followersList = data);
-    } catch (_) {}
-  }
-
-  Future<void> _loadFollowing() async {
-    try {
-      final data = await apiService.getFollowing();
-      if (mounted) setState(() => _followingList = data);
-    } catch (_) {}
   }
 
   Future<void> _loadWallet() async {
@@ -145,7 +134,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     if (newName.isEmpty || newName.length > 16) return;
     if (!RegExp(r'^[a-zA-ZçÇğĞıİöÖşŞüÜ\s]+$').hasMatch(newName)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: const Text('Sadece harf ve bosluk kullanin.'), backgroundColor: AppColors.accentRed),
+        SnackBar(content: Text(t('only_letters')), backgroundColor: AppColors.accentRed),
       );
       return;
     }
@@ -157,7 +146,22 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: const Text('Isim guncellenemedi.'), backgroundColor: AppColors.accentRed),
+        SnackBar(content: Text(t('name_update_failed')), backgroundColor: AppColors.accentRed),
+      );
+    }
+  }
+
+  Future<void> _updateBio() async {
+    final newBio = _bioController.text.trim();
+    try {
+      await apiService.updateProfile(description: newBio);
+      setState(() {
+        _editingBio = false;
+        _profile?['description'] = newBio;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t('bio_update_failed')), backgroundColor: AppColors.accentRed),
       );
     }
   }
@@ -171,17 +175,14 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       );
     }
 
-    final displayName = (_profile?['displayName'] ?? 'Kullanici') as String;
-    final followerCount = (_profile?['followerCount'] ?? 0) as int;
-    final followingCount = (_profile?['followingCount'] ?? 0) as int;
+    final displayName = (_profile?['displayName'] ?? t('user')) as String;
     final avatarUrl = _profile?['avatarUrl'] as String?;
     final sloganText = (_profile?['slogan'] ?? '') as String;
-    final isFollowedByViewer = (_profile?['isFollowedByViewer'] ?? false) as bool;
 
     return Scaffold(
       backgroundColor: AppColors.pageBackground,
       appBar: AppBar(
-        title: Text(_isOwnProfile ? 'Profil' : displayName, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.textPrimary)),
+        title: Text(_isOwnProfile ? t('profile') : displayName, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.textPrimary)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
@@ -194,9 +195,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           onTap: (index) {
             if (index == 1 && _walletLoading) _loadWallet();
           },
-          tabs: const [
-            Tab(text: 'PROFIL'),
-            Tab(text: 'CUZDAN'),
+          tabs: [
+            Tab(text: t('profile_tab')),
+            Tab(text: t('wallet')),
           ],
         ) : null,
       ),
@@ -204,247 +205,395 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         ? TabBarView(
         controller: _tabController,
         children: [
-          _buildProfileTab(displayName, followerCount, followingCount, avatarUrl, sloganText, isFollowedByViewer),
+          _buildProfileTab(displayName, avatarUrl, sloganText),
           _buildWalletTab(),
         ],
       )
-        : _buildProfileTab(displayName, followerCount, followingCount, avatarUrl, sloganText, isFollowedByViewer),
+        : _buildProfileTab(displayName, avatarUrl, sloganText),
     );
   }
 
-  Widget _buildProfileTab(String displayName, int followerCount, int followingCount, String? avatarUrl, String sloganText, bool isFollowedByViewer) {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROFIL TAB
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildProfileTab(String displayName, String? avatarUrl, String sloganText) {
+    final bio = (_profile?['description'] ?? '') as String;
+
     return RefreshIndicator(
-            onRefresh: _loadProfile,
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                Center(
-                  child: CircleAvatar(
-                    radius: 40,
-                    backgroundColor: AppColors.accentBlue.withOpacity(0.1),
-                    backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
-                    child: avatarUrl == null ? Icon(Icons.person, size: 40, color: AppColors.accentBlue) : null,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Center(
-                  child: _editingName && _isOwnProfile
-                      ? Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 180,
-                              child: TextField(
-                                controller: _nameController,
-                                autofocus: true,
-                                maxLength: 16,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
-                                decoration: InputDecoration(
-                                  counterText: '',
-                                  isDense: true,
-                                  border: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.accentBlue)),
-                                ),
-                                onSubmitted: (_) => _updateName(),
-                              ),
-                            ),
-                            IconButton(
-                              icon: Icon(Icons.check, color: AppColors.accentGreen, size: 20),
-                              onPressed: _updateName,
-                            ),
-                          ],
-                        )
-                      : GestureDetector(
-                          onTap: _isOwnProfile ? () => setState(() => _editingName = true) : null,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(displayName, style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
-                              if (_isOwnProfile) ...[
-                                const SizedBox(width: 6),
-                                Icon(Icons.edit, color: AppColors.textTertiary, size: 14),
-                              ],
-                            ],
-                          ),
-                        ),
-                ),
-                const SizedBox(height: 8),
-                _buildSocialMediaRow(isFollowedByViewer),
-                if (sloganText.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Center(
-                    child: Text('"$sloganText"',
-                        style: TextStyle(color: AppColors.accentTeal, fontStyle: FontStyle.italic, fontSize: 13)),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                // Daily passive reward
-                if (_dailyRewards.isNotEmpty)
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.accentGreen.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.accentGreen.withOpacity(0.3)),
-                      ),
-                      child: Text(
-                        '+${_dailyRewards.fold<double>(0, (sum, r) => sum + (double.tryParse((r['dailyReward'] ?? '0').toString()) ?? 0)).toStringAsFixed(2)} WAC / gun',
-                        style: TextStyle(color: AppColors.accentGreen, fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 16),
-                // Gecici olarak kaldirildi (sonra kullanilacak)
-                // Row(
-                //   mainAxisAlignment: MainAxisAlignment.center,
-                //   children: [
-                //     GestureDetector(
-                //       onTap: () {
-                //         setState(() => _showFollowers = !_showFollowers);
-                //         if (_showFollowers && _followersList.isEmpty) _loadFollowers();
-                //       },
-                //       child: _statCol('Takipci', '$followerCount', _showFollowers),
-                //     ),
-                //     const SizedBox(width: 32),
-                //     GestureDetector(
-                //       onTap: () {
-                //         setState(() => _showFollowing = !_showFollowing);
-                //         if (_showFollowing && _followingList.isEmpty) _loadFollowing();
-                //       },
-                //       child: _statCol('Takip', '$followingCount', _showFollowing),
-                //     ),
-                //   ],
-                // ),
-                // if (_showFollowers) _buildFollowList(_followersList, isFollower: true),
-                // if (_showFollowing) _buildFollowList(_followingList, isFollower: false),
-                const SizedBox(height: 24),
-                Text('Aktif Kampanyalar',
-                    style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 14)),
-                const SizedBox(height: 8),
-                if (_dailyRewards.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Center(child: Text('Aktif kampanya yok', style: TextStyle(color: AppColors.textTertiary))),
-                  )
-                else
-                  ..._dailyRewards.map((r) {
-                    final title = (r['title'] ?? '') as String;
-                    final slogan = (r['slogan'] ?? '') as String;
-                    final reward = (r['dailyReward'] ?? '0') as String;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceLight,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppColors.borderLight, width: 0.5),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(width: 8, height: 8,
-                              decoration: BoxDecoration(color: AppColors.accentBlue, shape: BoxShape.circle)),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text('$title — $slogan',
-                                maxLines: 1, overflow: TextOverflow.ellipsis,
-                                style: TextStyle(color: AppColors.textPrimary, fontSize: 13)),
-                            ),
-                            const SizedBox(width: 8),
-                            Text('+$reward WAC',
-                              style: TextStyle(color: AppColors.accentGreen, fontWeight: FontWeight.bold, fontSize: 12)),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
-              // ── Location Settings (own profile only) ──
-              if (_isOwnProfile) ...[
-                const SizedBox(height: 20),
-                _buildLocationSection(),
-                const SizedBox(height: 24),
-                Center(
-                  child: TextButton.icon(
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.accentRed,
-                    ),
-                    icon: const Icon(Icons.logout, size: 18),
-                    label: const Text('Cikis Yap'),
-                    onPressed: () {
-                      apiService.clearAuth();
-                      html.window.location.reload();
-                    },
-                  ),
-                ),
-              ],
-              // Follow button for other profiles
-              // Gecici olarak kaldirildi
-              // if (!_isOwnProfile) ...[
-              //   const SizedBox(height: 20),
-              //   Center(
-              //     child: ElevatedButton.icon(
-              //       style: ElevatedButton.styleFrom(
-              //         backgroundColor: isFollowedByViewer ? AppColors.surfaceLight : AppColors.accentBlue,
-              //         foregroundColor: isFollowedByViewer ? AppColors.textPrimary : Colors.white,
-              //         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              //         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-              //       ),
-              //       icon: Icon(isFollowedByViewer ? Icons.person_remove : Icons.person_add, size: 18),
-              //       label: Text(isFollowedByViewer ? 'Takibi Birak' : 'Takip Et'),
-              //       onPressed: () async {
-              //         try {
-              //           if (isFollowedByViewer) {
-              //             await apiService.unfollowUser(_targetUserId);
-              //           } else {
-              //             await apiService.followUser(_targetUserId);
-              //           }
-              //           _loadProfile();
-              //         } catch (_) {}
-              //       },
-              //     ),
-              //   ),
-              // ],
-              ],
+      onRefresh: _loadProfile,
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          // ── Avatar ──
+          Center(
+            child: CircleAvatar(
+              radius: 44,
+              backgroundColor: AppColors.accentBlue.withOpacity(0.1),
+              backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+              child: avatarUrl == null ? Icon(Icons.person, size: 44, color: AppColors.accentBlue) : null,
             ),
-          );
+          ),
+          const SizedBox(height: 12),
+
+          // ── Display Name ──
+          Center(
+            child: _editingName && _isOwnProfile
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 180,
+                        child: TextField(
+                          controller: _nameController,
+                          autofocus: true,
+                          maxLength: 16,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                          decoration: InputDecoration(
+                            counterText: '',
+                            isDense: true,
+                            border: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.accentBlue)),
+                          ),
+                          onSubmitted: (_) => _updateName(),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.check, color: AppColors.accentGreen, size: 20),
+                        onPressed: _updateName,
+                      ),
+                    ],
+                  )
+                : GestureDetector(
+                    onTap: _isOwnProfile ? () => setState(() => _editingName = true) : null,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(displayName, style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
+                        if (_isOwnProfile) ...[
+                          const SizedBox(width: 6),
+                          Icon(Icons.edit, color: AppColors.textTertiary, size: 14),
+                        ],
+                      ],
+                    ),
+                  ),
+          ),
+
+          // ── Slogan ──
+          if (sloganText.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Center(
+              child: Text('"$sloganText"',
+                  style: TextStyle(color: AppColors.accentTeal, fontStyle: FontStyle.italic, fontSize: 13)),
+            ),
+          ],
+          const SizedBox(height: 16),
+
+          // ── Bio / Hakkinda ──
+          _buildBioSection(bio),
+          const SizedBox(height: 20),
+
+          // ── Sosyal Medya Platformlari ──
+          _buildSocialPlatformsSection(),
+
+          // ── Ayarlar (sadece kendi profili) ──
+          if (_isOwnProfile) ...[
+            const SizedBox(height: 24),
+            _buildSettingsSection(),
+          ],
+        ],
+      ),
+    );
   }
 
-  Widget _buildSocialMediaRow(bool isFollowedByViewer) {
-    final socialLinksOrder = _profile?['socialLinksOrder'] as String?;
-    List<String> order = [];
-    if (socialLinksOrder != null && socialLinksOrder.isNotEmpty) {
-      try {
-        order = List<String>.from(
-          (socialLinksOrder.startsWith('['))
-              ? (socialLinksOrder.split(',').map((e) => e.replaceAll(RegExp(r'[\[\]" ]'), '').trim()))
-              : [socialLinksOrder],
-        );
-      } catch (_) {}
-    }
-    if (order.isEmpty) {
-      final platforms = ['instagram', 'twitter', 'facebook', 'tiktok', 'linkedin'];
-      for (final p in platforms) {
-        final url = _profile?['${p}Url'] ?? _profile?['${p == 'twitter' ? 'twitter' : p}Url'];
-        if (url != null && url.toString().isNotEmpty) order.add(p);
-      }
-    }
-    order.add('wacting');
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BIO SECTION
+  // ═══════════════════════════════════════════════════════════════════════════
 
-    if (order.length <= 1) return const SizedBox.shrink();
+  Widget _buildBioSection(String bio) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderLight),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.info_outline, color: AppColors.accentBlue, size: 18),
+          const SizedBox(width: 8),
+          Text(t('about'), style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+          const Spacer(),
+          if (_isOwnProfile && !_editingBio)
+            GestureDetector(
+              onTap: () => setState(() => _editingBio = true),
+              child: Icon(Icons.edit, color: AppColors.textTertiary, size: 16),
+            ),
+        ]),
+        const SizedBox(height: 8),
+        if (_editingBio && _isOwnProfile) ...[
+          TextField(
+            controller: _bioController,
+            maxLines: 4,
+            maxLength: 250,
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 13),
+            decoration: InputDecoration(
+              hintText: t('about_placeholder'),
+              hintStyle: TextStyle(color: AppColors.textTertiary),
+              filled: true,
+              fillColor: AppColors.surfaceWhite,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.borderLight)),
+              contentPadding: const EdgeInsets.all(12),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            TextButton(
+              onPressed: () => setState(() {
+                _editingBio = false;
+                _bioController.text = (_profile?['description'] ?? '') as String;
+              }),
+              child: Text(t('cancel'), style: TextStyle(color: AppColors.textTertiary)),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accentBlue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              ),
+              onPressed: _updateBio,
+              child: Text(t('save')),
+            ),
+          ]),
+        ] else
+          Text(
+            bio.isNotEmpty ? bio : (_isOwnProfile ? t('no_bio_own') : t('no_bio_other')),
+            style: TextStyle(
+              color: bio.isNotEmpty ? AppColors.textSecondary : AppColors.textTertiary,
+              fontSize: 13,
+              fontStyle: bio.isEmpty ? FontStyle.italic : FontStyle.normal,
+            ),
+          ),
+      ]),
+    );
+  }
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Wrap(
-          spacing: 10,
-          children: order.map((platform) {
-            if (platform == 'wacting') return _buildWactingIcon(isFollowedByViewer);
-            final url = _getSocialUrl(platform);
-            if (url == null || url.isEmpty) return const SizedBox.shrink();
-            return _buildSocialIcon(platform, url, isFollowedByViewer);
-          }).toList(),
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SOCIAL PLATFORMS SECTION
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildSocialPlatformsSection() {
+    final platforms = [
+      _PlatformDef('instagram', 'Instagram', Icons.camera_alt, const Color(0xFFE1306C)),
+      _PlatformDef('twitter', 'X (Twitter)', Icons.close, const Color(0xFF1DA1F2), textLabel: 'X'),
+      _PlatformDef('facebook', 'Facebook', Icons.facebook, const Color(0xFF1877F2)),
+      _PlatformDef('tiktok', 'TikTok', Icons.music_note, const Color(0xFF000000)),
+      _PlatformDef('linkedin', 'LinkedIn', Icons.work, const Color(0xFF0A66C2)),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderLight),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.share, color: AppColors.accentBlue, size: 18),
+          const SizedBox(width: 8),
+          Text(t('social_media'), style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+        ]),
+        const SizedBox(height: 12),
+        ...platforms.map((p) => _buildPlatformRow(p)),
+        // Wacting platform follow
+        _buildWactingFollowRow(),
+      ]),
+    );
+  }
+
+  Widget _buildPlatformRow(_PlatformDef platform) {
+    final url = _getSocialUrl(platform.key);
+    final hasUrl = url != null && url.isNotEmpty;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceWhite,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.borderLight, width: 0.5),
+      ),
+      child: Row(children: [
+        // Platform icon
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: platform.color.withOpacity(0.1),
+          ),
+          child: Center(
+            child: platform.textLabel != null
+                ? Text(platform.textLabel!, style: TextStyle(color: platform.color, fontSize: 14, fontWeight: FontWeight.w900))
+                : Icon(platform.icon, color: platform.color, size: 18),
+          ),
         ),
+        const SizedBox(width: 12),
+        // Platform name + username
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(platform.name, style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+            if (hasUrl)
+              Text(url!, style: TextStyle(color: AppColors.textTertiary, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis)
+            else
+              Text(t('not_connected'), style: TextStyle(color: AppColors.textTertiary, fontSize: 11, fontStyle: FontStyle.italic)),
+          ]),
+        ),
+        // Follow button
+        if (hasUrl && !_isOwnProfile)
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: platform.color,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              minimumSize: const Size(0, 32),
+            ),
+            onPressed: () {
+              String fullUrl = url!;
+              if (!fullUrl.startsWith('http')) fullUrl = 'https://$fullUrl';
+              html.window.open(fullUrl, '_blank');
+            },
+            child: Text(t('follow'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+          ),
+        if (hasUrl && _isOwnProfile)
+          Icon(Icons.check_circle, color: AppColors.accentGreen, size: 20),
+        if (!hasUrl && _isOwnProfile)
+          GestureDetector(
+            onTap: () => _showEditSocialUrlDialog(platform.key, platform.name),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppColors.accentBlue.withOpacity(0.5)),
+              ),
+              child: Text(t('add'), style: TextStyle(color: AppColors.accentBlue, fontSize: 11, fontWeight: FontWeight.bold)),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  Widget _buildWactingFollowRow() {
+    final isFollowedByViewer = (_profile?['isFollowedByViewer'] ?? false) as bool;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceWhite,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.borderLight, width: 0.5),
+      ),
+      child: Row(children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              colors: [Color(0xFFFF416C), Color(0xFFFF4B2B)],
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
+            ),
+          ),
+          child: const Center(
+            child: Text('W', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Wacting', style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+            Text(isFollowedByViewer ? t('following_you') : t('platform_follow'),
+                style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
+          ]),
+        ),
+        if (!_isOwnProfile)
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isFollowedByViewer ? AppColors.surfaceLight : const Color(0xFFFF416C),
+              foregroundColor: isFollowedByViewer ? AppColors.textPrimary : Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              minimumSize: const Size(0, 32),
+            ),
+            onPressed: () async {
+              try {
+                if (isFollowedByViewer) {
+                  await apiService.unfollowUser(_targetUserId);
+                } else {
+                  await apiService.followUser(_targetUserId);
+                }
+                _loadProfile();
+              } catch (_) {}
+            },
+            child: Text(
+              isFollowedByViewer ? t('unfollow') : t('follow'),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  void _showEditSocialUrlDialog(String platform, String platformName) {
+    final urlController = TextEditingController(text: _getSocialUrl(platform) ?? '');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(t('link_title').replaceAll('{platform}', platformName), style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
+        content: TextField(
+          controller: urlController,
+          style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
+          decoration: InputDecoration(
+            hintText: t('enter_profile_link'),
+            hintStyle: TextStyle(color: AppColors.textTertiary),
+            filled: true,
+            fillColor: AppColors.surfaceLight,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.borderLight)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(t('cancel'), style: TextStyle(color: AppColors.textTertiary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentBlue, foregroundColor: Colors.white),
+            onPressed: () async {
+              final url = urlController.text.trim();
+              try {
+                switch (platform) {
+                  case 'instagram': await apiService.updateProfileSocialUrls(instagramUrl: url); break;
+                  case 'twitter': await apiService.updateProfileSocialUrls(twitterUrl: url); break;
+                  case 'facebook': await apiService.updateProfileSocialUrls(facebookUrl: url); break;
+                  case 'tiktok': await apiService.updateProfileSocialUrls(tiktokUrl: url); break;
+                  case 'linkedin': await apiService.updateProfileSocialUrls(linkedinUrl: url); break;
+                }
+                Navigator.pop(ctx);
+                _loadProfile();
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(t('link_update_failed')), backgroundColor: AppColors.accentRed),
+                );
+              }
+            },
+            child: Text(t('save')),
+          ),
+        ],
       ),
     );
   }
@@ -460,166 +609,607 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     }
   }
 
-  Widget _buildSocialIcon(String platform, String url, bool isFollowed) {
-    final Map<String, _SocialIconData> icons = {
-      'instagram': _SocialIconData(Icons.camera_alt, const LinearGradient(
-        colors: [Color(0xFFE1306C), Color(0xFF833AB4), Color(0xFFF77737)],
-        begin: Alignment.topLeft, end: Alignment.bottomRight,
-      )),
-      'twitter': _SocialIconData(Icons.close, null, bgColor: const Color(0xFF1DA1F2)),
-      'facebook': _SocialIconData(Icons.facebook, null, bgColor: const Color(0xFF1877F2)),
-      'tiktok': _SocialIconData(Icons.music_note, null, bgColor: Colors.black87),
-      'linkedin': _SocialIconData(Icons.work, null, bgColor: const Color(0xFF0A66C2)),
-    };
-    final data = icons[platform];
-    if (data == null) return const SizedBox.shrink();
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SETTINGS SECTION
+  // ═══════════════════════════════════════════════════════════════════════════
 
-    return GestureDetector(
-      onTap: () {
-        String fullUrl = url;
-        if (!fullUrl.startsWith('http')) fullUrl = 'https://$fullUrl';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(fullUrl), duration: const Duration(seconds: 2)),
-        );
-      },
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: data.gradient,
-          color: data.gradient == null ? data.bgColor : null,
-          border: isFollowed ? Border.all(color: AppColors.accentTeal, width: 2) : null,
-        ),
-        child: Center(
-          child: platform == 'twitter'
-              ? const Text('X', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))
-              : Icon(data.icon, color: Colors.white, size: 20),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWactingIcon(bool isFollowed) {
+  Widget _buildSettingsSection() {
     return Container(
-      width: 40, height: 40,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: const LinearGradient(
-          colors: [Color(0xFFFF416C), Color(0xFFFF4B2B)],
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
-        ),
-        border: isFollowed ? Border.all(color: AppColors.accentTeal, width: 2) : null,
-      ),
-      child: const Center(
-        child: Text('W', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
-      ),
-    );
-  }
-
-  Widget _statCol(String label, String value, bool expanded) {
-    return Column(
-      children: [
-        Text(value, style: TextStyle(
-          color: expanded ? AppColors.accentBlue : AppColors.textPrimary,
-          fontWeight: FontWeight.bold, fontSize: 16,
-        )),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(label, style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
-            Icon(expanded ? Icons.expand_less : Icons.expand_more,
-                color: AppColors.textTertiary, size: 14),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFollowList(List<dynamic> items, {required bool isFollower}) {
-    if (items.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(12),
-        child: Center(child: Text(
-          isFollower ? 'Henuz takipcin yok.' : 'Henuz kimseyi takip etmiyorsun.',
-          style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
-        )),
-      );
-    }
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      constraints: const BoxConstraints(maxHeight: 200),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceLight,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.borderLight, width: 0.5),
-      ),
-      child: ListView.builder(
-        shrinkWrap: true,
-        itemCount: items.length,
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        itemBuilder: (context, index) {
-          final item = items[index] as Map<String, dynamic>;
-          final user = isFollower ? item['follower'] : item['following'];
-          if (user == null) return const SizedBox.shrink();
-          final name = (user['displayName'] ?? user['slogan'] ?? 'Kullanici') as String;
-          final slogan = (user['slogan'] ?? '') as String;
-          return ListTile(
-            dense: true,
-            onTap: () {
-              final uid = user['id'] as String?;
-              if (uid != null && uid != _targetUserId) {
-                Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => ProfileScreen(viewUserId: uid),
-                ));
-              }
-            },
-            leading: CircleAvatar(
-              radius: 16,
-              backgroundColor: AppColors.accentBlue.withOpacity(0.1),
-              child: Icon(Icons.person, size: 16, color: AppColors.accentBlue),
-            ),
-            title: Text(name, style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
-            subtitle: slogan.isNotEmpty
-                ? Text(slogan, style: TextStyle(color: AppColors.textTertiary, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis)
-                : null,
-            trailing: !isFollower && _isOwnProfile
-                ? GestureDetector(
-                    onTap: () async {
-                      try {
-                        await apiService.unfollowUser(user['id']);
-                        _loadFollowing();
-                        _loadProfile();
-                      } catch (_) {}
-                    },
-                    child: Text('Birak', style: TextStyle(color: AppColors.accentRed, fontSize: 11, fontWeight: FontWeight.bold)),
-                  )
-                : null,
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildLocationSection() {
-    return Container(
-      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surfaceLight,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.borderLight),
       ),
+      child: Column(children: [
+        // Header
+        GestureDetector(
+          onTap: () => setState(() => _settingsExpanded = !_settingsExpanded),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            child: Row(children: [
+              Icon(Icons.settings, color: AppColors.textSecondary, size: 20),
+              const SizedBox(width: 8),
+              Text(t('settings'), style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              Icon(
+                _settingsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                color: AppColors.textTertiary,
+                size: 24,
+              ),
+            ]),
+          ),
+        ),
+
+        if (_settingsExpanded) ...[
+          Divider(height: 1, color: AppColors.borderLight),
+
+          // ── Konum Ayarlari ──
+          _buildLocationSection(),
+
+          Divider(height: 1, color: AppColors.borderLight),
+
+          // ── Kullanim Sozlesmesi ──
+          _buildSettingsTile(
+            icon: Icons.description_outlined,
+            title: t('terms_of_use'),
+            subtitle: t('terms_view'),
+            onTap: () => _showTermsDialog(),
+          ),
+
+          Divider(height: 1, color: AppColors.borderLight),
+
+          // ── Gizlilik Politikasi ──
+          _buildSettingsTile(
+            icon: Icons.privacy_tip_outlined,
+            title: t('privacy_policy'),
+            subtitle: t('privacy_view'),
+            onTap: () => _showPrivacyDialog(),
+          ),
+
+          Divider(height: 1, color: AppColors.borderLight),
+
+          // ── Bildirim Ayarlari ──
+          _buildSettingsTile(
+            icon: Icons.notifications_outlined,
+            title: t('notification_settings'),
+            subtitle: t('notification_manage'),
+            onTap: () => _showNotificationSettingsDialog(),
+          ),
+
+          Divider(height: 1, color: AppColors.borderLight),
+
+          // ── Istek ve Sikayet ──
+          _buildSettingsTile(
+            icon: Icons.feedback_outlined,
+            title: t('feedback'),
+            subtitle: t('feedback_send'),
+            onTap: () => _showFeedbackDialog(),
+          ),
+
+          Divider(height: 1, color: AppColors.borderLight),
+
+          // ── Dil Secimi ──
+          _buildSettingsTile(
+            icon: Icons.language,
+            title: t('language'),
+            subtitle: t('language_desc'),
+            onTap: () => _showLanguageDialog(),
+          ),
+
+          Divider(height: 1, color: AppColors.borderLight),
+
+          // ── Hesap Dondurma ──
+          _buildSettingsTile(
+            icon: Icons.pause_circle_outline,
+            title: t('freeze_account'),
+            subtitle: t('freeze_desc'),
+            onTap: () => _showFreezeAccountDialog(),
+            color: AppColors.accentAmber,
+          ),
+
+          Divider(height: 1, color: AppColors.borderLight),
+
+          // ── Hesap Kapatma ──
+          _buildSettingsTile(
+            icon: Icons.delete_forever_outlined,
+            title: t('delete_account'),
+            subtitle: t('delete_desc'),
+            onTap: () => _showDeleteAccountDialog(),
+            color: AppColors.accentRed,
+          ),
+
+          Divider(height: 1, color: AppColors.borderLight),
+
+          // ── Engellenen Kullanicilar ──
+          _buildSettingsTile(
+            icon: Icons.block,
+            title: t('blocked_users'),
+            subtitle: t('blocked_manage'),
+            onTap: () => _showBlockedUsersDialog(),
+          ),
+
+          Divider(height: 1, color: AppColors.borderLight),
+
+          // ── Yardim ──
+          _buildSettingsTile(
+            icon: Icons.help_outline,
+            title: t('help'),
+            subtitle: t('help_desc'),
+            onTap: () => _showHelpDialog(),
+          ),
+
+          Divider(height: 1, color: AppColors.borderLight),
+
+          // ── Cikis Yap ──
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.accentRed.withOpacity(0.1),
+                  foregroundColor: AppColors.accentRed,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                icon: const Icon(Icons.logout, size: 18),
+                label: Text(t('logout'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: Text(t('logout'), style: TextStyle(color: AppColors.textPrimary)),
+                      content: Text(t('logout_confirm'),
+                          style: TextStyle(color: AppColors.textSecondary)),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: Text(t('cancel'), style: TextStyle(color: AppColors.textTertiary)),
+                        ),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentRed, foregroundColor: Colors.white),
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            apiService.clearAuth();
+                            html.window.location.reload();
+                          },
+                          child: Text(t('logout')),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  Widget _buildSettingsTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    Color? color,
+  }) {
+    final tileColor = color ?? AppColors.textSecondary;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(children: [
+          Icon(icon, color: tileColor, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: TextStyle(color: color ?? AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+              Text(subtitle, style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
+            ]),
+          ),
+          Icon(Icons.chevron_right, color: AppColors.textTertiary, size: 20),
+        ]),
+      ),
+    );
+  }
+
+  // ── Settings Dialogs ──
+
+  void _showTermsDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+          padding: const EdgeInsets.all(20),
+          child: Column(children: [
+            Row(children: [
+              Icon(Icons.description_outlined, color: AppColors.accentBlue, size: 22),
+              const SizedBox(width: 8),
+              Text(t('terms_of_use'), style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+            ]),
+            const Divider(),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Text(
+                  _getTermsText(),
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.6),
+                ),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  void _showPrivacyDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+          padding: const EdgeInsets.all(20),
+          child: Column(children: [
+            Row(children: [
+              Icon(Icons.privacy_tip_outlined, color: AppColors.accentBlue, size: 22),
+              const SizedBox(width: 8),
+              Text(t('privacy_policy'), style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+            ]),
+            const Divider(),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Text(
+                  t('privacy_coming'),
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.6),
+                ),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  void _showNotificationSettingsDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [
+          Icon(Icons.notifications_outlined, color: AppColors.accentBlue, size: 22),
+          const SizedBox(width: 8),
+          Text(t('notification_settings'), style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
+        ]),
+        content: Text(t('notification_coming'),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(t('ok'))),
+        ],
+      ),
+    );
+  }
+
+  void _showFeedbackDialog() {
+    final subjectCtrl = TextEditingController();
+    final messageCtrl = TextEditingController();
+    String feedbackType = 'istek';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 450),
+            padding: const EdgeInsets.all(20),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(Icons.feedback_outlined, color: AppColors.accentBlue, size: 22),
+                const SizedBox(width: 8),
+                Text(t('feedback'), style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+                const Spacer(),
+                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+              ]),
+              const SizedBox(height: 16),
+              // Type selection
+              Row(children: [
+                _feedbackTypeChip(t('feedback_request'), 'istek', feedbackType, (val) => setDialogState(() => feedbackType = val)),
+                const SizedBox(width: 8),
+                _feedbackTypeChip(t('feedback_complaint'), 'sikayet', feedbackType, (val) => setDialogState(() => feedbackType = val)),
+                const SizedBox(width: 8),
+                _feedbackTypeChip(t('feedback_suggestion'), 'oneri', feedbackType, (val) => setDialogState(() => feedbackType = val)),
+              ]),
+              const SizedBox(height: 12),
+              TextField(
+                controller: subjectCtrl,
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: t('feedback_subject'),
+                  hintStyle: TextStyle(color: AppColors.textTertiary),
+                  filled: true, fillColor: AppColors.surfaceWhite,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.borderLight)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: messageCtrl,
+                maxLines: 4,
+                maxLength: 500,
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: t('feedback_message'),
+                  hintStyle: TextStyle(color: AppColors.textTertiary),
+                  filled: true, fillColor: AppColors.surfaceWhite,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.borderLight)),
+                  contentPadding: const EdgeInsets.all(12),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.accentBlue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(this.context).showSnackBar(
+                      SnackBar(
+                        content: Text(t('feedback_sent')),
+                        backgroundColor: AppColors.accentGreen,
+                      ),
+                    );
+                  },
+                  child: Text(t('send'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _feedbackTypeChip(String label, String value, String current, Function(String) onSelect) {
+    final selected = current == value;
+    return GestureDetector(
+      onTap: () => onSelect(value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.accentBlue : AppColors.surfaceWhite,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: selected ? AppColors.accentBlue : AppColors.borderLight),
+        ),
+        child: Text(label, style: TextStyle(
+          color: selected ? Colors.white : AppColors.textSecondary,
+          fontSize: 12, fontWeight: FontWeight.w600,
+        )),
+      ),
+    );
+  }
+
+  void _showFreezeAccountDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [
+          Icon(Icons.pause_circle_outline, color: AppColors.accentAmber, size: 22),
+          const SizedBox(width: 8),
+          Text(t('freeze_account'), style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(t('freeze_confirm'),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+          const SizedBox(height: 12),
+          Text(t('freeze_when'),
+              style: TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          _bulletPoint(t('freeze_1')),
+          _bulletPoint(t('freeze_2')),
+          _bulletPoint(t('freeze_3')),
+          _bulletPoint(t('freeze_4')),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(t('cancel'), style: TextStyle(color: AppColors.textTertiary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentAmber, foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(t('freeze_coming')), backgroundColor: AppColors.accentAmber),
+              );
+            },
+            child: Text(t('freeze')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteAccountDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [
+          Icon(Icons.delete_forever_outlined, color: AppColors.accentRed, size: 22),
+          const SizedBox(width: 8),
+          Text(t('delete_account'), style: TextStyle(color: AppColors.accentRed, fontSize: 16)),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(t('delete_irreversible'),
+              style: TextStyle(color: AppColors.accentRed, fontSize: 13, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Text(t('delete_when'),
+              style: TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          _bulletPoint(t('delete_1')),
+          _bulletPoint(t('delete_2')),
+          _bulletPoint(t('delete_3')),
+          _bulletPoint(t('delete_4')),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(t('cancel'), style: TextStyle(color: AppColors.textTertiary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentRed, foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(t('delete_coming')), backgroundColor: AppColors.accentRed),
+              );
+            },
+            child: Text(t('delete_permanent')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBlockedUsersDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [
+          Icon(Icons.block, color: AppColors.textSecondary, size: 22),
+          const SizedBox(width: 8),
+          Text(t('blocked_users'), style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
+        ]),
+        content: Text(t('blocked_empty'),
+            style: TextStyle(color: AppColors.textTertiary, fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(t('ok'))),
+        ],
+      ),
+    );
+  }
+
+  void _showHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [
+          Icon(Icons.help_outline, color: AppColors.accentBlue, size: 22),
+          const SizedBox(width: 8),
+          Text(t('help'), style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(t('faq'), style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text(t('faq_coming'), style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+          const SizedBox(height: 16),
+          Text(t('contact'), style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text('destek@wacting.com', style: TextStyle(color: AppColors.accentBlue, fontSize: 12)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(t('ok'))),
+        ],
+      ),
+    );
+  }
+
+  Widget _bulletPoint(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('• ', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+        Expanded(child: Text(text, style: TextStyle(color: AppColors.textSecondary, fontSize: 12))),
+      ]),
+    );
+  }
+
+  void _showLanguageDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [
+          Icon(Icons.language, color: AppColors.accentBlue, size: 22),
+          const SizedBox(width: 8),
+          Text(t('language_select'), style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          _languageOption('Turkce', 'tr', ctx),
+          const SizedBox(height: 8),
+          _languageOption('English', 'en', ctx),
+        ]),
+      ),
+    );
+  }
+
+  Widget _languageOption(String label, String locale, BuildContext ctx) {
+    final isSelected = localeService.locale == locale;
+    return InkWell(
+      onTap: () {
+        localeService.setLocale(locale);
+        Navigator.pop(ctx);
+      },
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.accentBlue.withOpacity(0.1) : AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? AppColors.accentBlue : AppColors.borderLight,
+          ),
+        ),
+        child: Row(children: [
+          Text(locale == 'tr' ? '🇹🇷' : '🇬🇧', style: const TextStyle(fontSize: 20)),
+          const SizedBox(width: 12),
+          Expanded(child: Text(label, style: TextStyle(
+            color: AppColors.textPrimary, fontSize: 14,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ))),
+          if (isSelected)
+            Icon(Icons.check_circle, color: AppColors.accentBlue, size: 20),
+        ]),
+      ),
+    );
+  }
+
+  String _getTermsText() => t('terms_content');
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LOCATION SECTION (inside settings)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildLocationSection() {
+    return Padding(
+      padding: const EdgeInsets.all(14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Icon(Icons.location_on, color: AppColors.accentBlue, size: 20),
           const SizedBox(width: 8),
-          Text('Konum Ayarlari', style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+          Text(t('location_settings'), style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold)),
         ]),
         const SizedBox(height: 10),
         Row(children: [
           Expanded(
             child: Text(
-              _locationEnabled ? 'Konumunuz haritada gorunuyor' : 'Konum kapali — haritada gorunmuyorsunuz',
+              _locationEnabled ? t('location_on') : t('location_off'),
               style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
             ),
           ),
@@ -628,7 +1218,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             activeColor: AppColors.accentTeal,
             onChanged: (val) async {
               if (val) {
-                // Request geolocation permission
                 try {
                   final geo = html.window.navigator.geolocation;
                   final pos = await geo.getCurrentPosition(
@@ -647,13 +1236,13 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                   _persistLocationSettings();
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Konum aktif edildi')),
+                      SnackBar(content: Text(t('location_enabled'))),
                     );
                   }
                 } catch (e) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Konum izni alinamadi'), backgroundColor: Colors.red),
+                      SnackBar(content: Text(t('location_denied')), backgroundColor: Colors.red),
                     );
                   }
                 }
@@ -667,9 +1256,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         ]),
         if (_locationEnabled) ...[
           const SizedBox(height: 8),
-          Text('Konum Oteleme (metre)', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          Text(t('location_offset'), style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
           const SizedBox(height: 4),
-          Text('Gizlilik icin konumunuz bu kadar metre otelenecek',
+          Text(t('location_offset_desc'),
             style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
           const SizedBox(height: 8),
           Row(children: [
@@ -709,17 +1298,21 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     locationOffsetMeters: offset,
                   );
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Oteleme: ${offset.toInt()}m olarak ayarlandi')),
+                    SnackBar(content: Text(t('offset_set').replaceAll('{offset}', '${offset.toInt()}'))),
                   );
                 } catch (_) {}
               },
-              child: const Text('Kaydet'),
+              child: Text(t('save')),
             ),
           ]),
         ],
       ]),
     );
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WALLET TAB
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Widget _buildWalletTab() {
     if (_walletLoading) {
@@ -759,12 +1352,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             onReceive: () => _copyWalletId(walletId),
           ),
           const SizedBox(height: 20),
-          Text('Islem Gecmisi', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 14)),
+          Text(t('tx_history'), style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 14)),
           const SizedBox(height: 8),
           if (_txHistory.isEmpty)
             Center(child: Padding(
               padding: const EdgeInsets.all(24),
-              child: Text('Henuz islem yok.', style: TextStyle(color: AppColors.textTertiary)),
+              child: Text(t('no_tx'), style: TextStyle(color: AppColors.textTertiary)),
             ))
           else
             ..._txHistory.map((tx) => _buildTxRow(tx as Map<String, dynamic>)),
@@ -797,7 +1390,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         ]),
         const SizedBox(height: 8),
         Row(children: [
-          Text('Cuzdan: ', style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
+          Text('${t('wallet_label')}: ', style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
           Expanded(child: Text(walletId, style: TextStyle(color: AppColors.textPrimary, fontSize: 11, fontFamily: 'monospace'),
               maxLines: 1, overflow: TextOverflow.ellipsis)),
           GestureDetector(
@@ -815,7 +1408,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             icon: const Icon(Icons.arrow_upward, size: 16),
-            label: const Text('Gonder', style: TextStyle(fontWeight: FontWeight.bold)),
+            label: Text(t('send'), style: const TextStyle(fontWeight: FontWeight.bold)),
             onPressed: onSend,
           )),
           const SizedBox(width: 8),
@@ -825,7 +1418,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             icon: const Icon(Icons.arrow_downward, size: 16),
-            label: const Text('Al', style: TextStyle(fontWeight: FontWeight.bold)),
+            label: Text(t('receive_token'), style: const TextStyle(fontWeight: FontWeight.bold)),
             onPressed: onReceive,
           )),
         ]),
@@ -873,7 +1466,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   void _copyWalletId(String walletId) {
     Clipboard.setData(ClipboardData(text: walletId));
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: const Text('Cuzdan kodu kopyalandi!'), backgroundColor: AppColors.navyPrimary, duration: const Duration(seconds: 1)),
+      SnackBar(content: Text(t('wallet_copied')), backgroundColor: AppColors.navyPrimary, duration: const Duration(seconds: 1)),
     );
   }
 
@@ -888,13 +1481,13 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       builder: (ctx) => Padding(
         padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${isWac ? "WAC" : "RAC"} Gonder', style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
+          Text('${isWac ? "WAC" : "RAC"} ${t('send_token')}', style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           TextField(
             controller: walletCtrl,
             style: TextStyle(color: AppColors.textPrimary),
             decoration: InputDecoration(
-              hintText: 'Hedef cuzdan kodu',
+              hintText: t('target_wallet'),
               hintStyle: TextStyle(color: AppColors.textTertiary),
               filled: true, fillColor: AppColors.surfaceLight,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
@@ -906,7 +1499,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             keyboardType: TextInputType.number,
             style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold),
             decoration: InputDecoration(
-              hintText: 'Miktar',
+              hintText: t('amount'),
               suffixText: isWac ? 'WAC' : 'RAC',
               suffixStyle: TextStyle(color: AppColors.accentAmber, fontWeight: FontWeight.bold),
               filled: true, fillColor: AppColors.surfaceLight,
@@ -934,15 +1527,15 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                   setState(() => _walletLoading = true);
                   _loadWallet();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: const Text('Transfer basarili!'), backgroundColor: AppColors.navyPrimary),
+                    SnackBar(content: Text(t('transfer_success')), backgroundColor: AppColors.navyPrimary),
                   );
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Transfer basarisiz: $e'), backgroundColor: AppColors.accentRed),
+                    SnackBar(content: Text(t('transfer_failed').replaceAll('{error}', '$e')), backgroundColor: AppColors.accentRed),
                   );
                 }
               },
-              child: Text('GONDER', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              child: Text(t('send_token').toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ),
           ),
         ]),
@@ -951,9 +1544,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   }
 }
 
-class _SocialIconData {
+class _PlatformDef {
+  final String key;
+  final String name;
   final IconData icon;
-  final Gradient? gradient;
-  final Color? bgColor;
-  _SocialIconData(this.icon, this.gradient, {this.bgColor});
+  final Color color;
+  final String? textLabel;
+  const _PlatformDef(this.key, this.name, this.icon, this.color, {this.textLabel});
 }
+

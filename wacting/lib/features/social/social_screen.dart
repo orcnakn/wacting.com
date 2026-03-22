@@ -3,11 +3,13 @@ import 'package:dio/dio.dart';
 import '../../app/theme.dart';
 import '../../app/widgets/modern_card.dart';
 import '../../core/services/api_service.dart';
+import '../../core/services/locale_service.dart';
 import '../profile/profile_screen.dart';
 import '../grid/grid_screen.dart' show globalMapNavigateTo;
 import '../root_navigation.dart' show globalSwitchTab;
 
-String _extractError(dynamic e, [String fallback = 'Bir hata olustu.']) {
+String _extractError(dynamic e, [String? fallback]) {
+  fallback ??= t('error_occurred');
   if (e is DioException && e.response?.data is Map) {
     return (e.response!.data as Map)['error']?.toString() ?? fallback;
   }
@@ -42,9 +44,9 @@ class _SocialScreenState extends State<SocialScreen> {
              labelColor: AppColors.accentBlue,
              unselectedLabelColor: AppColors.textTertiary,
              indicatorWeight: 3,
-             tabs: const [
-               Tab(text: 'KAMPANYALAR', icon: Icon(Icons.flag)),
-               Tab(text: 'GLOBAL', icon: Icon(Icons.public)),
+             tabs: [
+               Tab(text: t('campaigns'), icon: const Icon(Icons.flag)),
+               Tab(text: t('global'), icon: const Icon(Icons.public)),
              ],
            ),
         ),
@@ -115,7 +117,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
     try {
       final dt = DateTime.parse(isoDate);
       final diff = dt.difference(DateTime.now());
-      if (diff.isNegative) return 'Suresi doldu';
+      if (diff.isNegative) return t('expired');
       if (diff.inDays > 0) return '${diff.inDays} gun kaldi';
       return '${diff.inHours}sa ${diff.inMinutes.remainder(60)}dk kaldi';
     } catch (_) {
@@ -125,7 +127,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
 
   String _formatCountdown(DateTime endsAt) {
     final diff = endsAt.difference(DateTime.now());
-    if (diff.isNegative) return 'Sona erdi';
+    if (diff.isNegative) return t('ended');
     final h = diff.inHours;
     final m = diff.inMinutes.remainder(60);
     return '${h}sa ${m}dk kaldi';
@@ -160,7 +162,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 const Icon(Icons.add, color: Colors.white, size: 18),
                 const SizedBox(width: 8),
-                const Text('Kampanya Olustur', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                Text(t('create_campaign'), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
               ]),
             ),
           ),
@@ -196,7 +198,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
               padding: const EdgeInsets.only(bottom: 8),
               child: _buildCompactMyCampaignRow(
                 campaignId: c['id'] ?? '',
-                title: c['title'] ?? 'Kampanya',
+                title: c['title'] ?? t('campaign'),
                 slogan: c['slogan'] ?? '',
                 participants: memberCount,
                 totalWacStaked: totalStaked,
@@ -238,9 +240,9 @@ class _CampaignsTabState extends State<_CampaignsTab> {
               Text(h['title']!, style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 8),
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                _metricCol('Katildi', h['joinedAt']!, AppColors.textTertiary),
-                _metricCol('Ayrildi', h['exitedAt']!, AppColors.textTertiary),
-                _metricCol('Kazanilan', '${h['totalEarned']} WAC', AppColors.accentAmber),
+                _metricCol(t('joined'), h['joinedAt']!, AppColors.textTertiary),
+                _metricCol(t('left'), h['exitedAt']!, AppColors.textTertiary),
+                _metricCol(t('earned'), '${h['totalEarned']} WAC', AppColors.accentAmber),
               ]),
             ]),
           ),
@@ -320,7 +322,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                         Text('${(wacPct * 100).toStringAsFixed(1)}%',
                             style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
-                        Text('${opt['voterCount'] ?? 0} kisi',
+                        Text('${opt['voterCount'] ?? 0} ${t('people')}',
                             style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
                       ]),
                     ]),
@@ -353,7 +355,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                           );
                         }
                       },
-                child: const Text('OY VER', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                child: Text(t('vote'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
             ),
           ]),
@@ -510,11 +512,11 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                   Row(children: [
                     const Icon(Icons.warning_rounded, color: Colors.red, size: 18),
                     const SizedBox(width: 8),
-                    Text('Acil Durum Ayarlari', style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+                    Text(t('emergency_settings'), style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
                   ]),
                   const SizedBox(height: 8),
                   Row(children: [
-                    Expanded(child: _emergencyInfoTile('WAC Havuzu', emergencyWacPool.toStringAsFixed(2))),
+                    Expanded(child: _emergencyInfoTile(t('wac_pool'), emergencyWacPool.toStringAsFixed(2))),
                     const SizedBox(width: 8),
                     Expanded(child: _emergencyInfoTile('Logo Alani', '${(emergencyAreaM2 / 1000).toStringAsFixed(1)}K m\u00B2')),
                   ]),
@@ -522,7 +524,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                   if (emergencyExpiresAt != null)
                     _emergencyInfoTile('Bitis', _formatEmergencyExpiry(emergencyExpiresAt)),
                   const SizedBox(height: 12),
-                  Text('WAC Harcama', style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+                  Text(t('wac_spend'), style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
                   Row(children: [
                     Expanded(
@@ -538,7 +540,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                           child: Column(children: [
                             Icon(Icons.timer, color: spendTarget == 'duration' ? Colors.red : AppColors.textTertiary, size: 20),
                             const SizedBox(height: 2),
-                            Text('Sure Uzat', style: TextStyle(
+                            Text(t('extend_time'), style: TextStyle(
                               color: spendTarget == 'duration' ? Colors.red : AppColors.textSecondary,
                               fontSize: 11, fontWeight: FontWeight.w600,
                             )),
@@ -561,7 +563,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                           child: Column(children: [
                             Icon(Icons.zoom_out_map, color: spendTarget == 'area' ? Colors.red : AppColors.textTertiary, size: 20),
                             const SizedBox(height: 2),
-                            Text('Logo Buyut', style: TextStyle(
+                            Text(t('enlarge_logo'), style: TextStyle(
                               color: spendTarget == 'area' ? Colors.red : AppColors.textSecondary,
                               fontSize: 11, fontWeight: FontWeight.w600,
                             )),
@@ -601,7 +603,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                           );
                           Navigator.pop(ctx);
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(result['message'] ?? 'Basarili')),
+                            SnackBar(content: Text(result['message'] ?? t('success'))),
                           );
                           _loadData();
                         } catch (e) {
@@ -632,17 +634,17 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                   Row(children: [
                     Icon(Icons.speed, color: AppColors.accentBlue, size: 18),
                     const SizedBox(width: 8),
-                    Text('Kampanya Hizi', style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+                    Text(t('campaign_speed'), style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
                     const Spacer(),
                     Text(
-                      currentSpeed == 0 ? 'Sabit' : '${currentSpeed.toStringAsFixed(1)}x',
+                      currentSpeed == 0 ? t('fixed') : '${currentSpeed.toStringAsFixed(1)}x',
                       style: TextStyle(color: AppColors.accentBlue, fontSize: 14, fontWeight: FontWeight.bold),
                     ),
                   ]),
                   const SizedBox(height: 4),
                   Text(
                     currentSpeed == 0
-                        ? 'Ikon haritada sabit duruyor'
+                        ? t('icon_fixed')
                         : '1000 km / ${(1 + (1 - currentSpeed) * 10).toStringAsFixed(0)} saniye',
                     style: TextStyle(color: AppColors.textTertiary, fontSize: 11),
                   ),
@@ -650,7 +652,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                     value: currentSpeed,
                     min: 0, max: 1, divisions: 10,
                     activeColor: AppColors.accentBlue,
-                    label: currentSpeed == 0 ? 'Sabit' : '${currentSpeed.toStringAsFixed(1)}x',
+                    label: currentSpeed == 0 ? t('fixed') : '${currentSpeed.toStringAsFixed(1)}x',
                     onChanged: (v) => setModal(() => currentSpeed = v),
                   ),
                   SizedBox(
@@ -675,7 +677,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                           );
                         }
                       },
-                      child: const Text('Hizi Kaydet'),
+                      child: Text(t('save_speed')),
                     ),
                   ),
                 ]),
@@ -729,7 +731,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                 color: AppColors.accentAmber.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Text('Lider', style: TextStyle(color: AppColors.accentAmber, fontSize: 11, fontWeight: FontWeight.bold)),
+              child: Text(t('leader'), style: TextStyle(color: AppColors.accentAmber, fontSize: 11, fontWeight: FontWeight.bold)),
             ),
         ]),
 
@@ -768,9 +770,9 @@ class _CampaignsTabState extends State<_CampaignsTab> {
 
         // Metrics
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          _metricCol('Katilimci', '$participants', color),
-          _metricCol('Toplam Stake', '${_fmtWac(totalWacStaked)} WAC', color),
-          _metricCol('Benim Stake', '${_fmtWac(myStakedWac)} WAC', AppColors.accentAmber),
+          _metricCol(t('participants'), '$participants', color),
+          _metricCol(t('total_stake'), '${_fmtWac(totalWacStaked)} WAC', color),
+          _metricCol(t('my_stake'), '${_fmtWac(myStakedWac)} WAC', AppColors.accentAmber),
         ]),
         const SizedBox(height: 16),
 
@@ -780,7 +782,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
           decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(8)),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Stake Oranim', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
+              Text(t('stake_ratio'), style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
               Text(
                 totalWacStaked > 0
                     ? '%${(myStakedWac / totalWacStaked * 100).toStringAsFixed(1)}'
@@ -807,7 +809,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                   backgroundColor: AppColors.accentTeal.withOpacity(0.1),
                   foregroundColor: AppColors.accentTeal),
               icon: const Icon(Icons.add, size: 18),
-              label: const Text('Stake Ekle'),
+              label: Text(t('add_stake')),
               onPressed: () => _showAddStakeModal(context, campaignId),
             ),
           ),
@@ -839,7 +841,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
       builder: (ctx) => Padding(
         padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('WAC Stake Ekle', style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
+          Text(t('add_wac_stake'), style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Text('Kampanyaya ek WAC stake edin. Stake arttikca kampanyanin buyuklugu ve odulleri artar.',
               style: TextStyle(color: AppColors.textTertiary, fontSize: 13)),
@@ -849,7 +851,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
             keyboardType: TextInputType.number,
             style: TextStyle(color: AppColors.textPrimary, fontSize: 24, fontWeight: FontWeight.bold),
             decoration: InputDecoration(
-              hintText: 'Miktar',
+              hintText: t('amount'),
               suffixText: 'WAC',
               suffixStyle: TextStyle(color: AppColors.accentAmber, fontWeight: FontWeight.bold),
               filled: true,
@@ -906,7 +908,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surfaceWhite,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Kampanyadan Ayril', style: TextStyle(color: AppColors.textPrimary)),
+        title: Text(t('leave_campaign'), style: TextStyle(color: AppColors.textPrimary)),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('"$title" kampanyasindan ayrilmak istediginize emin misiniz?',
               style: TextStyle(color: AppColors.textSecondary)),
@@ -920,19 +922,19 @@ class _CampaignsTabState extends State<_CampaignsTab> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Cikis Detaylari:', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 13)),
               const SizedBox(height: 8),
-              _penaltyRow('Toplam Stake', '${myStakedWac.toStringAsFixed(1)} WAC', AppColors.textPrimary),
+              _penaltyRow(t('total_stake'), '${myStakedWac.toStringAsFixed(1)} WAC', AppColors.textPrimary),
               _penaltyRow('Iade (%70)', '${returnAmount.toStringAsFixed(1)} WAC', AppColors.accentGreen),
               _penaltyRow('Yakilacak (%15)', '${(penalty * 0.5).toStringAsFixed(1)} WAC', AppColors.accentRed),
               _penaltyRow('Dev Fonu (%15)', '${(penalty * 0.5).toStringAsFixed(1)} WAC', AppColors.accentAmber),
               const Divider(),
-              _penaltyRow('RAC Odulu', '$racReward RAC', AppColors.accentTeal),
+              _penaltyRow(t('rac_reward'), '$racReward RAC', AppColors.accentTeal),
             ]),
           ),
         ]),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Iptal', style: TextStyle(color: AppColors.textTertiary)),
+            child: Text(t('cancel'), style: TextStyle(color: AppColors.textTertiary)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -946,7 +948,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                 _loadData();
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(result['message'] ?? 'Kampanyadan ayrildiniz.'),
+                    content: Text(result['message'] ?? t('left_campaign')),
                     backgroundColor: AppColors.navyPrimary,
                   ),
                 );
@@ -956,7 +958,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                 );
               }
             },
-            child: const Text('Ayril'),
+            child: Text(t('leave')),
           ),
         ],
       ),
@@ -1001,10 +1003,10 @@ class _CampaignsTabState extends State<_CampaignsTab> {
     String? selectedCategory;
 
     final stanceOptions = [
-      {'key': 'PROTEST', 'label': 'Protesto / Itiraz', 'emoji': '🛑', 'color': const Color(0xFFFF4444), 'desc': 'Bir uygulamayi, yasayi veya durumu durdurma cagrisi.'},
-      {'key': 'SUPPORT', 'label': 'Destek / Ovgu', 'emoji': '✅', 'color': const Color(0xFF4CAF50), 'desc': 'Bir gelismeyi, teknolojiyi veya markayi destekleme.'},
-      {'key': 'REFORM', 'label': 'Cozum / Reform', 'emoji': '🛠', 'color': const Color(0xFF2196F3), 'desc': 'Somut bir proje, yasa tasarisi veya alternatif sunma.'},
-      {'key': 'EMERGENCY', 'label': 'Acil Cagri', 'emoji': '🆘', 'color': const Color(0xFFFF9800), 'desc': 'Aninda mudahale gerektiren acil durumlar.'},
+      {'key': 'PROTEST', 'label': t('protest_label'), 'emoji': '🛑', 'color': const Color(0xFFFF4444), 'desc': t('protest_desc')},
+      {'key': 'SUPPORT', 'label': t('support_label'), 'emoji': '✅', 'color': const Color(0xFF4CAF50), 'desc': t('support_desc')},
+      {'key': 'REFORM', 'label': t('reform_label'), 'emoji': '🛠', 'color': const Color(0xFF2196F3), 'desc': t('reform_desc')},
+      {'key': 'EMERGENCY', 'label': t('emergency_label'), 'emoji': '🆘', 'color': const Color(0xFFFF9800), 'desc': t('emergency_desc')},
     ];
 
     final categoryOptions = [
@@ -1071,7 +1073,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                   padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.of(ctx).viewInsets.bottom + 24),
                   children: [
                     // ── Baslik ──────────────────────────────────────────────
-                    Text('Kampanya Olustur',
+                    Text(t('create_campaign'),
                         style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
                     Text('Ikon, slogan ve sosyal medya baglantilari gir.',
@@ -1602,11 +1604,11 @@ class _GlobalTabState extends State<_GlobalTab> {
     'EMERGENCY': Color(0xFFFF0000),
   };
 
-  static const _stanceLabels = <String, String>{
-    'SUPPORT': 'Destek',
-    'REFORM': 'Reform',
-    'PROTEST': 'Protesto',
-    'EMERGENCY': 'Acil',
+  static Map<String, String> get _stanceLabels => <String, String>{
+    'SUPPORT': t('support'),
+    'REFORM': t('reform'),
+    'PROTEST': t('protest'),
+    'EMERGENCY': t('emergency'),
   };
 
   @override
@@ -1664,11 +1666,11 @@ class _GlobalTabState extends State<_GlobalTab> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             children: [
-              _stanceChip(null, 'Tumu'),
-              _stanceChip('SUPPORT', 'Destek'),
-              _stanceChip('REFORM', 'Reform'),
-              _stanceChip('PROTEST', 'Protesto'),
-              _stanceChip('EMERGENCY', 'Acil'),
+              _stanceChip(null, t('all')),
+              _stanceChip('SUPPORT', t('support')),
+              _stanceChip('REFORM', t('reform')),
+              _stanceChip('PROTEST', t('protest')),
+              _stanceChip('EMERGENCY', t('emergency')),
             ],
           ),
         ),
@@ -1679,7 +1681,7 @@ class _GlobalTabState extends State<_GlobalTab> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             children: [
-              _filterChip(null, 'Tumu'),
+              _filterChip(null, t('all')),
               ..._categories.entries.map((e) => _filterChip(e.key, e.value)),
             ],
           ),
@@ -1780,7 +1782,7 @@ class _GlobalTabState extends State<_GlobalTab> {
     final memberCount = (c['memberCount'] ?? 0) as int;
     final totalWac = c['totalWacStaked']?.toString() ?? '0';
     final leader = c['leader'] as Map<String, dynamic>?;
-    final leaderName = (leader?['displayName'] ?? leader?['slogan'] ?? 'Lider') as String;
+    final leaderName = (leader?['displayName'] ?? leader?['slogan'] ?? t('leader')) as String;
     final stanceColor = _stanceColors[stanceType] ?? AppColors.accentBlue;
     final stanceLabel = _stanceLabels[stanceType] ?? stanceType;
     final categoryLabel = _categories[categoryType] ?? categoryType;
@@ -1940,13 +1942,13 @@ class _CampaignDetailSheetState extends State<_CampaignDetailSheet> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Kampanyadan Ayril'),
-        content: const Text('Kampanyadan ayrilmak istediginize emin misiniz?'),
+        title: Text(t('leave_campaign')),
+        content: Text(localeService.isTr ? 'Kampanyadan ayrilmak istediginize emin misiniz?' : 'Are you sure you want to leave this campaign?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Iptal')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(t('cancel'))),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Ayril', style: TextStyle(color: Colors.red)),
+            child: Text(t('leave'), style: const TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -1986,11 +1988,11 @@ class _CampaignDetailSheetState extends State<_CampaignDetailSheet> {
     'PROTEST': Color(0xFFFF4444),
     'EMERGENCY': Color(0xFFFF0000),
   };
-  static const _stanceLabels = {
-    'SUPPORT': 'Destek',
-    'REFORM': 'Reform',
-    'PROTEST': 'Protesto',
-    'EMERGENCY': 'Acil',
+  static Map<String, String> get _stanceLabels => {
+    'SUPPORT': t('support'),
+    'REFORM': t('reform'),
+    'PROTEST': t('protest'),
+    'EMERGENCY': t('emergency'),
   };
 
   @override
@@ -2015,7 +2017,7 @@ class _CampaignDetailSheetState extends State<_CampaignDetailSheet> {
     final totalWac = c['totalWacStaked']?.toString() ?? '0';
     final memberCount = (c['_count'] as Map?)?['members'] ?? _members.length;
     final leader = c['leader'] as Map<String, dynamic>?;
-    final leaderName = (leader?['slogan'] ?? leader?['displayName'] ?? 'Lider') as String;
+    final leaderName = (leader?['slogan'] ?? leader?['displayName'] ?? t('leader')) as String;
     final stanceColor = _stanceColors[stanceType] ?? AppColors.accentBlue;
     final stanceLabel = _stanceLabels[stanceType] ?? stanceType;
 
@@ -2060,7 +2062,7 @@ class _CampaignDetailSheetState extends State<_CampaignDetailSheet> {
               child: Row(children: [
                 _statItem(Icons.people, '$memberCount', 'Uye'),
                 _statItem(Icons.account_balance_wallet, _fmtWac(totalWac), 'WAC'),
-                _statItem(Icons.person, leaderName, 'Lider'),
+                _statItem(Icons.person, leaderName, t('leader')),
               ]),
             ),
             const SizedBox(height: 16),
@@ -2091,7 +2093,7 @@ class _CampaignDetailSheetState extends State<_CampaignDetailSheet> {
                     icon: _leaving
                         ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(Icons.exit_to_app, size: 18),
-                    label: Text(_leaving ? 'Ayrılınıyor...' : 'Kampanyadan Ayril'),
+                    label: Text(_leaving ? 'Ayrılınıyor...' : t('leave_campaign')),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.red,
                       side: const BorderSide(color: Colors.red),
