@@ -1483,11 +1483,11 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _filterOption('all', t('filter_all_campaigns'), Icons.public),
-                        _filterOption('protest', t('filter_protest'), Icons.warning_amber),
-                        _filterOption('reform', t('filter_reform'), Icons.build_circle),
-                        _filterOption('support', t('filter_support'), Icons.favorite),
-                        _filterOption('emergency', t('filter_emergency'), Icons.emergency),
+                        _filterOption('all', t('filter_all_campaigns'), Icons.public, AppColors.accentTeal),
+                        _filterOption('protest', t('filter_protest'), Icons.warning_amber, AppColors.accentAmber),
+                        _filterOption('reform', t('filter_reform'), Icons.build_circle, AppColors.accentBlue),
+                        _filterOption('support', t('filter_support'), Icons.favorite, AppColors.accentGreen),
+                        _filterOption('emergency', t('filter_emergency'), Icons.emergency, AppColors.accentRed),
                       ],
                     ),
                   ),
@@ -1624,7 +1624,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
     }
   }
 
-  Widget _filterOption(String key, String label, IconData icon) {
+  Widget _filterOption(String key, String label, IconData icon, Color activeColor) {
     final selected = _mapFilter == key;
     return GestureDetector(
       onTap: () => setState(() {
@@ -1633,12 +1633,12 @@ class _GridScreenState extends ConsumerState<GridScreen> {
       }),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        color: selected ? AppColors.accentTeal.withOpacity(0.15) : Colors.transparent,
+        color: selected ? activeColor.withOpacity(0.15) : Colors.transparent,
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, color: selected ? AppColors.accentTeal : Colors.white70, size: 14),
+          Icon(icon, color: selected ? activeColor : Colors.white70, size: 14),
           const SizedBox(width: 8),
           Text(label, style: TextStyle(
-            color: selected ? AppColors.accentTeal : Colors.white70,
+            color: selected ? activeColor : Colors.white70,
             fontSize: 12, fontWeight: selected ? FontWeight.bold : FontWeight.normal,
           )),
         ]),
