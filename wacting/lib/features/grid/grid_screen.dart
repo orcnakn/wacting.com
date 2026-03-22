@@ -1474,19 +1474,33 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                       content: Text(
                         'Secim uygulandi: $_selectionSummary',
-                        style: const TextStyle(color: Colors.white, fontSize: 11),
+                        style: const TextStyle(color: Colors.white, fontSize: 10),
                       ),
-                      backgroundColor: Colors.cyan,
+                      backgroundColor: Colors.cyan.withValues(alpha: 0.85),
                       duration: const Duration(seconds: 2),
                       behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      margin: EdgeInsets.only(
+                        bottom: 12,
+                        left: MediaQuery.of(context).size.width * 0.25,
+                        right: MediaQuery.of(context).size.width * 0.25,
+                      ),
                     ));
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('Bolge secimi kapandi',
-                        style: TextStyle(color: Colors.white, fontSize: 11)),
-                      backgroundColor: Colors.cyan,
-                      duration: Duration(seconds: 2),
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: const Text('Bolge secimi kapandi',
+                        style: TextStyle(color: Colors.white, fontSize: 10)),
+                      backgroundColor: Colors.cyan.withValues(alpha: 0.85),
+                      duration: const Duration(seconds: 2),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      margin: EdgeInsets.only(
+                        bottom: 12,
+                        left: MediaQuery.of(context).size.width * 0.3,
+                        right: MediaQuery.of(context).size.width * 0.3,
+                      ),
                     ));
                   }
                 }
