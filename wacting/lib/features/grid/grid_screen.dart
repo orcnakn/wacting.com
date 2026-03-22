@@ -1575,19 +1575,22 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                                     : AppColors.accentAmber;
                                 final pLat = (c['pinnedLat'] as num?)?.toDouble();
                                 final pLng = (c['pinnedLng'] as num?)?.toDouble();
+                                final campaignId = c['id'] as String?;
                                 return GestureDetector(
                                   onTap: () {
                                     setState(() => _campaignPanelOpen = false);
                                     if (pLat != null && pLng != null) {
-                                      _mapController.move(LatLng(pLat, pLng), 10.0);
+                                      _mapController.move(LatLng(pLat, pLng), 11.0);
                                     } else {
-                                      // Find campaign icon from _lastIcons by matching slogan
                                       final match = _lastIcons?.cast<IconModel?>().firstWhere(
                                         (ic) => ic!.campaignSlogan == slogan && slogan.isNotEmpty,
                                         orElse: () => null);
                                       if (match != null) {
-                                        _mapController.move(_offsetToLatLng(match.position), 10.0);
+                                        _mapController.move(_offsetToLatLng(match.position), 11.0);
                                       }
+                                    }
+                                    if (campaignId != null) {
+                                      _showCampaignDetail(context, campaignId);
                                     }
                                   },
                                   child: Container(
