@@ -734,9 +734,23 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
               final zoom = _currentZoom;
 
-              // Separate emergency icons from normal icons
+              // Apply campaign type filter
+              final filteredIcons = _mapFilter == 'all'
+                  ? icons
+                  : icons.where((icon) {
+                      final stance = icon.stanceType?.toUpperCase();
+                      if (stance == null) return true; // Non-campaign icons always visible
+                      switch (_mapFilter) {
+                        case 'protest': return stance == 'PROTEST';
+                        case 'reform': return stance == 'REFORM';
+                        case 'support': return stance == 'SUPPORT';
+                        default: return true;
+                      }
+                    }).toList();
+
+              // Emergency campaign markers (now filtered like all others)
               final emergencyMarkers = <Marker>[];
-              for (final icon in icons) {
+              for (final icon in filteredIcons) {
                 if (icon.isEmergency) {
                   final latLng = _offsetToLatLng(icon.position);
                   final double logoSize = (math.sqrt(icon.emergencyAreaM2) / 10).clamp(12.0, 60.0);
@@ -760,7 +774,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
               final markerDots = <Marker>[];
               final myId = apiService.userId;
-              for (final icon in icons) {
+              for (final icon in filteredIcons) {
                 if (icon.isEmergency) continue; // Skip — rendered in emergency layer
                   final latLng = _offsetToLatLng(icon.position);
                   final Color displayColor = icon.displayColor;
@@ -1151,7 +1165,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                         );
                       }).toList(),
                     ),
-                  // ── Emergency campaign icons (always visible, bypass filters) ──
+                  // ── Emergency campaign icons ──
                   if (emergencyMarkers.isNotEmpty)
                     MarkerLayer(markers: emergencyMarkers),
                 ],

@@ -21,6 +21,7 @@ class IconModel extends Equatable {
   final double? pinnedLng;      // Campaign leader pinned longitude
   final bool isEmergency;       // Emergency campaign flag (red + radio wave)
   final double emergencyAreaM2; // Emergency logo area in m²
+  final String? stanceType;    // SUPPORT | REFORM | PROTEST | EMERGENCY
 
   const IconModel({
     required this.id,
@@ -40,6 +41,7 @@ class IconModel extends Equatable {
     this.pinnedLng,
     this.isEmergency = false,
     this.emergencyAreaM2 = 0,
+    this.stanceType,
   });
 
   factory IconModel.fromJson(Map<String, dynamic> json) {
@@ -71,6 +73,7 @@ class IconModel extends Equatable {
       pinnedLng: (json['pinnedLng'] as num?)?.toDouble(),
       isEmergency: json['isEmergency'] as bool? ?? false,
       emergencyAreaM2: (json['emergencyAreaM2'] as num?)?.toDouble() ?? 0,
+      stanceType: json['stanceType'] as String?,
     );
   }
 
@@ -102,5 +105,6 @@ class IconModel extends Equatable {
         pinnedLng,
         isEmergency,
         emergencyAreaM2,
+        stanceType,
       ];
 }
