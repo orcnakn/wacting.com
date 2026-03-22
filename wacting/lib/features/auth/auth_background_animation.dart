@@ -72,8 +72,8 @@ class _AuthBackgroundAnimationState extends State<AuthBackgroundAnimation>
   ];
   int _waypointIndex = 0;
 
-  // Attraction — rare and subtle
-  static const double _attractRadius = 20.0;
+  // Attraction — ~2 icons per second
+  static const double _attractRadius = 35.0;
   final Set<String> _capturedIds = {};
   final List<_AttractingIcon> _attractingIcons = [];
   int _attractCooldown = 0; // ticks until next attraction allowed
@@ -163,7 +163,7 @@ class _AuthBackgroundAnimationState extends State<AuthBackgroundAnimation>
 
       // ── Spawn edge icons ──
       _edgeSpawnCounter++;
-      if (_edgeSpawnCounter >= 200) {
+      if (_edgeSpawnCounter >= 150) {
         _edgeSpawnCounter = 0;
         _spawnEdgeIcon();
       }
@@ -251,19 +251,16 @@ class _AuthBackgroundAnimationState extends State<AuthBackgroundAnimation>
   }
 
   void _checkAttractions(Size screenSize) {
-    // Cooldown: only allow one attraction every ~180 ticks (~3 seconds)
+    // Cooldown: ~30 ticks between captures (~0.5s at 60fps → ~2 per second)
     if (_attractCooldown > 0) {
       _attractCooldown--;
       return;
     }
-    // Max 1 attracting icon at a time
-    if (_attractingIcons.isNotEmpty) return;
+    // Max 3 attracting icons in flight at once
+    if (_attractingIcons.length >= 3) return;
 
     final wScreen = _latLngToScreen(_wPos);
     if (wScreen == null) return;
-
-    // 15% chance per tick to even check
-    if (_rng.nextDouble() > 0.15) return;
 
     // Check edge icons only (not real user icons — avoids visual clutter)
     for (int i = _edgeIcons.length - 1; i >= 0; i--) {
@@ -280,8 +277,8 @@ class _AuthBackgroundAnimationState extends State<AuthBackgroundAnimation>
           progress: 0.0,
         ));
         _edgeIcons.removeAt(i);
-        _attractCooldown = 180; // ~3 second cooldown
-        break; // Only one at a time
+        _attractCooldown = 30; // ~0.5 second cooldown
+        break;
       }
     }
   }
