@@ -120,7 +120,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   List<IconModel>? _lastIcons;
 
   // ── Map filter state ──
-  String _mapFilter = 'all'; // all, protest, reform, support
+  String _mapFilter = 'all'; // all, protest, reform, support, emergency
   bool _filterDropdownOpen = false;
 
   // ── Active campaigns panel ──
@@ -744,6 +744,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                         case 'protest': return stance == 'PROTEST';
                         case 'reform': return stance == 'REFORM';
                         case 'support': return stance == 'SUPPORT';
+                        case 'emergency': return stance == 'EMERGENCY';
                         default: return true;
                       }
                     }).toList();
@@ -1486,6 +1487,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                         _filterOption('protest', t('filter_protest'), Icons.warning_amber),
                         _filterOption('reform', t('filter_reform'), Icons.build_circle),
                         _filterOption('support', t('filter_support'), Icons.favorite),
+                        _filterOption('emergency', t('filter_emergency'), Icons.emergency),
                       ],
                     ),
                   ),
@@ -1617,6 +1619,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
       case 'protest': return t('filter_protest');
       case 'reform': return t('filter_reform');
       case 'support': return t('filter_support');
+      case 'emergency': return t('filter_emergency');
       default: return t('filter_all_campaigns');
     }
   }
