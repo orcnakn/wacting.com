@@ -6,18 +6,39 @@ class LocaleService extends ChangeNotifier {
   factory LocaleService() => _instance;
   LocaleService._();
 
+  // 🌍 Dinamik Desteklenen Diller Listesi
+  // Yeni bir dil eklemek için sadece buraya ve _translations map'ine ekleme yapmanız yeterlidir.
+  static const Map<String, String> supportedLocales = {
+    'en': 'English',
+    'tr': 'Türkçe',
+    // İleride buraya eklenecek diller için örnekler:
+    // 'es': 'Español',
+    // 'fr': 'Français',
+    // 'de': 'Deutsch',
+    // 'zh': '中文',
+    // 'ar': 'العربية',
+    // 'ru': 'Русский',
+  };
+
   String _locale = 'tr';
   String get locale => _locale;
+  
+  // Dinamik kontroller için
+  bool isLocale(String code) => _locale == code;
+  // Geriye dönük uyumluluk (Mevcut kodların kırılmaması için bırakıldı)
   bool get isTr => _locale == 'tr';
   bool get isEn => _locale == 'en';
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    _locale = prefs.getString('wacting_locale') ?? 'tr';
+    final savedLocale = prefs.getString('wacting_locale');
+    _locale = (savedLocale != null && supportedLocales.containsKey(savedLocale)) ? savedLocale : 'en'; // Global hedef için 'en' varsayılan yapıldı
   }
 
   Future<void> setLocale(String locale) async {
-    if (locale != 'tr' && locale != 'en') return;
+    if (!supportedLocales.containsKey(locale)) return; // Sadece desteklenen dilleri kabul et
+    if (_locale == locale) return; // Zaten o dil seçiliyse rebuild etme
+
     _locale = locale;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
@@ -25,7 +46,8 @@ class LocaleService extends ChangeNotifier {
   }
 
   String t(String key) {
-    return _translations[_locale]?[key] ?? _translations['tr']?[key] ?? key;
+    // 1. Seçili dil -> 2. İngilizce -> 3. Türkçe -> 4. Key'in kendisi
+    return _translations[_locale]?[key] ?? _translations['en']?[key] ?? _translations['tr']?[key] ?? key;
   }
 
   static const Map<String, Map<String, String>> _translations = {
