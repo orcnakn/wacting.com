@@ -120,7 +120,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   List<IconModel>? _lastIcons;
 
   // ── Map filter state ──
-  String _mapFilter = 'all'; // all, nearby, trending, protested, newest
+  String _mapFilter = 'all'; // all, protest, reform, support
   bool _filterDropdownOpen = false;
 
   // ── Active campaigns panel ──
@@ -1468,11 +1468,10 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _filterOption('all', 'Tum Kampanyalar', Icons.public),
-                        _filterOption('nearby', 'Bolgemdekiler', Icons.near_me),
-                        _filterOption('trending', 'Trend Kampanyalar', Icons.trending_up),
-                        _filterOption('protested', 'Linclenenler', Icons.warning_amber),
-                        _filterOption('newest', 'Yeni Kampanyalar', Icons.fiber_new),
+                        _filterOption('all', t('filter_all_campaigns'), Icons.public),
+                        _filterOption('protest', t('filter_protest'), Icons.warning_amber),
+                        _filterOption('reform', t('filter_reform'), Icons.build_circle),
+                        _filterOption('support', t('filter_support'), Icons.favorite),
                       ],
                     ),
                   ),
@@ -1601,11 +1600,10 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
   String _filterLabel(String filter) {
     switch (filter) {
-      case 'nearby': return 'Bolgemdekiler';
-      case 'trending': return 'Trend';
-      case 'protested': return 'Linclenenler';
-      case 'newest': return 'Yeni';
-      default: return 'Tum Kampanyalar';
+      case 'protest': return t('filter_protest');
+      case 'reform': return t('filter_reform');
+      case 'support': return t('filter_support');
+      default: return t('filter_all_campaigns');
     }
   }
 
