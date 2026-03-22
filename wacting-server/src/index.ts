@@ -229,6 +229,7 @@ async function start() {
                     isEmergency: campaign?.stanceType === 'EMERGENCY',
                     emergencyAreaM2: campaign?.stanceType === 'EMERGENCY' ? ((campaign as any).emergencyAreaM2 ?? 0) : 0,
                     stanceType: campaign?.stanceType ?? undefined,
+                    campaignId: campaign?.id ?? undefined,
                     restrictedContinents: (icon as any).restrictedContinents ?? [],
                     restrictedCountries: (icon as any).restrictedCountries ?? [],
                     restrictedCities: (icon as any).restrictedCities ?? [],

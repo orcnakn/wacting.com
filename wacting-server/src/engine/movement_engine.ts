@@ -133,6 +133,7 @@ export interface IconState {
     isEmergency?: boolean;          // Emergency campaign flag (red + radio wave)
     emergencyAreaM2?: number;       // Emergency logo area in m²
     stanceType?: string;            // SUPPORT | REFORM | PROTEST | EMERGENCY
+    campaignId?: string;            // Campaign ID for detail lookups
     restrictedContinents?: string[];
     restrictedCountries?: string[];
     restrictedCities?: string[];

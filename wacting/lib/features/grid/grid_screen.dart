@@ -765,8 +765,12 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                       areaM2: icon.emergencyAreaM2,
                       slogan: icon.campaignSlogan,
                       onTap: () {
-                        final userSlogan = icon.campaignSlogan ?? t('emergency_default');
-                        _showPublicProfile(context, icon, userSlogan);
+                        if (icon.campaignId != null) {
+                          _showCampaignDetail(context, icon.campaignId!);
+                        } else {
+                          final userSlogan = icon.campaignSlogan ?? t('emergency_default');
+                          _showPublicProfile(context, icon, userSlogan);
+                        }
                       },
                     ),
                   ));
@@ -1076,15 +1080,18 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                       // Use the DISPLAYED icons (paused or live)
                       final displayIcons = _paused ? _pausedSnapshot : icons;
                       for (var icon in displayIcons) {
-                          final String userSlogan = icon.id.startsWith('mock')
-                              ? 'Mock Token ${icon.id}'
-                              : 'World exploration mode.';
                           final iconPoint = _offsetToLatLng(icon.position);
                           final dist = const Distance().as(LengthUnit.Kilometer, normalizedTapPoint, iconPoint);
-                          // Simple tap detection: 20km radius at base, scales with zoom
                           final touchRadiusKm = 20.0;
                           if (dist < touchRadiusKm) {
-                              _showPublicProfile(context, icon, userSlogan);
+                              if (icon.campaignId != null) {
+                                _showCampaignDetail(context, icon.campaignId!);
+                              } else {
+                                final String userSlogan = icon.id.startsWith('mock')
+                                    ? 'Mock Token ${icon.id}'
+                                    : 'World exploration mode.';
+                                _showPublicProfile(context, icon, userSlogan);
+                              }
                               break;
                           }
                       }
@@ -1642,6 +1649,169 @@ class _GridScreenState extends ConsumerState<GridScreen> {
             fontSize: 12, fontWeight: selected ? FontWeight.bold : FontWeight.normal,
           )),
         ]),
+      ),
+    );
+  }
+
+  // ──────────────────────── CAMPAIGN DETAIL MODAL ────────────────────────
+
+  void _showCampaignDetail(BuildContext context, String campaignId) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surfaceWhite,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return FutureBuilder<Map<String, dynamic>>(
+          future: apiService.getCampaign(campaignId),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return SizedBox(
+                height: 200,
+                child: Center(child: CircularProgressIndicator(color: AppColors.accentTeal)),
+              );
+            }
+            if (snapshot.hasError || snapshot.data == null || snapshot.data!['campaign'] == null) {
+              return SizedBox(
+                height: 200,
+                child: Center(child: Text(t('campaign_error'), style: TextStyle(color: AppColors.textTertiary))),
+              );
+            }
+
+            final c = snapshot.data!['campaign'] as Map<String, dynamic>;
+            final title = (c['title'] ?? '') as String;
+            final slogan = (c['slogan'] ?? '') as String;
+            final stanceType = (c['stanceType'] ?? 'SUPPORT') as String;
+            final iconColor = (c['iconColor'] ?? '#2196F3') as String;
+            final leaderData = c['leader'] as Map<String, dynamic>?;
+            final leaderName = leaderData?['slogan'] ?? 'Unknown';
+            final memberCount = c['_count']?['members'] ?? 0;
+            final totalWac = double.tryParse((c['totalWacStaked'] ?? '0').toString()) ?? 0;
+            final racPool = c['racPool'];
+            final totalRac = racPool != null ? (racPool['totalBalance'] ?? 0).toDouble() : 0.0;
+
+            // Parse campaign color
+            Color campColor = AppColors.accentBlue;
+            if (iconColor.startsWith('#') && iconColor.length == 7) {
+              campColor = Color(int.parse('FF${iconColor.substring(1)}', radix: 16));
+            }
+
+            // Stance label & color
+            final stanceLabel = {
+              'PROTEST': t('filter_protest'),
+              'REFORM': t('filter_reform'),
+              'SUPPORT': t('filter_support'),
+              'EMERGENCY': t('filter_emergency'),
+            }[stanceType] ?? stanceType;
+
+            final stanceColor = {
+              'PROTEST': AppColors.accentAmber,
+              'REFORM': AppColors.accentBlue,
+              'SUPPORT': AppColors.accentGreen,
+              'EMERGENCY': AppColors.accentRed,
+            }[stanceType] ?? AppColors.accentBlue;
+
+            return Padding(
+              padding: const EdgeInsets.only(top: 24, left: 24, right: 24, bottom: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Campaign logo circle
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: campColor,
+                      shape: BoxShape.circle,
+                      boxShadow: [BoxShadow(color: campColor.withOpacity(0.3), blurRadius: 12, spreadRadius: 2)],
+                    ),
+                    child: Icon(
+                      stanceType == 'EMERGENCY' ? Icons.emergency
+                          : stanceType == 'PROTEST' ? Icons.warning_amber
+                          : stanceType == 'REFORM' ? Icons.build_circle
+                          : Icons.favorite,
+                      color: Colors.white, size: 36,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Title
+                  Text(title,
+                    style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 4),
+
+                  // Slogan
+                  Text('"$slogan"',
+                    style: TextStyle(color: AppColors.textTertiary, fontSize: 13, fontStyle: FontStyle.italic),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Stance badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: stanceColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: stanceColor.withOpacity(0.4)),
+                    ),
+                    child: Text(stanceLabel,
+                      style: TextStyle(color: stanceColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+
+                  const SizedBox(height: 20),
+                  Divider(color: AppColors.borderLight),
+                  const SizedBox(height: 12),
+
+                  // Stats grid
+                  Row(
+                    children: [
+                      _campaignStat(Icons.person, t('campaign_leader'), '$leaderName', AppColors.accentTeal),
+                      _campaignStat(Icons.group, t('campaign_members'), '$memberCount', AppColors.accentBlue),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      _campaignStat(Icons.monetization_on, t('campaign_total_wac'), totalWac.toStringAsFixed(2), AppColors.accentAmber),
+                      _campaignStat(Icons.shield, t('campaign_total_rac'), totalRac.toStringAsFixed(2), AppColors.accentRed),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _campaignStat(IconData icon, String label, String value, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withOpacity(0.2)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(height: 6),
+            Text(value,
+              style: TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 2),
+            Text(label,
+              style: TextStyle(color: AppColors.textTertiary, fontSize: 10),
+              textAlign: TextAlign.center),
+          ],
+        ),
       ),
     );
   }
