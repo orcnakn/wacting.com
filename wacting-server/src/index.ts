@@ -52,15 +52,7 @@ function stanceColor(campaign: any, fallback: string): string {
     if (!campaign) return fallback;
     if (campaign.stanceType === 'SUPPORT') return '#4CAF50';
     if (campaign.stanceType === 'PROTEST') return '#FF4444';
-    if (campaign.stanceType === 'REFORM') {
-        // Hash campaign ID to pick a unique color
-        let hash = 0;
-        const id = campaign.id as string;
-        for (let i = 0; i < id.length; i++) {
-            hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
-        }
-        return REFORM_PALETTE[Math.abs(hash) % REFORM_PALETTE.length]!;
-    }
+    if (campaign.stanceType === 'REFORM') return '#2196F3';
     return campaign.iconColor ?? fallback;
 }
 
