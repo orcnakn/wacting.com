@@ -41,7 +41,7 @@ const prisma = new PrismaClient();
 const MIN_STAKE = new Prisma.Decimal('1.000000'); // Minimum WAC to join/create
 
 const STANCE_COLORS: Record<string, string> = {
-    PROTEST: '#FF4444',
+    PROTEST: '#FF9800',
     SUPPORT: '#4CAF50',
     REFORM: '#2196F3',
     EMERGENCY: '#FF0000',

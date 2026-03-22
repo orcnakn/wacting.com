@@ -51,7 +51,7 @@ const REFORM_PALETTE = [
 function stanceColor(campaign: any, fallback: string): string {
     if (!campaign) return fallback;
     if (campaign.stanceType === 'SUPPORT') return '#4CAF50';
-    if (campaign.stanceType === 'PROTEST') return '#FF4444';
+    if (campaign.stanceType === 'PROTEST') return '#FF9800';
     if (campaign.stanceType === 'REFORM') return '#2196F3';
     return campaign.iconColor ?? fallback;
 }
