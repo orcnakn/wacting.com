@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'providers/grid_state.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import '../../core/services/socket_service.dart';
@@ -141,6 +142,41 @@ class _GridScreenState extends ConsumerState<GridScreen> {
     };
     _fetchUserLocations();
     _locationTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchUserLocations());
+    _loadSavedRegions();
+  }
+
+  Future<void> _loadSavedRegions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = apiService.userId ?? 'guest';
+      if (mounted) {
+        setState(() {
+          _selectedContinents.addAll(prefs.getStringList('wacting_selectedContinents_$userId') ?? []);
+          _selectedCountries.addAll(prefs.getStringList('wacting_selectedCountries_$userId') ?? []);
+          _excludedCountries.addAll(prefs.getStringList('wacting_excludedCountries_$userId') ?? []);
+          _selectedRegions.addAll(prefs.getStringList('wacting_selectedRegions_$userId') ?? []);
+          _excludedRegions.addAll(prefs.getStringList('wacting_excludedRegions_$userId') ?? []);
+          _selectedCities.addAll(prefs.getStringList('wacting_selectedCities_$userId') ?? []);
+        });
+      }
+    } catch (e) {
+      debugPrint("Failed to load saved regions: $e");
+    }
+  }
+
+  Future<void> _saveRegionsToPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = apiService.userId ?? 'guest';
+      await prefs.setStringList('wacting_selectedContinents_$userId', _selectedContinents.toList());
+      await prefs.setStringList('wacting_selectedCountries_$userId', _selectedCountries.toList());
+      await prefs.setStringList('wacting_excludedCountries_$userId', _excludedCountries.toList());
+      await prefs.setStringList('wacting_selectedRegions_$userId', _selectedRegions.toList());
+      await prefs.setStringList('wacting_excludedRegions_$userId', _excludedRegions.toList());
+      await prefs.setStringList('wacting_selectedCities_$userId', _selectedCities.toList());
+    } catch (e) {
+      debugPrint("Failed to save regions: $e");
+    }
   }
 
   Future<void> _fetchUserLocations() async {
@@ -1420,6 +1456,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                       countries: countries,
                       cities: cities,
                     );
+                    await _saveRegionsToPrefs();
                   } catch (e) {
                     debugPrint('Failed to send restrictions: $e');
                   }
@@ -1510,7 +1547,8 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                 if (!_campaignPanelOpen) {
                   setState(() { _campaignPanelOpen = true; _campaignsLoading = true; });
                   try {
-                    final campaigns = await apiService.getAllCampaigns();
+                    final all = await apiService.getMyCampaigns();
+                    final campaigns = all.where((c) => c['isActive'] == true).toList();
                     if (mounted) setState(() { _activeCampaigns = campaigns; _campaignsLoading = false; });
                   } catch (_) {
                     if (mounted) setState(() { _campaignsLoading = false; });

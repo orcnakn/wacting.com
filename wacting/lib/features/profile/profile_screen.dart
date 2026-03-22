@@ -1150,13 +1150,30 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           const SizedBox(width: 8),
           Text(t('language_select'), style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
         ]),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          _languageOption('Turkce', 'tr', ctx),
-          const SizedBox(height: 8),
-          _languageOption('English', 'en', ctx),
-        ]),
+        // İleride 20 dil ekleneceği için taşmayı önlemek adına SingleChildScrollView ekledik.
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: LocaleService.supportedLocales.entries.map((entry) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: _languageOption(entry.value, entry.key, ctx),
+              );
+            }).toList(),
+          ),
+        ),
       ),
     );
+  }
+
+  String _getLanguageFlag(String locale) {
+    switch (locale) {
+      case 'tr': return '🇹🇷';
+      case 'en': return '🇬🇧';
+      case 'es': return '🇪🇸';
+      case 'de': return '🇩🇪';
+      default: return '🌍'; // Tanımlı olmayanlar için varsayılan dünya ikonu
+    }
   }
 
   Widget _languageOption(String label, String locale, BuildContext ctx) {
@@ -1177,7 +1194,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           ),
         ),
         child: Row(children: [
-          Text(locale == 'tr' ? '🇹🇷' : '🇬🇧', style: const TextStyle(fontSize: 20)),
+          Text(_getLanguageFlag(locale), style: const TextStyle(fontSize: 20)),
           const SizedBox(width: 12),
           Expanded(child: Text(label, style: TextStyle(
             color: AppColors.textPrimary, fontSize: 14,
@@ -1552,4 +1569,3 @@ class _PlatformDef {
   final String? textLabel;
   const _PlatformDef(this.key, this.name, this.icon, this.color, {this.textLabel});
 }
-

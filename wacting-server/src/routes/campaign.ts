@@ -1085,6 +1085,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
     // Query params: ?category=ECOLOGY_NATURE&stance=SUPPORT&sort=members|wac|newest&take=50
     fastify.get('/all', async (request, reply) => {
         try {
+            const user = (request as any).user;
             const query = request.query as {
                 category?: string;
                 stance?: string;
@@ -1092,7 +1093,13 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 take?: string;
             };
 
-            const where: any = { isActive: true };
+            const where: any = { 
+                isActive: true,
+                OR: [
+                    { leaderId: user.id },
+                    { members: { some: { userId: user.id } } }
+                ]
+            };
 
             // Category filter
             if (query.category && ['GLOBAL_PEACE', 'JUSTICE_RIGHTS', 'ECOLOGY_NATURE', 'TECH_FUTURE', 'SOLIDARITY_RELIEF', 'ECONOMY_LABOR', 'AWARENESS', 'ENTERTAINMENT'].includes(query.category)) {

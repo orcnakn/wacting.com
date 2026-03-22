@@ -574,14 +574,16 @@ model CampaignMember {
 }
 
 model DirectMessage {
-  id         String   @id @default(uuid())
-  senderId   String
-  sender     User     @relation("SentMessages", fields: [senderId], references: [id])
-  receiverId String
-  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
-  content    String   @db.Text
-  isRead     Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  id             String    @id @default(uuid())
+  senderId       String
+  sender         User      @relation("SentMessages", fields: [senderId], references: [id])
+  receiverId     String
+  receiver       User      @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  content        String    @db.Text
+  sourceLanguage String? // The original language of the content, e.g., "en", "tr"
+  translations   Json? // Stores translations, e.g., { "es": "Hola", "fr": "Bonjour" }
+  isRead         Boolean   @default(false)
+  createdAt      DateTime  @default(now())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
