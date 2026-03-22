@@ -1308,12 +1308,21 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                 side: BorderSide(color: AppColors.accentTeal, width: 1.5)
               ),
               child: Icon(Icons.center_focus_strong, color: AppColors.accentTeal, size: 18),
-              onPressed: () async {
-                final pos = await apiService.getMyIconPosition();
-                if (!mounted) return;
-                if (pos != null) {
-                  _mapController.move(LatLng(pos['lat']!, pos['lng']!), 11.0);
-                } else if (_myIconLatLng != null) {
+              onPressed: () {
+                final myId = apiService.userId;
+                if (myId != null && _userLocations.isNotEmpty) {
+                  final myLoc = _userLocations.firstWhere(
+                    (loc) => loc['userId'] == myId,
+                    orElse: () => <String, dynamic>{},
+                  );
+                  final lat = myLoc['lat'] as double?;
+                  final lng = myLoc['lng'] as double?;
+                  if (lat != null && lng != null) {
+                    _mapController.move(LatLng(lat, lng), 11.0);
+                    return;
+                  }
+                }
+                if (_myIconLatLng != null) {
                   _mapController.move(_myIconLatLng!, 11.0);
                 } else {
                   _mapController.move(_initialCenter, 11.0);
