@@ -284,6 +284,10 @@ class LocaleService extends ChangeNotifier {
       'translate': 'Cevir',
       'translating': 'Ceviriliyor...',
       'show_original': 'Orijinali Goster',
+
+      // ── World screen ──
+      'my_active_campaigns': 'Aktif Kampanyalarim',
+      'no_active_campaigns': 'Aktif kampanya yok',
     },
 
     'en': {
@@ -508,6 +512,10 @@ class LocaleService extends ChangeNotifier {
       'translate': 'Translate',
       'translating': 'Translating...',
       'show_original': 'Show Original',
+
+      // ── World screen ──
+      'my_active_campaigns': 'My Active Campaigns',
+      'no_active_campaigns': 'No active campaigns',
     },
 
     'es': {

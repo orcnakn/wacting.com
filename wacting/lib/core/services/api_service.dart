@@ -296,6 +296,16 @@ class ApiService {
 
   // ── Icon Restrictions ───────────────────────────────────────────────────────
 
+  Future<Map<String, List<String>>> getMyBounds() async {
+    final res = await _dio.get('/api/icons/my-bounds');
+    final data = res.data as Map<String, dynamic>;
+    return {
+      'continents': List<String>.from(data['restrictedContinents'] ?? []),
+      'countries':  List<String>.from(data['restrictedCountries']  ?? []),
+      'cities':     List<String>.from(data['restrictedCities']     ?? []),
+    };
+  }
+
   Future<void> restrictBounds({
     List<String> continents = const [],
     List<String> countries = const [],

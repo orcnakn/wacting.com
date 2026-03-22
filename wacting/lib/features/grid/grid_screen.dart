@@ -147,20 +147,29 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
   Future<void> _loadSavedRegions() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final userId = apiService.userId ?? 'guest';
-      if (mounted) {
-        setState(() {
-          _selectedContinents.addAll(prefs.getStringList('wacting_selectedContinents_$userId') ?? []);
-          _selectedCountries.addAll(prefs.getStringList('wacting_selectedCountries_$userId') ?? []);
-          _excludedCountries.addAll(prefs.getStringList('wacting_excludedCountries_$userId') ?? []);
-          _selectedRegions.addAll(prefs.getStringList('wacting_selectedRegions_$userId') ?? []);
-          _excludedRegions.addAll(prefs.getStringList('wacting_excludedRegions_$userId') ?? []);
-          _selectedCities.addAll(prefs.getStringList('wacting_selectedCities_$userId') ?? []);
-        });
-      }
+      // Seçimleri sunucudan (DB) yükle — cihazdan bağımsız, her yerden aynı
+      final bounds = await apiService.getMyBounds();
+      final continents = bounds['continents']!;
+      final countries  = bounds['countries']!;
+      final cities     = bounds['cities']!;
+
+      if (!mounted) return;
+
+      setState(() {
+        _selectedContinents
+          ..clear()
+          ..addAll(continents);
+        _selectedCountries
+          ..clear()
+          ..addAll(countries);
+        // Şehirler "cityName|country" formatında; sunucudan sadece isim gelir
+        // visual restoration için yeterli, country kısmı opsiyonel
+        _selectedCities
+          ..clear()
+          ..addAll(cities.map((c) => c.contains('|') ? c : '$c|'));
+      });
     } catch (e) {
-      debugPrint("Failed to load saved regions: $e");
+      debugPrint('Failed to load saved regions from server: $e');
     }
   }
 
@@ -1449,14 +1458,13 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                     _paused = _currentZoom >= 7;  // Stay paused if in regions level
                   });
 
-                  // Send to server
+                  // Send to server (DB'ye kaydeder, cihazdan bağımsız)
                   try {
                     await apiService.restrictBounds(
                       continents: continents,
                       countries: countries,
                       cities: cities,
                     );
-                    await _saveRegionsToPrefs();
                   } catch (e) {
                     debugPrint('Failed to send restrictions: $e');
                   }
@@ -1571,7 +1579,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       Icon(Icons.flag, color: AppColors.accentAmber, size: 14),
                       const SizedBox(width: 6),
-                      Text('Aktif Kampanyalar',
+                      Text(t('my_active_campaigns'),
                         style: TextStyle(color: AppColors.accentAmber, fontSize: 11, fontWeight: FontWeight.bold)),
                       const SizedBox(width: 4),
                       Icon(_campaignPanelOpen ? Icons.expand_less : Icons.expand_more,
@@ -1595,9 +1603,9 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amber))),
                           )
                         : _activeCampaigns.isEmpty
-                          ? const Padding(
-                              padding: EdgeInsets.all(12),
-                              child: Text('Aktif kampanya yok', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                          ? Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Text(t('no_active_campaigns'), style: const TextStyle(color: Colors.white54, fontSize: 11)),
                             )
                           : ListView.builder(
                               shrinkWrap: true,

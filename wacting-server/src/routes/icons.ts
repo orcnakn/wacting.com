@@ -34,6 +34,29 @@ export async function iconRoutes(fastify: FastifyInstance) {
         }
     });
 
+    fastify.get('/icons/my-bounds', async (request, reply) => {
+        try {
+            const userId = (request as any).userId;
+            const icon = await prisma.icon.findUnique({
+                where: { userId },
+                select: {
+                    restrictedContinents: true,
+                    restrictedCountries: true,
+                    restrictedCities: true,
+                },
+            });
+            return reply.send({
+                success: true,
+                restrictedContinents: icon?.restrictedContinents ?? [],
+                restrictedCountries:  icon?.restrictedCountries  ?? [],
+                restrictedCities:     icon?.restrictedCities     ?? [],
+            });
+        } catch (err: any) {
+            fastify.log.error(`Failed to fetch bounds: ${err}`);
+            return reply.code(500).send({ error: 'Failed to fetch bounds' });
+        }
+    });
+
     fastify.post('/icons/restrict_bounds', async (request, reply) => {
         try {
             const userId = (request as any).userId;
