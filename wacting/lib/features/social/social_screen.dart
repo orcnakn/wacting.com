@@ -901,7 +901,6 @@ class _CampaignsTabState extends State<_CampaignsTab> {
   void _showLeaveConfirmation(BuildContext context, String campaignId, String title, double myStakedWac) {
     final penalty = myStakedWac * 0.30;
     final returnAmount = myStakedWac * 0.70;
-    final racReward = (penalty * 2).floor();
 
     showDialog(
       context: context,
@@ -926,8 +925,6 @@ class _CampaignsTabState extends State<_CampaignsTab> {
               _penaltyRow('Iade (%70)', '${returnAmount.toStringAsFixed(1)} WAC', AppColors.accentGreen),
               _penaltyRow('Yakilacak (%15)', '${(penalty * 0.5).toStringAsFixed(1)} WAC', AppColors.accentRed),
               _penaltyRow('Dev Fonu (%15)', '${(penalty * 0.5).toStringAsFixed(1)} WAC', AppColors.accentAmber),
-              const Divider(),
-              _penaltyRow(t('rac_reward'), '$racReward RAC', AppColors.accentTeal),
             ]),
           ),
         ]),

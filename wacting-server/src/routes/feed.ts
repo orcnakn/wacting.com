@@ -18,26 +18,15 @@ export async function feedRoutes(fastify: FastifyInstance) {
         try {
             const user = (request as any).user || { id: 'mockUserId_1' }; // Mock fallback for testing
 
-            // 1. WAC Campaign (My own campaign)
+            // My own campaign
             const myCampaign = await prisma.icon.findUnique({
                 where: { userId: user.id },
                 include: { user: true }
             });
 
-            // 2. RAC Campaigns (Protests I joined)
-            const myRacPools = await (prisma as any).racPoolParticipant.findMany({
-                where: { userId: user.id },
-                include: {
-                    pool: {
-                        include: { targetUser: true, representative: true }
-                    }
-                }
-            });
-
             return reply.send({
                 success: true,
                 wacCampaign: myCampaign,
-                racCampaigns: myRacPools
             });
         } catch (error: any) {
             fastify.log.error(error);
@@ -171,16 +160,6 @@ export async function feedRoutes(fastify: FastifyInstance) {
             include: { user: true }
         });
         return reply.send({ success: true, popular });
-    });
-
-    // GET /feed/global/worst
-    fastify.get('/global/worst', async (request, reply) => {
-        const worst = await (prisma as any).racPool.findMany({
-            take: 10,
-            orderBy: { totalBalance: 'desc' },
-            include: { targetUser: true }
-        });
-        return reply.send({ success: true, worst });
     });
 
     // GET /feed/global/local

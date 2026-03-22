@@ -16,7 +16,7 @@
  *
  * SUPPORT:  Full WAC reward. Hype multiplier 10x (decays -1/day, min 1.0)
  * REFORM:   WAC reward × time multiplier (0.5x→10x over 180 days)
- * PROTEST:  Half WAC + half RAC (e.g. 15 WAC tier → 7.5 WAC + 7.5 RAC)
+ * PROTEST:  Full WAC reward (RAC temporarily disabled)
  * EMERGENCY: No rewards (excluded from snapshot)
  *
  * REFORM time multiplier tiers:
@@ -26,10 +26,6 @@
  *   90-180 days: 5.0x
  *   180+ days:  10.0x
  *
- * RAC Decay formula (-1 Rule):
- *   dailyDecay = protestorCount × 1
- *   netDecay = dailyDecay - dailyRankingPoints
- *   If netDecay ≤ 0, no decay happens (life-water from ranking)
  */
 
 export function formatWac(value: number): string {
@@ -149,7 +145,6 @@ export interface MemberRewardResult {
     effectiveWac: number;
     rank: number;
     wacReward: number;
-    racReward: number;
     newMultiplier: number;
 }
 
@@ -160,9 +155,9 @@ export interface MemberRewardResult {
  * 2. Assign rank (1-based)
  * 3. Get base reward from tier table
  * 4. Apply stance-specific modifiers:
- *    - SUPPORT: full WAC, no RAC
- *    - REFORM:  WAC × reform time multiplier, no RAC
- *    - PROTEST: 50% WAC + 50% RAC
+ *    - SUPPORT: full WAC
+ *    - REFORM:  WAC × reform time multiplier
+ *    - PROTEST: full WAC (RAC temporarily disabled)
  * 5. Compute new multiplier for next day
  */
 export function computeCampaignMemberRewards(
@@ -188,7 +183,6 @@ export function computeCampaignMemberRewards(
         const baseReward = getMemberReward(memberCount, rank);
 
         let wacReward = 0;
-        let racReward = 0;
         let newMultiplier = m.multiplier;
 
         switch (m.stanceType) {
@@ -209,9 +203,8 @@ export function computeCampaignMemberRewards(
             }
 
             case 'PROTEST':
-                // Half WAC + half RAC
-                wacReward = Math.round(baseReward * 0.5 * 1_000_000) / 1_000_000;
-                racReward = Math.round(baseReward * 0.5 * 1_000_000) / 1_000_000;
+                // Full WAC (RAC temporarily disabled)
+                wacReward = baseReward;
                 newMultiplier = 1.0; // PROTEST stays at 1.0
                 break;
 
@@ -226,7 +219,6 @@ export function computeCampaignMemberRewards(
             effectiveWac: m.effectiveWac,
             rank,
             wacReward,
-            racReward,
             newMultiplier,
         };
     });
@@ -286,47 +278,6 @@ export function computeAllCampaignRewards(
             sharePercent,
         };
     });
-}
-
-// ─── RAC Decay ───────────────────────────────────────────────────────────────
-
-export interface RacDecayInput {
-    campaignId: string;
-    poolId: string;
-    totalRacBalance: bigint;
-    protestorCount: number;
-    dailyRankingPoints: number;
-}
-
-export interface RacDecayResult {
-    poolId: string;
-    campaignId: string;
-    decayAmount: bigint;
-    bonusAmount: bigint;
-    netDecay: bigint;
-    newBalance: bigint;
-    shouldDeactivate: boolean;
-}
-
-export function computeRacDecay(input: RacDecayInput): RacDecayResult {
-    const decayAmount = BigInt(input.protestorCount);
-    const bonusAmount = BigInt(Math.floor(input.dailyRankingPoints));
-
-    const netDecayRaw = decayAmount - bonusAmount;
-    const netDecay = netDecayRaw > 0n ? netDecayRaw : 0n;
-
-    const actualDecay = netDecay > input.totalRacBalance ? input.totalRacBalance : netDecay;
-    const newBalance = input.totalRacBalance - actualDecay;
-
-    return {
-        poolId: input.poolId,
-        campaignId: input.campaignId,
-        decayAmount,
-        bonusAmount,
-        netDecay: actualDecay,
-        newBalance,
-        shouldDeactivate: newBalance <= 0n,
-    };
 }
 
 // ─── Legacy exports (backward compat) ───────────────────────────────────────

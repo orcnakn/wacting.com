@@ -34,6 +34,37 @@ export async function iconRoutes(fastify: FastifyInstance) {
         }
     });
 
+    // Returns current user's own icon position from the physics engine
+    fastify.get('/icons/my-position', async (request, reply) => {
+        const userId = (request as any).userId;
+        const GRID_WIDTH = 715;
+        const GRID_HEIGHT = 714;
+        try {
+            const engine = (fastify as any).engine;
+            if (engine) {
+                const iconState = engine.icons.get(userId);
+                if (iconState) {
+                    const lat = 90 - (iconState.y / GRID_HEIGHT) * 180;
+                    const lng = (iconState.x / GRID_WIDTH) * 360 - 180;
+                    return reply.send({ success: true, lat, lng });
+                }
+            }
+            // Fallback: DB last known position
+            const icon = await prisma.icon.findUnique({
+                where: { userId },
+                select: { lastKnownX: true, lastKnownY: true },
+            });
+            if (icon) {
+                const lat = 90 - (icon.lastKnownY / GRID_HEIGHT) * 180;
+                const lng = (icon.lastKnownX / GRID_WIDTH) * 360 - 180;
+                return reply.send({ success: true, lat, lng });
+            }
+            return reply.code(404).send({ error: 'Icon not found' });
+        } catch (err: any) {
+            return reply.code(500).send({ error: 'Failed to fetch position' });
+        }
+    });
+
     fastify.get('/icons/my-bounds', async (request, reply) => {
         try {
             const userId = (request as any).userId;

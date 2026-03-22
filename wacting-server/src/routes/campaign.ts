@@ -612,7 +612,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 return reply.send({
                     success: true,
                     totalStaked: stakedWac.toFixed(6),
-                    returned: '0.000000', burned: '0.000000', devFee: '0.000000', racMinted: 0,
+                    returned: '0.000000', burned: '0.000000', devFee: '0.000000',
                     message: isLeader && memberCount <= 1
                         ? 'Acil durum kampanyasi kapatildi.'
                         : isLeader ? 'Liderlik ve WAC havuzu devredildi.' : 'Kampanyadan ayrildiniz.',
@@ -627,8 +627,6 @@ export async function campaignRoutes(fastify: FastifyInstance) {
             const returnAmount = stakedWac.sub(penalty).toDecimalPlaces(6);
             const burnAmount = penalty.mul(isReform ? REFORM_EXIT_BURN_SHARE.toString() : '0.50').toDecimalPlaces(6);
             const devAmount = penalty.sub(burnAmount);
-            const racReward = BigInt(penalty.mul('2').floor().toFixed(0)); // 2x penalty as RAC
-
             await prisma.$transaction(async (tx) => {
                 // 1. Remove member
                 await (tx as any).campaignMember.delete({
@@ -670,16 +668,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                     },
                 });
 
-                // 5. Mint RAC to user (2x penalty)
-                if (racReward > 0n) {
-                    await tx.userRac.upsert({
-                        where: { userId: user.id },
-                        update: { racBalance: { increment: racReward } },
-                        create: { userId: user.id, racBalance: racReward },
-                    });
-                }
-
-                // 6. Record chained transactions (4 legs)
+                // 5. Record chained transactions (3 legs)
                 await recordChainedTransaction(tx, {
                     userId: user.id,
                     amount: returnAmount,
@@ -704,15 +693,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                     campaignId: id,
                 });
 
-                await recordChainedTransaction(tx, {
-                    userId: user.id,
-                    amount: racReward.toString(),
-                    type: 'RAC_MINTED' as any,
-                    note: `Campaign exit — ${racReward} RAC minted (2x penalty)`,
-                    campaignId: id,
-                });
-
-                // 7. Record history
+                // 6. Record history
                 await (tx as any).campaignHistory.create({
                     data: {
                         userId: user.id,
@@ -722,7 +703,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                     },
                 });
 
-                // 8. Leader succession
+                // 7. Leader succession
                 if (isLeader) {
                     if (memberCount <= 1) {
                         await tx.campaign.update({
@@ -745,7 +726,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
             // Notify user
             await notify(prisma, user.id, 'CAMPAIGN_CHANGE',
                 'Kampanyadan Ayrildiniz',
-                `"${campaign.title}" kampanyasindan ayrildiniz. ${returnAmount.toFixed(2)} WAC iade edildi, ${Number(racReward)} RAC kazandiniz.`,
+                `"${campaign.title}" kampanyasindan ayrildiniz. ${returnAmount.toFixed(2)} WAC iade edildi.`,
                 JSON.stringify({ campaignId: id }),
             );
 
@@ -763,7 +744,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
 
             fastify.log.info(
                 `[Campaign] ${user.id} left campaign ${id}. ` +
-                `Returned: ${returnAmount}, Burned: ${burnAmount}, Dev: ${devAmount}, RAC: ${racReward}`
+                `Returned: ${returnAmount}, Burned: ${burnAmount}, Dev: ${devAmount}`
             );
 
             return reply.send({
@@ -772,12 +753,11 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 returned: returnAmount.toFixed(6),
                 burned: burnAmount.toFixed(6),
                 devFee: devAmount.toFixed(6),
-                racMinted: Number(racReward),
                 message: isLeader && memberCount <= 1
                     ? 'Kampanya kapatıldı — üye kalmadı.'
                     : isLeader
                         ? 'Kampanyadan ayrıldınız. Liderlik devredildi.'
-                        : 'Kampanyadan ayrıldınız. WAC iadeniz ve RAC ödülünüz hesabınıza aktarıldı.',
+                        : 'Kampanyadan ayrıldınız. WAC iadeniz hesabınıza aktarıldı.',
             });
         } catch (error: any) {
             fastify.log.error(error);
@@ -1167,7 +1147,6 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 where: { id },
                 include: {
                     leader: { select: { id: true, slogan: true, avatarUrl: true } },
-                    racPool: { select: { totalBalance: true, participantCount: true, isActive: true } },
                     _count: { select: { members: true, polls: true } },
                 },
             });
@@ -1175,9 +1154,7 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 return reply.status(404).send({ success: false, error: 'Campaign not found' });
             }
 
-            // Icon size = totalWacStaked - racPool
-            const racPoolBalance = campaign.racPool ? Number(campaign.racPool.totalBalance) : 0;
-            const effectiveSize = Math.max(0, Number(campaign.totalWacStaked) - racPoolBalance);
+            const effectiveSize = Math.max(0, Number(campaign.totalWacStaked));
 
             return reply.send({
                 success: true,
@@ -1185,13 +1162,6 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                     ...campaign,
                     totalWacStaked: campaign.totalWacStaked.toFixed(6),
                     effectiveSize,
-                    racPool: campaign.racPool
-                        ? {
-                            totalBalance: Number(campaign.racPool.totalBalance),
-                            participantCount: campaign.racPool.participantCount,
-                            isActive: campaign.racPool.isActive,
-                        }
-                        : null,
                 },
             });
         } catch (error: any) {
@@ -1315,41 +1285,6 @@ export async function campaignRoutes(fastify: FastifyInstance) {
         } catch (error: any) {
             fastify.log.error(error);
             return reply.status(500).send({ success: false, error: 'Failed to fetch trending campaigns' });
-        }
-    });
-
-    // ── List Lynched Campaigns (highest RAC protest pool) ────────────────────
-    fastify.get('/lynched', async (_request, reply) => {
-        try {
-            const pools = await (prisma as any).racPool.findMany({
-                where: { isActive: true },
-                orderBy: { totalBalance: 'desc' },
-                take: 20,
-                include: {
-                    targetCampaign: {
-                        include: {
-                            leader: { select: { id: true, slogan: true, avatarUrl: true } },
-                            _count: { select: { members: true, polls: true } },
-                        },
-                    },
-                },
-            });
-
-            const campaigns = pools
-                .filter((p: any) => p.targetCampaign?.isActive)
-                .map((p: any) => ({
-                    ...p.targetCampaign,
-                    totalWacStaked: p.targetCampaign.totalWacStaked.toFixed(6),
-                    memberCount: p.targetCampaign._count.members,
-                    pollCount: p.targetCampaign._count.polls,
-                    racPoolBalance: Number(p.totalBalance),
-                    racParticipantCount: p.participantCount,
-                }));
-
-            return reply.send({ success: true, campaigns });
-        } catch (error: any) {
-            fastify.log.error(error);
-            return reply.status(500).send({ success: false, error: 'Failed to fetch lynched campaigns' });
         }
     });
 

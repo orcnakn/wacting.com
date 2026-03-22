@@ -133,6 +133,10 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   List<Map<String, dynamic>> _userLocations = [];
   Timer? _locationTimer;
 
+  // ── My icon position cache (updated from stream, survives viewport changes) ──
+  LatLng? _myIconLatLng;
+  StreamSubscription? _myIconSub;
+
   @override
   void initState() {
     super.initState();
@@ -143,6 +147,17 @@ class _GridScreenState extends ConsumerState<GridScreen> {
     _fetchUserLocations();
     _locationTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchUserLocations());
     _loadSavedRegions();
+    // Track own icon position from stream — independent of viewport filter
+    _myIconSub = socketService.iconStream.listen((icons) {
+      final myId = apiService.userId;
+      if (myId == null || !mounted) return;
+      final myIcon = icons.cast<IconModel?>().firstWhere(
+        (ic) => ic!.userId == myId, orElse: () => null);
+      if (myIcon != null) {
+        final pos = _offsetToLatLng(myIcon.position);
+        if (_myIconLatLng != pos) setState(() => _myIconLatLng = pos);
+      }
+    });
   }
 
   Future<void> _loadSavedRegions() async {
@@ -339,6 +354,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   @override
   void dispose() {
     _locationTimer?.cancel();
+    _myIconSub?.cancel();
     socketService.dispose();
     super.dispose();
   }
@@ -666,23 +682,26 @@ class _GridScreenState extends ConsumerState<GridScreen> {
     return true;
   }
 
+  // ── Tüm bölge seçim bildirimleri için standart küçük snackbar ──────────────
+  void _miniSnack(String text, {Color color = Colors.cyan, Duration duration = const Duration(seconds: 1)}) {
+    final w = MediaQuery.of(context).size.width;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        content: Text(text,
+            style: const TextStyle(color: Colors.white, fontSize: 10),
+            textAlign: TextAlign.center),
+        backgroundColor: color.withValues(alpha: 0.88),
+        duration: duration,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        margin: EdgeInsets.only(bottom: 12, left: w * 0.28, right: w * 0.28),
+      ));
+  }
+
   void _showSelectionSnackbar(String label) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('$label | $_totalSelectionCount',
-          style: const TextStyle(color: Colors.white, fontSize: 11),
-          textAlign: TextAlign.center),
-      backgroundColor: AppColors.accentBlue.withOpacity(0.9),
-      duration: const Duration(seconds: 1),
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: EdgeInsets.only(
-        bottom: 20,
-        left: MediaQuery.of(context).size.width * 0.25,
-        right: MediaQuery.of(context).size.width * 0.25,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-    ));
+    _miniSnack('$label | $_totalSelectionCount', color: AppColors.accentBlue);
   }
 
   // ── Summary of all selected regions ──
@@ -1289,18 +1308,16 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                 side: BorderSide(color: AppColors.accentTeal, width: 1.5)
               ),
               child: Icon(Icons.center_focus_strong, color: AppColors.accentTeal, size: 18),
-              onPressed: () {
-                final myId = apiService.userId;
-                if (myId != null && _lastIcons != null) {
-                  final myIcon = _lastIcons!.cast<IconModel?>().firstWhere(
-                    (ic) => ic!.userId == myId, orElse: () => null);
-                  if (myIcon != null) {
-                    final pos = _offsetToLatLng(myIcon.position);
-                    _mapController.move(pos, 11.0);
-                    return;
-                  }
+              onPressed: () async {
+                final pos = await apiService.getMyIconPosition();
+                if (!mounted) return;
+                if (pos != null) {
+                  _mapController.move(LatLng(pos['lat']!, pos['lng']!), 11.0);
+                } else if (_myIconLatLng != null) {
+                  _mapController.move(_myIconLatLng!, 11.0);
+                } else {
+                  _mapController.move(_initialCenter, 11.0);
                 }
-                _mapController.move(_initialCenter, 11.0);
               },
             )),
           ),
@@ -1418,22 +1435,9 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                     _regionSelectMode = true;
                     _paused = true;  // Auto-pause icons for inspection
                   });
-                  ScaffoldMessenger.of(context).clearSnackBars();
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: const Text(
-                      'Bolge secimi ACIK — haritaya dokunun',
-                      style: TextStyle(color: Colors.white, fontSize: 11),
-                    ),
-                    backgroundColor: Colors.orange,
-                    duration: const Duration(seconds: 2),
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    margin: EdgeInsets.only(
-                      bottom: 20,
-                      left: MediaQuery.of(context).size.width * 0.2,
-                      right: MediaQuery.of(context).size.width * 0.2,
-                    ),
-                  ));
+                  _miniSnack('Bolge secimi ACIK — haritaya dokunun',
+                      color: Colors.orange,
+                      duration: const Duration(seconds: 2));
                 } else {
                   // Exiting region-select mode — apply selections + send to server
                   final continents = _selectedContinents.toList();
@@ -1469,39 +1473,12 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                     debugPrint('Failed to send restrictions: $e');
                   }
 
-                  ScaffoldMessenger.of(context).clearSnackBars();
                   if (_totalSelectionCount > 0) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text(
-                        'Secim uygulandi: $_selectionSummary',
-                        style: const TextStyle(color: Colors.white, fontSize: 10),
-                      ),
-                      backgroundColor: Colors.cyan.withValues(alpha: 0.85),
-                      duration: const Duration(seconds: 2),
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      margin: EdgeInsets.only(
-                        bottom: 12,
-                        left: MediaQuery.of(context).size.width * 0.25,
-                        right: MediaQuery.of(context).size.width * 0.25,
-                      ),
-                    ));
+                    _miniSnack('Secim uygulandi: $_selectionSummary',
+                        duration: const Duration(seconds: 2));
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: const Text('Bolge secimi kapandi',
-                        style: TextStyle(color: Colors.white, fontSize: 10)),
-                      backgroundColor: Colors.cyan.withValues(alpha: 0.85),
-                      duration: const Duration(seconds: 2),
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      margin: EdgeInsets.only(
-                        bottom: 12,
-                        left: MediaQuery.of(context).size.width * 0.3,
-                        right: MediaQuery.of(context).size.width * 0.3,
-                      ),
-                    ));
+                    _miniSnack('Bolge secimi kapandi',
+                        duration: const Duration(seconds: 2));
                   }
                 }
               },

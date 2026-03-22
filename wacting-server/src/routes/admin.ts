@@ -79,14 +79,12 @@ export async function adminRoutes(fastify: FastifyInstance) {
             prisma.devNote.count({ where: { isRead: false } }),
         ]);
 
-        // WAC/RAC circulation totals + active sessions
-        const [wacAgg, racAgg, activeSessions] = await Promise.all([
+        // WAC circulation total + active sessions
+        const [wacAgg, activeSessions] = await Promise.all([
             prisma.userWac.aggregate({ _sum: { wacBalance: true } }),
-            prisma.userRac.aggregate({ _sum: { racBalance: true } }),
             prisma.loginSession.count({ where: { logoutAt: null } }),
         ]);
         const totalWacCirculation = wacAgg._sum.wacBalance?.toString() ?? '0';
-        const totalRacCirculation = racAgg._sum.racBalance?.toString() ?? '0';
 
         return reply.send({
             totalUsers,
@@ -102,7 +100,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
             devNotesTotal,
             devNotesUnread,
             totalWacCirculation,
-            totalRacCirculation,
             activeSessions,
         });
     });
@@ -160,7 +157,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
                     isBot: true,
                     createdAt: true,
                     wac: { select: { wacBalance: true, isActive: true } },
-                    rac: { select: { racBalance: true } },
                     _count: { select: { campaigns: true } },
                 },
             }),
@@ -184,7 +180,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
             where: { id },
             include: {
                 wac: true,
-                rac: true,
                 campaignMemberships: {
                     include: {
                         campaign: { select: { id: true, title: true, isActive: true, stanceType: true, categoryType: true, totalWacStaked: true } },
@@ -389,7 +384,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
                     },
                     orderBy: { joinedAt: 'asc' },
                 },
-                racPool: { select: { totalBalance: true, participantCount: true, isActive: true } },
                 _count: { select: { members: true, polls: true } },
             },
         });
@@ -412,7 +406,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         const page  = Math.max(1, Number(query.page || '1'));
         const limit = Math.min(100, Math.max(1, Number(query.limit || '20')));
         const skip  = (page - 1) * limit;
-        const sortBy = query.sortBy === 'racBalance' ? 'racBalance' : 'wacBalance';
+        const sortBy = 'wacBalance';
         const sortDir = query.sortDir === 'asc' ? 'asc' as const : 'desc' as const;
 
         const where: any = {};
@@ -430,16 +424,13 @@ export async function adminRoutes(fastify: FastifyInstance) {
             where,
             skip,
             take: limit,
-            orderBy: sortBy === 'wacBalance'
-                ? { wac: { wacBalance: sortDir } }
-                : { rac: { racBalance: sortDir } },
+            orderBy: { wac: { wacBalance: sortDir } },
             select: {
                 id: true,
                 email: true,
                 slogan: true,
                 isBot: true,
                 wac: { select: { wacBalance: true, isActive: true } },
-                rac: { select: { racBalance: true } },
             },
         });
 
@@ -457,7 +448,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
                 isBot: u.isBot,
                 wacBalance: u.wac?.wacBalance?.toString() ?? '0',
                 wacActive: u.wac?.isActive ?? false,
-                racBalance: u.rac?.racBalance?.toString() ?? '0',
             })),
         });
     });

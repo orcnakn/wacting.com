@@ -29,7 +29,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
   // Wallet state
   Map<String, dynamic>? _wacStatus;
-  Map<String, dynamic>? _racBalance;
   List<dynamic> _txHistory = [];
   bool _walletLoading = true;
 
@@ -112,14 +111,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     try {
       final results = await Future.wait([
         apiService.getWacStatus(),
-        apiService.getRacBalance(),
         apiService.getWalletHistory(),
       ]);
       if (mounted) {
         setState(() {
           _wacStatus = results[0] as Map<String, dynamic>;
-          _racBalance = results[1] as Map<String, dynamic>;
-          final histData = results[2] as Map<String, dynamic>;
+          final histData = results[1] as Map<String, dynamic>;
           _txHistory = (histData['transactions'] as List?) ?? [];
           _walletLoading = false;
         });
@@ -1338,7 +1335,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     }
 
     final wacBalance = formatWac(_wacStatus?['wacBalance'] ?? '0');
-    final racBal = _racBalance?['racBalance'] ?? 0;
     final walletId = _profile?['walletId'] ?? '';
 
     return RefreshIndicator(
@@ -1355,17 +1351,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             color: AppColors.accentAmber,
             walletId: walletId,
             balance: '$wacBalance WAC',
-            onSend: () => _showTransferModal(context, isWac: true),
-            onReceive: () => _copyWalletId(walletId),
-          ),
-          const SizedBox(height: 12),
-          _buildWalletCard(
-            title: 'RAC',
-            icon: Icons.shield,
-            color: AppColors.accentTeal,
-            walletId: walletId,
-            balance: '$racBal RAC',
-            onSend: () => _showTransferModal(context, isWac: false),
+            onSend: () => _showTransferModal(context),
             onReceive: () => _copyWalletId(walletId),
           ),
           const SizedBox(height: 20),
@@ -1454,7 +1440,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     final isIncoming = type.contains('RETURN') || type.contains('REWARD') || type.contains('BONUS') || type.contains('DEPOSIT') || type.contains('WELCOME');
     final color = isIncoming ? AppColors.accentGreen : AppColors.accentRed;
     final prefix = isIncoming ? '+' : '-';
-    final tokenType = type.startsWith('RAC') ? 'RAC' : 'WAC';
+    final tokenType = 'WAC';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
@@ -1487,7 +1473,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     );
   }
 
-  void _showTransferModal(BuildContext context, {required bool isWac}) {
+  void _showTransferModal(BuildContext context) {
     final walletCtrl = TextEditingController();
     final amountCtrl = TextEditingController();
 
@@ -1498,7 +1484,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       builder: (ctx) => Padding(
         padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${isWac ? "WAC" : "RAC"} ${t('send_token')}', style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
+          Text('WAC ${t('send_token')}', style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           TextField(
             controller: walletCtrl,
@@ -1517,7 +1503,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold),
             decoration: InputDecoration(
               hintText: t('amount'),
-              suffixText: isWac ? 'WAC' : 'RAC',
+              suffixText: 'WAC',
               suffixStyle: TextStyle(color: AppColors.accentAmber, fontWeight: FontWeight.bold),
               filled: true, fillColor: AppColors.surfaceLight,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
@@ -1528,18 +1514,14 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             width: double.infinity,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: isWac ? AppColors.accentAmber : AppColors.accentTeal,
+                backgroundColor: AppColors.accentAmber,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: () async {
                 try {
-                  if (isWac) {
-                    await apiService.transferWac(walletCtrl.text.trim(), amountCtrl.text.trim());
-                  } else {
-                    await apiService.transferRac(walletCtrl.text.trim(), int.parse(amountCtrl.text.trim()));
-                  }
+                  await apiService.transferWac(walletCtrl.text.trim(), amountCtrl.text.trim());
                   Navigator.pop(ctx);
                   setState(() => _walletLoading = true);
                   _loadWallet();

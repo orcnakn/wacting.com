@@ -296,8 +296,21 @@ class ApiService {
 
   // ── Icon Restrictions ───────────────────────────────────────────────────────
 
+  Future<Map<String, double>?> getMyIconPosition() async {
+    try {
+      final res = await _dio.get('/icons/my-position');
+      final data = res.data as Map<String, dynamic>;
+      return {
+        'lat': (data['lat'] as num).toDouble(),
+        'lng': (data['lng'] as num).toDouble(),
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<Map<String, List<String>>> getMyBounds() async {
-    final res = await _dio.get('/api/icons/my-bounds');
+    final res = await _dio.get('/icons/my-bounds');
     final data = res.data as Map<String, dynamic>;
     return {
       'continents': List<String>.from(data['restrictedContinents'] ?? []),
@@ -311,7 +324,7 @@ class ApiService {
     List<String> countries = const [],
     List<String> cities = const [],
   }) async {
-    await _dio.post('/api/icons/restrict_bounds', data: {
+    await _dio.post('/icons/restrict_bounds', data: {
       'restrictedContinents': continents,
       'restrictedCountries': countries,
       'restrictedCities': cities,
@@ -396,11 +409,6 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> getRacBalance() async {
-    final res = await _dio.get('/rac/balance');
-    return res.data as Map<String, dynamic>;
-  }
-
   Future<Map<String, dynamic>> getWalletHistory({int page = 1, int limit = 20, String? type}) async {
     final params = <String, dynamic>{'page': page, 'limit': limit};
     if (type != null) params['type'] = type;
@@ -436,13 +444,6 @@ class ApiService {
     return (res.data as Map<String, dynamic>)['locations'] as List<dynamic>;
   }
 
-  Future<Map<String, dynamic>> transferRac(String toWalletId, int amount) async {
-    final res = await _dio.post('/rac/transfer', data: {
-      'toWalletId': toWalletId,
-      'amount': amount,
-    });
-    return res.data as Map<String, dynamic>;
-  }
 }
 
 final apiService = ApiService();

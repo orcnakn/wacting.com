@@ -130,7 +130,7 @@ class _RootNavigationState extends State<RootNavigation> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  'v.7',
+                  'v.8',
                   style: TextStyle(
                     color: AppColors.textTertiary.withOpacity(0.5),
                     fontSize: 11,
@@ -161,8 +161,8 @@ class _RootNavigationState extends State<RootNavigation> {
                     ),
                     if (_unreadCount > 0)
                       Positioned(
-                        top: -4,
-                        right: -4,
+                        top: -2,
+                        right: -2,
                         child: Container(
                           constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
                           padding: const EdgeInsets.symmetric(horizontal: 4),

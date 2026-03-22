@@ -41,7 +41,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'POLL_CREATED': return Icons.how_to_vote;
       case 'POLL_CLOSED': return Icons.check_circle;
       case 'DAILY_WAC_REWARD': return Icons.monetization_on;
-      case 'RAC_PROTEST_STARTED': return Icons.warning;
       case 'DIRECT_MESSAGE': return Icons.message;
       case 'CAMPAIGN_CHANGE': return Icons.edit;
       case 'CAMPAIGN_TRENDING': return Icons.trending_up;
@@ -57,7 +56,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'POLL_CREATED': return AppColors.accentAmber;
       case 'POLL_CLOSED': return AppColors.accentTeal;
       case 'DAILY_WAC_REWARD': return AppColors.accentAmber;
-      case 'RAC_PROTEST_STARTED': return AppColors.accentRed;
       case 'DIRECT_MESSAGE': return AppColors.accentBlue;
       case 'CAMPAIGN_CHANGE': return AppColors.accentTeal;
       case 'CAMPAIGN_TRENDING': return AppColors.accentAmber;

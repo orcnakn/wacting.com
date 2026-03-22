@@ -111,20 +111,6 @@ export async function voteRoutes(fastify: FastifyInstance) {
             const user = (request as any).user;
             const { campaignId } = request.params as { campaignId: string };
 
-            // Privacy check: is this user a protestor against this campaign?
-            const racPool = await (prisma as any).racPool.findUnique({
-                where: { targetCampaignId: campaignId },
-                include: {
-                    participants: { where: { userId: user.id }, take: 1 },
-                },
-            });
-            if (racPool?.participants?.length > 0) {
-                return reply.status(403).send({
-                    success: false,
-                    error: 'Protestocular kampanya oylamalarını göremez.',
-                });
-            }
-
             const polls = await prisma.campaignPoll.findMany({
                 where: { campaignId },
                 orderBy: { createdAt: 'desc' },
@@ -184,18 +170,6 @@ export async function voteRoutes(fastify: FastifyInstance) {
                 return reply.status(403).send({
                     success: false,
                     error: 'Yalnızca kampanya üyeleri (WAC stake sahipleri) oy kullanabilir.',
-                });
-            }
-
-            // Privacy: protestors cannot vote
-            const racPool = await (prisma as any).racPool.findUnique({
-                where: { targetCampaignId: poll.campaignId },
-                include: { participants: { where: { userId: user.id }, take: 1 } },
-            });
-            if (racPool?.participants?.length > 0) {
-                return reply.status(403).send({
-                    success: false,
-                    error: 'Protestocular kampanya oylamalarına katılamaz.',
                 });
             }
 

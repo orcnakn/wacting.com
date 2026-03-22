@@ -20,7 +20,7 @@ import { adminRoutes } from './routes/admin.js';
 import { iconRoutes } from './routes/icons.js';
 import { socialRoutes } from './routes/social.js';
 import { wacRoutes, wacPublicRoutes } from './routes/wac.js';
-import { racRoutes, racPublicRoutes } from './routes/rac.js';
+// import { racRoutes, racPublicRoutes } from './routes/rac.js'; // RAC temporarily disabled
 import { feedRoutes } from './routes/feed.js';
 import { voteRoutes } from './routes/vote.js';
 import { profileRoutes } from './routes/profile.js';
@@ -233,7 +233,7 @@ async function start() {
             fastify.log.info(`Loaded ${dbIcons.length} icons from DB into engine`);
 
         } catch (dbErr) {
-            fastify.log.warn('⚠ PostgreSQL unavailable — server will start without DB. WAC/RAC routes will return errors.');
+            fastify.log.warn('⚠ PostgreSQL unavailable — server will start without DB. WAC routes will return errors.');
             // Fallback: inject mock icons for testing
             for (let i = 0; i < 10; i++) {
                 engine.icons.set(`mock_${i}`, {
@@ -302,7 +302,7 @@ async function start() {
             // SPA fallback — all unmatched routes serve index.html
             fastify.setNotFoundHandler(async (request, reply) => {
                 if (!request.url.startsWith('/api') && !request.url.startsWith('/auth') &&
-                    !request.url.startsWith('/wac') && !request.url.startsWith('/rac') &&
+                    !request.url.startsWith('/wac') &&
                     !request.url.startsWith('/feed') && !request.url.startsWith('/vote') &&
                     !request.url.startsWith('/campaign') && !request.url.startsWith('/social') &&
                     !request.url.startsWith('/icon') && !request.url.startsWith('/admin') &&
@@ -325,8 +325,8 @@ async function start() {
         fastify.register(socialRoutes);
         fastify.register(wacRoutes);            // authenticated WAC endpoints
         fastify.register(wacPublicRoutes);      // public leaderboard
-        fastify.register(racRoutes);            // authenticated RAC endpoints
-        fastify.register(racPublicRoutes);      // public protest pool stats
+        // fastify.register(racRoutes);         // RAC temporarily disabled
+        // fastify.register(racPublicRoutes);   // RAC temporarily disabled
         fastify.register(feedRoutes, { prefix: '/feed' }); // New Feed APIs
         fastify.register(voteRoutes, { prefix: '/vote' }); // Voting System
         fastify.register(profileRoutes, { prefix: '/api/profile' });
