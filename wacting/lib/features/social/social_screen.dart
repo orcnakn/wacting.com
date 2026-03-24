@@ -1000,9 +1000,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
     String? selectedCategory;
 
     final stanceOptions = [
-      {'key': 'PROTEST', 'label': t('protest_label'), 'emoji': '🛑', 'color': const Color(0xFFFF4444), 'desc': t('protest_desc')},
       {'key': 'SUPPORT', 'label': t('support_label'), 'emoji': '✅', 'color': const Color(0xFF4CAF50), 'desc': t('support_desc')},
-      {'key': 'REFORM', 'label': t('reform_label'), 'emoji': '🛠', 'color': const Color(0xFF2196F3), 'desc': t('reform_desc')},
       {'key': 'EMERGENCY', 'label': t('emergency_label'), 'emoji': '🆘', 'color': const Color(0xFFFF9800), 'desc': t('emergency_desc')},
     ];
 
@@ -1383,8 +1381,8 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                               return;
                             }
                             final stanceColorMap = {
-                              'PROTEST': '#FF4444', 'SUPPORT': '#4CAF50',
-                              'REFORM': '#2196F3', 'EMERGENCY': '#FF9800',
+                              'SUPPORT': '#4CAF50',
+                              'EMERGENCY': '#FF9800',
                             };
                             final colorHex = stanceColorMap[selectedStance] ?? '#2C3E50';
                             await apiService.createCampaign(
@@ -1596,15 +1594,11 @@ class _GlobalTabState extends State<_GlobalTab> {
 
   static const _stanceColors = <String, Color>{
     'SUPPORT': Color(0xFF4CAF50),
-    'REFORM': Color(0xFF2196F3),
-    'PROTEST': Color(0xFFFF4444),
     'EMERGENCY': Color(0xFFFF0000),
   };
 
   static Map<String, String> get _stanceLabels => <String, String>{
     'SUPPORT': t('support'),
-    'REFORM': t('reform'),
-    'PROTEST': t('protest'),
     'EMERGENCY': t('emergency'),
   };
 
@@ -1665,8 +1659,6 @@ class _GlobalTabState extends State<_GlobalTab> {
             children: [
               _stanceChip(null, t('all')),
               _stanceChip('SUPPORT', t('support')),
-              _stanceChip('REFORM', t('reform')),
-              _stanceChip('PROTEST', t('protest')),
               _stanceChip('EMERGENCY', t('emergency')),
             ],
           ),
@@ -1981,14 +1973,10 @@ class _CampaignDetailSheetState extends State<_CampaignDetailSheet> {
 
   static const _stanceColors = {
     'SUPPORT': Color(0xFF4CAF50),
-    'REFORM': Color(0xFF2196F3),
-    'PROTEST': Color(0xFFFF4444),
     'EMERGENCY': Color(0xFFFF0000),
   };
   static Map<String, String> get _stanceLabels => {
     'SUPPORT': t('support'),
-    'REFORM': t('reform'),
-    'PROTEST': t('protest'),
     'EMERGENCY': t('emergency'),
   };
 

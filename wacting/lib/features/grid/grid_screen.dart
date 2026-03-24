@@ -1536,8 +1536,6 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _filterOption('all', t('filter_all_campaigns'), Icons.public, AppColors.accentTeal),
-                        _filterOption('protest', t('filter_protest'), Icons.warning_amber, AppColors.accentAmber),
-                        _filterOption('reform', t('filter_reform'), Icons.build_circle, AppColors.accentBlue),
                         _filterOption('support', t('filter_support'), Icons.favorite, AppColors.accentGreen),
                         _filterOption('emergency', t('filter_emergency'), Icons.emergency, AppColors.accentRed),
                       ],
@@ -1672,8 +1670,6 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
   String _filterLabel(String filter) {
     switch (filter) {
-      case 'protest': return t('filter_protest');
-      case 'reform': return t('filter_reform');
       case 'support': return t('filter_support');
       case 'emergency': return t('filter_emergency');
       default: return t('filter_all_campaigns');
@@ -1747,15 +1743,11 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
             // Stance label & color
             final stanceLabel = {
-              'PROTEST': t('filter_protest'),
-              'REFORM': t('filter_reform'),
               'SUPPORT': t('filter_support'),
               'EMERGENCY': t('filter_emergency'),
             }[stanceType] ?? stanceType;
 
             final stanceColor = {
-              'PROTEST': AppColors.accentAmber,
-              'REFORM': AppColors.accentBlue,
               'SUPPORT': AppColors.accentGreen,
               'EMERGENCY': AppColors.accentRed,
             }[stanceType] ?? AppColors.accentBlue;
@@ -1942,7 +1934,8 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   void _showCampaignLocationPicker() async {
     List<dynamic> campaigns = [];
     try {
-      campaigns = await apiService.getMyCampaigns();
+      final all = await apiService.getMyCampaigns();
+      campaigns = all.where((c) => c['isActive'] == true).toList();
     } catch (_) {}
 
     if (campaigns.isEmpty) {
@@ -1988,7 +1981,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                         Icon(Icons.flag, color: AppColors.accentTeal, size: 18),
                         const SizedBox(width: 8),
                         Text(
-                          'Kampanyalar (${campaigns.length})',
+                          'Aktif Kampanyalar (${campaigns.length})',
                           style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                         const Spacer(),

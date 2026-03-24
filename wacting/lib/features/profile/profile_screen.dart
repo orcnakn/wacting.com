@@ -46,7 +46,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _isOwnProfile ? 2 : 1, vsync: this);
+    _tabController = TabController(length: 1, vsync: this);
     _loadProfile();
     _restoreLocationSettings();
     localeService.addListener(_onLocaleChanged);
@@ -183,30 +183,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        bottom: _isOwnProfile ? TabBar(
-          controller: _tabController,
-          indicatorColor: AppColors.accentBlue,
-          labelColor: AppColors.accentBlue,
-          unselectedLabelColor: AppColors.textTertiary,
-          indicatorWeight: 3,
-          onTap: (index) {
-            if (index == 1 && _walletLoading) _loadWallet();
-          },
-          tabs: [
-            Tab(text: t('profile_tab')),
-            Tab(text: t('wallet')),
-          ],
-        ) : null,
+        bottom: null,
       ),
-      body: _isOwnProfile
-        ? TabBarView(
-        controller: _tabController,
-        children: [
-          _buildProfileTab(displayName, avatarUrl, sloganText),
-          _buildWalletTab(),
-        ],
-      )
-        : _buildProfileTab(displayName, avatarUrl, sloganText),
+      body: _buildProfileTab(displayName, avatarUrl, sloganText),
     );
   }
 
