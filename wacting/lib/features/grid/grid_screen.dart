@@ -1494,59 +1494,9 @@ class _GridScreenState extends ConsumerState<GridScreen> {
             )),
           ),
 
-          // ── Map Filter Dropdown ──
+          // ── Active Campaigns Panel (moved to top-left) ──
           Positioned(
             top: 16,
-            left: 16,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GestureDetector(
-                  onTap: () => setState(() => _filterDropdownOpen = !_filterDropdownOpen),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppColors.navyPrimary.withOpacity(0.9),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.accentTeal, width: 1),
-                    ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.filter_list, color: AppColors.accentTeal, size: 16),
-                      const SizedBox(width: 6),
-                      Text(
-                        _filterLabel(_mapFilter),
-                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(_filterDropdownOpen ? Icons.expand_less : Icons.expand_more,
-                          color: AppColors.accentTeal, size: 14),
-                    ]),
-                  ),
-                ),
-                if (_filterDropdownOpen)
-                  Container(
-                    margin: const EdgeInsets.only(top: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.navyPrimary.withOpacity(0.95),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.borderLight, width: 0.5),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _filterOption('all', t('filter_all_campaigns'), Icons.public, AppColors.accentTeal),
-                        _filterOption('support', t('filter_support'), Icons.favorite, AppColors.accentGreen),
-                        _filterOption('emergency', t('filter_emergency'), Icons.emergency, AppColors.accentRed),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          // ── Active Campaigns Panel ──
-          Positioned(
-            top: (MediaQuery.of(context).size.height - 70) / 2 - 14,
             left: 16,
             child: GestureDetector(
               onTap: () async {
