@@ -45,15 +45,15 @@ class _SocialScreenState extends State<SocialScreen> {
              unselectedLabelColor: AppColors.textTertiary,
              indicatorWeight: 3,
              tabs: [
-               Tab(text: t('campaigns'), icon: const Icon(Icons.flag)),
                Tab(text: t('global'), icon: const Icon(Icons.public)),
+               Tab(text: t('campaigns'), icon: const Icon(Icons.flag)),
              ],
            ),
         ),
         body: const TabBarView(
           children: [
-            _CampaignsTab(),
             _GlobalTab(),
+            _CampaignsTab(),
           ],
         ),
       ),
@@ -242,7 +242,8 @@ class _CampaignsTabState extends State<_CampaignsTab> {
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                 _metricCol(t('joined'), h['joinedAt']!, AppColors.textTertiary),
                 _metricCol(t('left'), h['exitedAt']!, AppColors.textTertiary),
-                _metricCol(t('earned'), '${h['totalEarned']} WAC', AppColors.accentAmber),
+                // WAC earned — gecici olarak gizlendi
+                // _metricCol(t('earned'), '${h['totalEarned']} WAC', AppColors.accentAmber),
               ]),
             ]),
           ),
@@ -430,11 +431,9 @@ class _CampaignsTabState extends State<_CampaignsTab> {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              '${fmtWac(totalWacStaked)} WAC',
-              style: TextStyle(color: AppColors.accentAmber, fontSize: 11, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(width: 6),
+            // WAC display — gecici olarak gizlendi
+            // Text('${fmtWac(totalWacStaked)} WAC', style: TextStyle(color: AppColors.accentAmber, fontSize: 11, fontWeight: FontWeight.bold)),
+            // const SizedBox(width: 6),
             Text(
               '$participants',
               style: TextStyle(color: AppColors.textTertiary, fontSize: 11),
@@ -768,51 +767,15 @@ class _CampaignsTabState extends State<_CampaignsTab> {
         Divider(color: AppColors.borderLight),
         const SizedBox(height: 16),
 
-        // Metrics
+        // Metrics — WAC stake bilgileri gecici olarak gizlendi
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           _metricCol(t('participants'), '$participants', color),
-          _metricCol(t('total_stake'), '${_fmtWac(totalWacStaked)} WAC', color),
-          _metricCol(t('my_stake'), '${_fmtWac(myStakedWac)} WAC', AppColors.accentAmber),
         ]),
         const SizedBox(height: 16),
-
-        // Staking info
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(8)),
-          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(t('stake_ratio'), style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
-              Text(
-                totalWacStaked > 0
-                    ? '%${(myStakedWac / totalWacStaked * 100).toStringAsFixed(1)}'
-                    : '%0.0',
-                style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
-            ]),
-            // Cikis cezasi — gecici olarak gizlendi
-            // Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            //   Text('Cikis Cezasi (%30)', style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
-            //   Text('${_fmtWac(myStakedWac * 0.30)} WAC',
-            //       style: TextStyle(color: AppColors.accentRed, fontWeight: FontWeight.bold, fontSize: 14)),
-            // ]),
-          ]),
-        ),
 
         // Buttons
         const SizedBox(height: 12),
         Row(children: [
-          // Oylama butonlari — gecici olarak gizlendi
-          // Stake Ekle butonu
-          Expanded(
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.accentTeal.withOpacity(0.1),
-                  foregroundColor: AppColors.accentTeal),
-              icon: const Icon(Icons.add, size: 18),
-              label: Text(t('add_stake')),
-              onPressed: () => _showAddStakeModal(context, campaignId),
-            ),
-          ),
           const SizedBox(width: 8),
           // Ayril butonu
           SizedBox(
@@ -908,26 +871,9 @@ class _CampaignsTabState extends State<_CampaignsTab> {
         backgroundColor: AppColors.surfaceWhite,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(t('leave_campaign'), style: TextStyle(color: AppColors.textPrimary)),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('"$title" kampanyasindan ayrilmak istediginize emin misiniz?',
-              style: TextStyle(color: AppColors.textSecondary)),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.accentRed.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Cikis Detaylari:', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 13)),
-              const SizedBox(height: 8),
-              _penaltyRow(t('total_stake'), '${myStakedWac.toStringAsFixed(1)} WAC', AppColors.textPrimary),
-              _penaltyRow('Iade (%70)', '${returnAmount.toStringAsFixed(1)} WAC', AppColors.accentGreen),
-              _penaltyRow('Yakilacak (%15)', '${(penalty * 0.5).toStringAsFixed(1)} WAC', AppColors.accentRed),
-              _penaltyRow('Dev Fonu (%15)', '${(penalty * 0.5).toStringAsFixed(1)} WAC', AppColors.accentAmber),
-            ]),
-          ),
-        ]),
+        content: Text('"$title" kampanyasindan ayrilmak istediginize emin misiniz?',
+            style: TextStyle(color: AppColors.textSecondary)),
+        // WAC cikis detaylari — gecici olarak gizlendi
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -1287,16 +1233,8 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                     Divider(color: AppColors.borderLight),
                     const SizedBox(height: 16),
 
-                    // ── WAC Stake ───────────────────────────────────────────
-                    Text('WAC Stake', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 14)),
-                    const SizedBox(height: 4),
-                    Text('Kampanyaya stake edilecek WAC miktari (min. 1 WAC)',
-                        style: TextStyle(color: AppColors.textTertiary, fontSize: 12)),
-                    const SizedBox(height: 8),
-                    _field(stakeCtrl, '1', icon: Icons.account_balance_wallet),
+                    // WAC Stake — gecici olarak gizlendi
 
-                    const SizedBox(height: 24),
-                    Divider(color: AppColors.borderLight),
                     const SizedBox(height: 16),
 
                     // ── Hareket Hızı ──────────────────────────────────────────
@@ -1361,13 +1299,7 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                             return;
                           }
                           try {
-                            final stakeVal = double.tryParse(stakeCtrl.text.trim()) ?? 1.0;
-                            if (stakeVal < 1) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: const Text('En az 1 WAC stake gerekli!'), backgroundColor: AppColors.accentRed),
-                              );
-                              return;
-                            }
+                            final stakeVal = 1.0; // WAC stake gecici olarak gizlendi, default 1
                             if (selectedStance == null) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: const Text('Durus tipi secimi gerekli!'), backgroundColor: AppColors.accentRed),
@@ -1834,10 +1766,7 @@ class _GlobalTabState extends State<_GlobalTab> {
                 const SizedBox(width: 4),
                 Text('$memberCount uye', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
                 const SizedBox(width: 16),
-                Icon(Icons.account_balance_wallet, size: 14, color: AppColors.textTertiary),
-                const SizedBox(width: 4),
-                Text('$totalWac WAC', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-                const SizedBox(width: 16),
+                // WAC display — gecici olarak gizlendi
                 Icon(Icons.category, size: 14, color: AppColors.textTertiary),
                 const SizedBox(width: 4),
                 Text(categoryLabel, style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
@@ -2046,7 +1975,7 @@ class _CampaignDetailSheetState extends State<_CampaignDetailSheet> {
               ),
               child: Row(children: [
                 _statItem(Icons.people, '$memberCount', 'Uye'),
-                _statItem(Icons.account_balance_wallet, _fmtWac(totalWac), 'WAC'),
+                // WAC stat — gecici olarak gizlendi
                 _statItem(Icons.person, leaderName, t('leader')),
               ]),
             ),
@@ -2128,8 +2057,7 @@ class _CampaignDetailSheetState extends State<_CampaignDetailSheet> {
                     ),
                     maxLines: 1, overflow: TextOverflow.ellipsis,
                   )),
-                  Text(_fmtWac(stakedWac) + ' WAC',
-                    style: TextStyle(color: AppColors.accentAmber, fontSize: 11, fontWeight: FontWeight.w600)),
+                  // WAC per member — gecici olarak gizlendi
                 ]),
               );
             }),

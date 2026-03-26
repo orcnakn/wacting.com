@@ -1763,13 +1763,11 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                       _campaignStat(Icons.group, t('campaign_members'), '$memberCount', AppColors.accentBlue),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      _campaignStat(Icons.monetization_on, t('campaign_total_wac'), totalWac.toStringAsFixed(2), AppColors.accentAmber),
-                      _campaignStat(Icons.shield, t('campaign_total_rac'), totalRac.toStringAsFixed(2), AppColors.accentRed),
-                    ],
-                  ),
+                  // WAC/RAC stats — gecici olarak gizlendi
+                  // Row(children: [
+                  //   _campaignStat(Icons.monetization_on, t('campaign_total_wac'), totalWac.toStringAsFixed(2), AppColors.accentAmber),
+                  //   _campaignStat(Icons.shield, t('campaign_total_rac'), totalRac.toStringAsFixed(2), AppColors.accentRed),
+                  // ]),
 
                   const SizedBox(height: 20),
                 ],
