@@ -556,6 +556,11 @@ model Campaign {
   emergencyWacPool   Decimal  @default(0) @db.Decimal(30, 6)  // Spendable WAC pool for leader
   emergencyAreaM2    Float    @default(0)                       // Current logo area in m²
   emergencyExpiresAt DateTime?                                  // When the campaign expires
+
+  // Level system (cached, recalculated on member/WAC changes)
+  cachedLevel        Float    @default(0)   // Total level = followerLevel + yearLevel + wacLevel
+  cachedWidthMeters  Float    @default(0)   // Physical sign width in meters (level^2 * sqrt(level) * 2)
+  cachedHeightMeters Float    @default(0)   // Physical sign height in meters (level^2 * sqrt(level))
 }
 
 /// Campaign membership — tracks who is in a campaign and enables leader succession.

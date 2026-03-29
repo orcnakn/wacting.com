@@ -134,6 +134,10 @@ export interface IconState {
     emergencyAreaM2?: number;       // Emergency logo area in m²
     stanceType?: string;            // SUPPORT | REFORM | PROTEST | EMERGENCY
     campaignId?: string;            // Campaign ID for detail lookups
+    // Level system — drives visibility hierarchy on the map
+    level?: number;                  // Total campaign level (follower + year + WAC)
+    widthMeters?: number;            // Physical sign width in meters
+    heightMeters?: number;           // Physical sign height in meters
     restrictedContinents?: string[];
     restrictedCountries?: string[];
     restrictedCities?: string[];

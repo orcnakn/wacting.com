@@ -132,6 +132,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   // ── User location pins ──
   List<Map<String, dynamic>> _userLocations = [];
   Timer? _locationTimer;
+  String? _hoveredUserPin;
 
   // ── My icon position cache (updated from stream, survives viewport changes) ──
   LatLng? _myIconLatLng;
@@ -843,11 +844,13 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
               final markerDots = <Marker>[];
               final myId = apiService.userId;
-              for (final icon in filteredIcons) {
+              // Sort by level descending: higher-level campaigns render on top (z-order)
+              final sortedIcons = List<IconModel>.from(filteredIcons)
+                ..sort((a, b) => b.level.compareTo(a.level));
+              for (final icon in sortedIcons) {
                 if (icon.isEmergency) continue; // Skip — rendered in emergency layer
                   final latLng = _offsetToLatLng(icon.position);
                   final Color displayColor = icon.displayColor;
-                  final double wacSize = icon.size;
                   final bool isCampaignIcon = icon.campaignSlogan != null;
                   final bool isMyIcon = icon.userId == myId;
 
@@ -907,15 +910,15 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   // Own icon (no campaign): always visible, personal size
                   if (!isCampaignIcon && isMyIcon) {
                     final double myOpacity = 1.0;
-                    final double dotSize = zoom >= 10 ? LodManager.dotSizeAtZoom(zoom, wacSize) : _myIconDotSize(zoom);
+                    final double dotSize = _myIconDotSize(zoom);
 
                     for (final worldOffset in _worldOffsets) {
                       final offsetPoint = LatLng(latLng.latitude, latLng.longitude + worldOffset);
 
-                      if (zoom >= 13.0) {
+                      if (LodManager.isUserFullDetail(zoom)) {
                         // Full detail at high zoom
-                        final double rectW = LodManager.rectWidth(wacSize.clamp(1, 100), zoom);
-                        final double rectH = LodManager.rectHeight(wacSize.clamp(1, 100), zoom);
+                        final double rectW = 30.0;
+                        final double rectH = 20.0;
                         markerDots.add(Marker(
                             point: offsetPoint,
                             width: rectW + 4,
@@ -958,17 +961,22 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                     continue;
                   }
 
-                  // Campaign icons: existing LOD behavior
-                  final double baseOpacity = LodManager.opacityForWac(wacSize, zoom);
+                  // Campaign icons: level-based LOD with Web Mercator projection
+                  final double opacity = LodManager.campaignOpacity(
+                      icon.level, icon.widthMeters, latLng.latitude, zoom);
+                  if (opacity <= 0) continue; // Not visible at this zoom
 
                   for (final worldOffset in _worldOffsets) {
                     final offsetPoint = LatLng(latLng.latitude, latLng.longitude + worldOffset);
 
-                    if (LodManager.isFullDetail(zoom, wacSize)) {
+                    final double? rectW = LodManager.renderWidthPx(
+                        icon.widthMeters, latLng.latitude, zoom);
+
+                    if (rectW != null) {
+                      // Full detail: polygon (tabela) with 2:1 aspect, clamped 10-100px
+                      final double rectH = rectW / 2.0;
                       final String? slogan = icon.campaignSlogan;
-                      final double rectW = LodManager.rectWidth(wacSize, zoom);
-                      final double rectH = LodManager.rectHeight(wacSize, zoom);
-                      final double fontSize = LodManager.sloganFontSize(wacSize, zoom);
+                      final double fontSize = LodManager.sloganFontSize(rectW);
                       final double markerW = slogan != null ? (rectW + 40).clamp(rectW, 140.0) : rectW + 4;
                       final double markerH = slogan != null ? rectH + fontSize + 8 : rectH + 4;
 
@@ -977,7 +985,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                           width: markerW,
                           height: markerH,
                           child: Opacity(
-                            opacity: baseOpacity,
+                            opacity: opacity,
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -1015,14 +1023,15 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                           ),
                       ));
                     } else {
-                      final double dotSize = LodManager.dotSizeAtZoom(zoom, wacSize);
+                      // Below 10px threshold: fixed-size dot icon
+                      const double dotSize = 8.0;
 
                       markerDots.add(Marker(
                           point: offsetPoint,
                           width: dotSize + 6,
                           height: dotSize + 6,
                           child: Opacity(
-                            opacity: baseOpacity,
+                            opacity: opacity,
                             child: Center(
                               child: Container(
                                 width: dotSize,
@@ -1185,30 +1194,51 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                         final opacity = LodManager.userOpacity(zoom, isOwn);
 
                         if (LodManager.isUserFullDetail(zoom)) {
-                          // High zoom: show person icon with name
+                          // High zoom: show person icon with name on hover (next to icon)
+                          final displayLabel = name.isNotEmpty ? name : 'Kullanici';
                           return Marker(
                             point: LatLng(lat, lng),
-                            width: 28,
+                            width: 140,
                             height: 28,
                             child: Opacity(
                               opacity: opacity,
-                              child: GestureDetector(
-                                onTap: () {
-                                  ScaffoldMessenger.of(context).clearSnackBars();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(name.isNotEmpty ? name : 'Kullanici'),
-                                      duration: const Duration(seconds: 2),
-                                    ),
-                                  );
-                                },
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: color.withOpacity(0.8),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 2),
+                              child: MouseRegion(
+                                onEnter: (_) => setState(() => _hoveredUserPin = loc['userId']),
+                                onExit: (_) => setState(() => _hoveredUserPin = null),
+                                child: GestureDetector(
+                                  onTap: () => setState(() {
+                                    _hoveredUserPin = _hoveredUserPin == loc['userId'] ? null : loc['userId'];
+                                  }),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 28,
+                                        height: 28,
+                                        decoration: BoxDecoration(
+                                          color: color.withOpacity(0.8),
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: Colors.white, width: 2),
+                                        ),
+                                        child: const Icon(Icons.person, color: Colors.white, size: 16),
+                                      ),
+                                      if (_hoveredUserPin == loc['userId'])
+                                        Container(
+                                          margin: const EdgeInsets.only(left: 4),
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withOpacity(0.75),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            displayLabel,
+                                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                    ],
                                   ),
-                                  child: const Icon(Icons.person, color: Colors.white, size: 16),
                                 ),
                               ),
                             ),

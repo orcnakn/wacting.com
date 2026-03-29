@@ -14,6 +14,7 @@ import { MovementEngine } from './engine/movement_engine.js';
 import wc from 'which-country';
 import { GRID_WIDTH, GRID_HEIGHT } from './utils/brownian.js';
 import { SocketManager } from './socket/socket_manager.js';
+import { calculateLevel } from './engine/level_calculator.js';
 import { webhookRoutes } from './routes/webhook.js';
 import { authRoutes } from './routes/auth.js';
 import { adminRoutes } from './routes/admin.js';
@@ -71,7 +72,11 @@ async function start() {
                             wac: true,
                             campaignMemberships: {
                                 where: { campaign: { isActive: true } },
-                                include: { campaign: true },
+                                include: {
+                                    campaign: {
+                                        include: { _count: { select: { members: true } } }
+                                    }
+                                },
                                 take: 1,
                             }
                         }
@@ -161,6 +166,17 @@ async function start() {
                     ? Math.max(1, Math.log10(wacBal + 1) * 20)
                     : Math.max(1, icon.followerCount * 0.5 + 1);
 
+                // Level system: compute from member count, age, and WAC staked
+                let level = 0, widthMeters = 0, heightMeters = 0;
+                if (campaign) {
+                    const memberCount = (campaign as any)._count?.members ?? 0;
+                    const totalWac = parseFloat(campaign.totalWacStaked?.toString() ?? '0');
+                    const lc = calculateLevel(memberCount, campaign.createdAt, totalWac);
+                    level = lc.totalLevel;
+                    widthMeters = lc.widthMeters;
+                    heightMeters = lc.heightMeters;
+                }
+
                 let x = icon.lastKnownX;
                 let y = icon.lastKnownY;
 
@@ -222,6 +238,9 @@ async function start() {
                     emergencyAreaM2: campaign?.stanceType === 'EMERGENCY' ? ((campaign as any).emergencyAreaM2 ?? 0) : 0,
                     stanceType: campaign?.stanceType ?? undefined,
                     campaignId: campaign?.id ?? undefined,
+                    level,
+                    widthMeters,
+                    heightMeters,
                     restrictedContinents: (icon as any).restrictedContinents ?? [],
                     restrictedCountries: (icon as any).restrictedCountries ?? [],
                     restrictedCities: (icon as any).restrictedCities ?? [],

@@ -23,6 +23,10 @@ class IconModel extends Equatable {
   final double emergencyAreaM2; // Emergency logo area in m²
   final String? stanceType;    // SUPPORT | REFORM | PROTEST | EMERGENCY
   final String? campaignId;    // Campaign ID for detail lookups
+  // Level system — drives visibility hierarchy on the map
+  final double level;          // Total campaign level (follower + year + WAC)
+  final double widthMeters;    // Physical sign width in meters
+  final double heightMeters;   // Physical sign height in meters
 
   const IconModel({
     required this.id,
@@ -44,6 +48,9 @@ class IconModel extends Equatable {
     this.emergencyAreaM2 = 0,
     this.stanceType,
     this.campaignId,
+    this.level = 0,
+    this.widthMeters = 0,
+    this.heightMeters = 0,
   });
 
   factory IconModel.fromJson(Map<String, dynamic> json) {
@@ -77,6 +84,9 @@ class IconModel extends Equatable {
       emergencyAreaM2: (json['emergencyAreaM2'] as num?)?.toDouble() ?? 0,
       stanceType: json['stanceType'] as String?,
       campaignId: json['campaignId'] as String?,
+      level: (json['level'] as num?)?.toDouble() ?? 0,
+      widthMeters: (json['widthMeters'] as num?)?.toDouble() ?? 0,
+      heightMeters: (json['heightMeters'] as num?)?.toDouble() ?? 0,
     );
   }
 
@@ -110,5 +120,8 @@ class IconModel extends Equatable {
         emergencyAreaM2,
         stanceType,
         campaignId,
+        level,
+        widthMeters,
+        heightMeters,
       ];
 }

@@ -21,6 +21,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import { recordChainedTransaction } from '../engine/chain_engine.js';
 import { GRID_WIDTH, GRID_HEIGHT } from '../utils/brownian.js';
 import { SocketManager } from '../socket/socket_manager.js';
+import { calculateLevel } from '../engine/level_calculator.js';
 
 /** Helper: create notification + push via socket */
 async function notify(
@@ -73,6 +74,28 @@ const REFORM_MIN_STAKE: { minMembers: number; minWac: string }[] = [
 // REFORM exit penalty: 50% (25% burn + 25% dev)
 const REFORM_EXIT_PENALTY = 0.50;
 const REFORM_EXIT_BURN_SHARE = 0.50;  // 50% of penalty = 25% of total
+
+/** Recalculate and persist cached level fields for a campaign. */
+async function refreshCampaignLevel(
+    tx: Prisma.TransactionClient | PrismaClient,
+    campaignId: string,
+) {
+    const campaign = await (tx as any).campaign.findUnique({
+        where: { id: campaignId },
+        include: { _count: { select: { members: true } } },
+    });
+    if (!campaign) return;
+    const totalWac = parseFloat(campaign.totalWacStaked?.toString() ?? '0');
+    const lc = calculateLevel(campaign._count.members, campaign.createdAt, totalWac);
+    await (tx as any).campaign.update({
+        where: { id: campaignId },
+        data: {
+            cachedLevel: lc.totalLevel,
+            cachedWidthMeters: lc.widthMeters,
+            cachedHeightMeters: lc.heightMeters,
+        },
+    });
+}
 
 export async function campaignRoutes(fastify: FastifyInstance) {
 
@@ -257,6 +280,9 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 return c;
             });
 
+            // Refresh cached level after creation
+            await refreshCampaignLevel(prisma, campaign.id);
+
             // Notify creator
             await notify(prisma, user.id, 'CAMPAIGN_CHANGE',
                 'Kampanya Olusturuldu',
@@ -411,6 +437,9 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                 });
             });
 
+            // Refresh cached level after join
+            await refreshCampaignLevel(prisma, id);
+
             // Notify joiner
             await notify(prisma, user.id, 'CAMPAIGN_CHANGE',
                 'Kampanyaya Katildiniz',
@@ -488,6 +517,9 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                     campaignId: id,
                 });
             });
+
+            // Refresh cached level after stake
+            await refreshCampaignLevel(prisma, id);
 
             // Notify user
             await notify(prisma, user.id, 'CAMPAIGN_CHANGE',
@@ -722,6 +754,9 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                     }
                 }
             });
+
+            // Refresh cached level after leave
+            await refreshCampaignLevel(prisma, id);
 
             // Notify user
             await notify(prisma, user.id, 'CAMPAIGN_CHANGE',
