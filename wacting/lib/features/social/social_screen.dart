@@ -30,33 +30,15 @@ class _SocialScreenState extends State<SocialScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        backgroundColor: AppColors.pageBackground,
-        appBar: AppBar(
-           title: Text('Akis (Feed)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.textPrimary)),
-           backgroundColor: Colors.transparent,
-           elevation: 0,
-           centerTitle: true,
-           bottom: TabBar(
-             indicatorColor: AppColors.accentBlue,
-             labelColor: AppColors.accentBlue,
-             unselectedLabelColor: AppColors.textTertiary,
-             indicatorWeight: 3,
-             tabs: [
-               Tab(text: t('global'), icon: const Icon(Icons.public)),
-               Tab(text: t('campaigns'), icon: const Icon(Icons.flag)),
-             ],
-           ),
-        ),
-        body: const TabBarView(
-          children: [
-            _GlobalTab(),
-            _CampaignsTab(),
-          ],
-        ),
+    return Scaffold(
+      backgroundColor: AppColors.pageBackground,
+      appBar: AppBar(
+         title: Text('Akis (Feed)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: AppColors.textPrimary)),
+         backgroundColor: Colors.transparent,
+         elevation: 0,
+         centerTitle: true,
       ),
+      body: const _CampaignsTab(),
     );
   }
 }
