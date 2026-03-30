@@ -151,6 +151,75 @@ export async function feedRoutes(fastify: FastifyInstance) {
     // 3. GLOBAL
     // ─────────────────────────────────────────────────────────────────────────────
 
+    // GET /feed/global/campaigns — All active campaigns sorted by member count (no auth required)
+    fastify.get('/global/campaigns', async (request, reply) => {
+        try {
+            const query = request.query as {
+                category?: string;
+                stance?: string;
+                sort?: string;
+                take?: string;
+                skip?: string;
+            };
+
+            const where: any = { isActive: true };
+
+            if (query.category && ['GLOBAL_PEACE', 'JUSTICE_RIGHTS', 'ECOLOGY_NATURE', 'TECH_FUTURE', 'SOLIDARITY_RELIEF', 'ECONOMY_LABOR', 'AWARENESS', 'ENTERTAINMENT'].includes(query.category)) {
+                where.categoryType = query.category;
+            }
+            if (query.stance && ['SUPPORT', 'EMERGENCY'].includes(query.stance)) {
+                where.stanceType = query.stance;
+            }
+
+            const take = Math.min(Number(query.take) || 50, 100);
+            const skip = Number(query.skip) || 0;
+
+            let orderBy: any;
+            switch (query.sort) {
+                case 'newest':
+                    orderBy = { createdAt: 'desc' };
+                    break;
+                default:
+                    orderBy = { totalWacStaked: 'desc' };
+                    break;
+            }
+
+            const campaigns = await prisma.campaign.findMany({
+                where,
+                orderBy,
+                take: query.sort === 'members' || !query.sort ? undefined : take,
+                skip: query.sort === 'members' || !query.sort ? undefined : skip,
+                include: {
+                    leader: { select: { id: true, slogan: true, avatarUrl: true, displayName: true } },
+                    _count: { select: { members: true } },
+                },
+            });
+
+            let enriched = campaigns.map((c: any) => ({
+                id: c.id,
+                title: c.title,
+                slogan: c.slogan,
+                description: c.description,
+                stanceType: c.stanceType,
+                categoryType: c.categoryType,
+                totalWacStaked: c.totalWacStaked?.toFixed?.(6) ?? '0',
+                memberCount: c._count.members,
+                leader: c.leader,
+                createdAt: c.createdAt,
+            }));
+
+            if (query.sort === 'members' || !query.sort) {
+                enriched.sort((a: any, b: any) => b.memberCount - a.memberCount);
+                enriched = enriched.slice(skip, skip + take);
+            }
+
+            return reply.send({ success: true, campaigns: enriched });
+        } catch (error: any) {
+            fastify.log.error(error);
+            return reply.status(500).send({ success: false, error: 'Failed to fetch campaigns' });
+        }
+    });
+
     // GET /feed/global/popular
     fastify.get('/global/popular', async (request, reply) => {
         // Mock data logic until real area sorting is available

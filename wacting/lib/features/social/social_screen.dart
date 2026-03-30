@@ -1612,12 +1612,8 @@ class _GlobalTabState extends State<_GlobalTab> {
   }
 
   Future<void> _loadData() async {
-    if (!apiService.isLoggedIn) {
-      setState(() => _loading = false);
-      return;
-    }
     try {
-      final campaigns = await apiService.getAllCampaigns(
+      final campaigns = await apiService.getGlobalCampaigns(
         category: _selectedCategory,
         stance: _selectedStance,
         sort: 'members',
@@ -1883,10 +1879,6 @@ class _UsersTabState extends State<_UsersTab> {
   }
 
   Future<void> _loadData() async {
-    if (!apiService.isLoggedIn) {
-      setState(() => _loading = false);
-      return;
-    }
     try {
       final result = await apiService.getGlobalUsers(take: 50);
       if (mounted) {
