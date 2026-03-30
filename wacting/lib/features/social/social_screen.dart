@@ -1581,6 +1581,9 @@ class _GlobalTab extends StatefulWidget {
 class _GlobalTabState extends State<_GlobalTab> {
   List<dynamic> _campaigns = [];
   bool _loading = true;
+  int _page = 1;
+  bool _hasMore = true;
+  static const int _pageSize = 30;
   String? _selectedCategory;
   String? _selectedStance;
 
@@ -1608,20 +1611,23 @@ class _GlobalTabState extends State<_GlobalTab> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadPage();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadPage() async {
     try {
       final campaigns = await apiService.getGlobalCampaigns(
         category: _selectedCategory,
         stance: _selectedStance,
         sort: 'members',
+        take: _pageSize,
+        skip: (_page - 1) * _pageSize,
       );
       if (mounted) {
         setState(() {
           _campaigns = campaigns;
           _loading = false;
+          _hasMore = campaigns.length >= _pageSize;
         });
       }
     } catch (e) {
@@ -1629,20 +1635,19 @@ class _GlobalTabState extends State<_GlobalTab> {
     }
   }
 
+  void _goToPage(int page) {
+    setState(() { _page = page; _loading = true; });
+    _loadPage();
+  }
+
   void _onCategoryChanged(String? category) {
-    setState(() {
-      _selectedCategory = category;
-      _loading = true;
-    });
-    _loadData();
+    setState(() { _selectedCategory = category; _page = 1; _loading = true; });
+    _loadPage();
   }
 
   void _onStanceChanged(String? stance) {
-    setState(() {
-      _selectedStance = stance;
-      _loading = true;
-    });
-    _loadData();
+    setState(() { _selectedStance = stance; _page = 1; _loading = true; });
+    _loadPage();
   }
 
   @override
@@ -1678,7 +1683,7 @@ class _GlobalTabState extends State<_GlobalTab> {
           child: _loading
               ? Center(child: CircularProgressIndicator(color: AppColors.accentBlue))
               : RefreshIndicator(
-                  onRefresh: _loadData,
+                  onRefresh: _loadPage,
                   child: _campaigns.isEmpty
                       ? ListView(children: [
                           Padding(
@@ -1694,12 +1699,41 @@ class _GlobalTabState extends State<_GlobalTab> {
                         ])
                       : ListView.builder(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          itemCount: _campaigns.length,
-                          itemBuilder: (ctx, i) => _buildCampaignCard(_campaigns[i], i + 1),
+                          itemCount: _campaigns.length + 1,
+                          itemBuilder: (ctx, i) {
+                            if (i < _campaigns.length) {
+                              return _buildCampaignCard(_campaigns[i], (_page - 1) * _pageSize + i + 1);
+                            }
+                            return _buildPaginationBar();
+                          },
                         ),
                 ),
         ),
       ],
+    );
+  }
+
+  Widget _buildPaginationBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            onPressed: _page > 1 ? () => _goToPage(_page - 1) : null,
+            icon: Icon(Icons.chevron_left, color: _page > 1 ? AppColors.accentBlue : AppColors.textTertiary),
+            iconSize: 28,
+          ),
+          const SizedBox(width: 8),
+          Text('Sayfa $_page', style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: _hasMore ? () => _goToPage(_page + 1) : null,
+            icon: Icon(Icons.chevron_right, color: _hasMore ? AppColors.accentBlue : AppColors.textTertiary),
+            iconSize: 28,
+          ),
+        ],
+      ),
     );
   }
 
@@ -1854,7 +1888,7 @@ class _GlobalTabState extends State<_GlobalTab> {
       backgroundColor: AppColors.surfaceWhite,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => _CampaignDetailSheet(campaignId: campaignId, onChanged: _loadData),
+      builder: (ctx) => _CampaignDetailSheet(campaignId: campaignId, onChanged: _loadPage),
     );
   }
 }
@@ -1871,25 +1905,58 @@ class _UsersTab extends StatefulWidget {
 class _UsersTabState extends State<_UsersTab> {
   List<dynamic> _users = [];
   bool _loading = true;
+  int _page = 1;
+  bool _hasMore = true;
+  static const int _pageSize = 30;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadPage();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadPage() async {
     try {
-      final result = await apiService.getGlobalUsers(take: 50);
+      final result = await apiService.getGlobalUsers(take: _pageSize, skip: (_page - 1) * _pageSize);
       if (mounted) {
         setState(() {
           _users = (result['users'] as List?) ?? [];
           _loading = false;
+          _hasMore = _users.length >= _pageSize;
         });
       }
     } catch (e) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  void _goToPage(int page) {
+    setState(() { _page = page; _loading = true; });
+    _loadPage();
+  }
+
+  Widget _buildPaginationBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            onPressed: _page > 1 ? () => _goToPage(_page - 1) : null,
+            icon: Icon(Icons.chevron_left, color: _page > 1 ? AppColors.accentBlue : AppColors.textTertiary),
+            iconSize: 28,
+          ),
+          const SizedBox(width: 8),
+          Text('Sayfa $_page', style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: _hasMore ? () => _goToPage(_page + 1) : null,
+            icon: Icon(Icons.chevron_right, color: _hasMore ? AppColors.accentBlue : AppColors.textTertiary),
+            iconSize: 28,
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -1898,7 +1965,7 @@ class _UsersTabState extends State<_UsersTab> {
       return Center(child: CircularProgressIndicator(color: AppColors.accentBlue));
     }
     return RefreshIndicator(
-      onRefresh: _loadData,
+      onRefresh: _loadPage,
       child: _users.isEmpty
           ? ListView(children: [
               Padding(
@@ -1912,8 +1979,11 @@ class _UsersTabState extends State<_UsersTab> {
             ])
           : ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              itemCount: _users.length,
-              itemBuilder: (ctx, i) => _buildUserCard(_users[i], i + 1),
+              itemCount: _users.length + 1,
+              itemBuilder: (ctx, i) {
+                if (i < _users.length) return _buildUserCard(_users[i], (_page - 1) * _pageSize + i + 1);
+                return _buildPaginationBar();
+              },
             ),
     );
   }

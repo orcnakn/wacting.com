@@ -224,8 +224,8 @@ class ApiService {
     return res.data as Map<String, dynamic>;
   }
 
-  Future<List<dynamic>> getGlobalCampaigns({String? category, String? stance, String sort = 'members', int take = 50}) async {
-    final params = <String, dynamic>{'sort': sort, 'take': take};
+  Future<List<dynamic>> getGlobalCampaigns({String? category, String? stance, String sort = 'members', int take = 50, int skip = 0}) async {
+    final params = <String, dynamic>{'sort': sort, 'take': take, 'skip': skip};
     if (category != null) params['category'] = category;
     if (stance != null) params['stance'] = stance;
     final res = await _dio.get('/feed/global/campaigns', queryParameters: params);
