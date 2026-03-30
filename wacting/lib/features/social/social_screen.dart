@@ -25,8 +25,20 @@ class SocialScreen extends StatefulWidget {
   State<SocialScreen> createState() => _SocialScreenState();
 }
 
-class _SocialScreenState extends State<SocialScreen> {
-  // Mock Data
+class _SocialScreenState extends State<SocialScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,8 +49,85 @@ class _SocialScreenState extends State<SocialScreen> {
          backgroundColor: Colors.transparent,
          elevation: 0,
          centerTitle: true,
+         bottom: TabBar(
+           controller: _tabController,
+           labelColor: AppColors.accentBlue,
+           unselectedLabelColor: AppColors.textTertiary,
+           indicatorColor: AppColors.accentBlue,
+           indicatorWeight: 2,
+           labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+           unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 13),
+           tabs: const [
+             Tab(text: 'Kampanyalar'),
+             Tab(text: 'Global'),
+           ],
+         ),
       ),
-      body: const _CampaignsTab(),
+      body: TabBarView(
+        controller: _tabController,
+        children: const [
+          _CampaignsTab(),
+          _GlobalTabContainer(),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GLOBAL TAB CONTAINER — 2 sub-tabs: Kampanyalar (worldwide) & Kullanicilar
+// ─────────────────────────────────────────────────────────────────────────────
+class _GlobalTabContainer extends StatefulWidget {
+  const _GlobalTabContainer();
+  @override
+  State<_GlobalTabContainer> createState() => _GlobalTabContainerState();
+}
+
+class _GlobalTabContainerState extends State<_GlobalTabContainer> with SingleTickerProviderStateMixin {
+  late final TabController _subTabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _subTabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _subTabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          color: AppColors.surfaceLight,
+          child: TabBar(
+            controller: _subTabController,
+            labelColor: AppColors.accentBlue,
+            unselectedLabelColor: AppColors.textTertiary,
+            indicatorColor: AppColors.accentBlue,
+            indicatorWeight: 2,
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 12),
+            tabs: const [
+              Tab(text: 'Tum Kampanyalar'),
+              Tab(text: 'Tum Kullanicilar'),
+            ],
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _subTabController,
+            children: const [
+              _GlobalTab(),
+              _UsersTab(),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1770,6 +1859,144 @@ class _GlobalTabState extends State<_GlobalTab> {
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => _CampaignDetailSheet(campaignId: campaignId, onChanged: _loadData),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USERS TAB — All users sorted by campaign membership count
+// ─────────────────────────────────────────────────────────────────────────────
+class _UsersTab extends StatefulWidget {
+  const _UsersTab();
+  @override
+  State<_UsersTab> createState() => _UsersTabState();
+}
+
+class _UsersTabState extends State<_UsersTab> {
+  List<dynamic> _users = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    if (!apiService.isLoggedIn) {
+      setState(() => _loading = false);
+      return;
+    }
+    try {
+      final result = await apiService.getGlobalUsers(take: 50);
+      if (mounted) {
+        setState(() {
+          _users = (result['users'] as List?) ?? [];
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Center(child: CircularProgressIndicator(color: AppColors.accentBlue));
+    }
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: _users.isEmpty
+          ? ListView(children: [
+              Padding(
+                padding: const EdgeInsets.all(32),
+                child: Center(child: Text(
+                  'Henuz kullanici bulunamadi.',
+                  style: TextStyle(color: AppColors.textTertiary),
+                  textAlign: TextAlign.center,
+                )),
+              ),
+            ])
+          : ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              itemCount: _users.length,
+              itemBuilder: (ctx, i) => _buildUserCard(_users[i], i + 1),
+            ),
+    );
+  }
+
+  Widget _buildUserCard(dynamic u, int rank) {
+    final displayName = (u['displayName'] ?? '') as String;
+    final slogan = (u['slogan'] ?? '') as String;
+    final userId = (u['id'] ?? '') as String;
+    final campaignCount = (u['campaignCount'] ?? 0) as int;
+    final followerCount = (u['followerCount'] ?? 0) as int;
+    final name = displayName.isNotEmpty ? displayName : (slogan.isNotEmpty ? slogan : 'Kullanici');
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(context, MaterialPageRoute(
+          builder: (_) => ProfileScreen(viewUserId: userId),
+        ));
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.borderLight, width: 0.5),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 28, height: 28,
+              decoration: BoxDecoration(
+                color: AppColors.accentBlue.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(child: Text(
+                '#$rank',
+                style: TextStyle(color: AppColors.accentBlue, fontSize: 11, fontWeight: FontWeight.bold),
+              )),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: TextStyle(
+                    color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold,
+                  ), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  if (slogan.isNotEmpty && displayName.isNotEmpty)
+                    Text(slogan, style: TextStyle(color: AppColors.textTertiary, fontSize: 11),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.campaign, size: 13, color: AppColors.textTertiary),
+                  const SizedBox(width: 3),
+                  Text('$campaignCount', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                ]),
+                const SizedBox(height: 2),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.people, size: 13, color: AppColors.textTertiary),
+                  const SizedBox(width: 3),
+                  Text('$followerCount', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                ]),
+              ],
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right, color: AppColors.textTertiary, size: 16),
+          ],
+        ),
+      ),
     );
   }
 }

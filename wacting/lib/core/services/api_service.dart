@@ -219,6 +219,11 @@ class ApiService {
     return (res.data as Map<String, dynamic>)['campaigns'] as List<dynamic>;
   }
 
+  Future<Map<String, dynamic>> getGlobalUsers({int take = 50, int skip = 0}) async {
+    final res = await _dio.get('/feed/global/users', queryParameters: {'take': take, 'skip': skip});
+    return res.data as Map<String, dynamic>;
+  }
+
   // ── Polls / Voting ──────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> createPoll({

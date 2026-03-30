@@ -162,6 +162,61 @@ export async function feedRoutes(fastify: FastifyInstance) {
         return reply.send({ success: true, popular });
     });
 
+    // GET /feed/global/users — All users sorted by total campaign memberships
+    fastify.get('/global/users', async (request, reply) => {
+        try {
+            const query = request.query as { take?: string; skip?: string };
+            const take = Math.min(parseInt(query.take || '50', 10) || 50, 100);
+            const skip = parseInt(query.skip || '0', 10) || 0;
+
+            const users = await prisma.user.findMany({
+                where: { status: 'ACTIVE', isBot: false },
+                select: {
+                    id: true,
+                    displayName: true,
+                    slogan: true,
+                    avatarUrl: true,
+                    createdAt: true,
+                    _count: {
+                        select: {
+                            campaignMemberships: true,
+                            followers: true,
+                            following: true,
+                        }
+                    }
+                },
+                orderBy: [
+                    { campaignMemberships: { _count: 'desc' } },
+                    { createdAt: 'asc' },
+                ],
+                take,
+                skip,
+            });
+
+            const total = await prisma.user.count({
+                where: { status: 'ACTIVE', isBot: false },
+            });
+
+            return reply.send({
+                success: true,
+                users: users.map(u => ({
+                    id: u.id,
+                    displayName: u.displayName,
+                    slogan: u.slogan,
+                    avatarUrl: u.avatarUrl,
+                    createdAt: u.createdAt,
+                    campaignCount: u._count.campaignMemberships,
+                    followerCount: u._count.followers,
+                    followingCount: u._count.following,
+                })),
+                total,
+            });
+        } catch (error: any) {
+            fastify.log.error(error);
+            return reply.status(500).send({ success: false, error: 'Failed to fetch users' });
+        }
+    });
+
     // GET /feed/global/local
     // Expects ?lat=X&lng=Y
     fastify.get('/global/local', async (request, reply) => {
