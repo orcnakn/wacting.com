@@ -1586,6 +1586,25 @@ class _GlobalTabState extends State<_GlobalTab> {
   static const int _pageSize = 30;
   String? _selectedCategory;
   String? _selectedStance;
+  String? _selectedLevelRange; // null='all', '1-5', '6-10', '11-20', '20+'
+
+  int? get _minLevel {
+    switch (_selectedLevelRange) {
+      case '1-5': return 1;
+      case '6-10': return 6;
+      case '11-20': return 11;
+      case '20+': return 20;
+      default: return null;
+    }
+  }
+  int? get _maxLevel {
+    switch (_selectedLevelRange) {
+      case '1-5': return 5;
+      case '6-10': return 10;
+      case '11-20': return 20;
+      default: return null;
+    }
+  }
 
   static const _categories = <String, String>{
     'GLOBAL_PEACE': 'Baris',
@@ -1622,6 +1641,8 @@ class _GlobalTabState extends State<_GlobalTab> {
         sort: 'members',
         take: _pageSize,
         skip: (_page - 1) * _pageSize,
+        minLevel: _minLevel,
+        maxLevel: _maxLevel,
       );
       if (mounted) {
         setState(() {
@@ -1676,6 +1697,21 @@ class _GlobalTabState extends State<_GlobalTab> {
             children: [
               _filterChip(null, t('all')),
               ..._categories.entries.map((e) => _filterChip(e.key, e.value)),
+            ],
+          ),
+        ),
+        // Level filter chips
+        SizedBox(
+          height: 40,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            children: [
+              _levelChip(null, t('all')),
+              _levelChip('1-5', 'Lv 1-5'),
+              _levelChip('6-10', 'Lv 6-10'),
+              _levelChip('11-20', 'Lv 11-20'),
+              _levelChip('20+', 'Lv 20+'),
             ],
           ),
         ),
@@ -1795,6 +1831,37 @@ class _GlobalTabState extends State<_GlobalTab> {
     );
   }
 
+  Widget _levelChip(String? range, String label) {
+    final selected = _selectedLevelRange == range;
+    final chipColor = selected ? AppColors.accentAmber : AppColors.surfaceLight;
+    final borderColor = selected ? AppColors.accentAmber : AppColors.borderLight;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: GestureDetector(
+        onTap: () {
+          setState(() { _selectedLevelRange = range; _page = 1; _loading = true; });
+          _loadPage();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: chipColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor, width: 0.5),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? Colors.white : AppColors.textSecondary,
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildCampaignCard(dynamic c, int rank) {
     final title = (c['title'] ?? '') as String;
     final slogan = (c['slogan'] ?? '') as String;
@@ -1808,6 +1875,8 @@ class _GlobalTabState extends State<_GlobalTab> {
     final stanceColor = _stanceColors[stanceType] ?? AppColors.accentBlue;
     final stanceLabel = _stanceLabels[stanceType] ?? stanceType;
     final categoryLabel = _categories[categoryType] ?? categoryType;
+    final cachedLevel = (c['cachedLevel'] ?? 0);
+    final levelStr = cachedLevel is double ? cachedLevel.toStringAsFixed(0) : '$cachedLevel';
 
     return GestureDetector(
       onTap: () => _openCampaignDetail(campaignId),
@@ -1871,6 +1940,15 @@ class _GlobalTabState extends State<_GlobalTab> {
                 Icon(Icons.category, size: 14, color: AppColors.textTertiary),
                 const SizedBox(width: 4),
                 Text(categoryLabel, style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.accentAmber.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text('Lv.$levelStr', style: TextStyle(color: AppColors.accentAmber, fontSize: 10, fontWeight: FontWeight.bold)),
+                ),
                 const Spacer(),
                 Text(leaderName, style: TextStyle(color: AppColors.accentTeal, fontSize: 11, fontWeight: FontWeight.w500),
                     maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -1908,6 +1986,25 @@ class _UsersTabState extends State<_UsersTab> {
   int _page = 1;
   bool _hasMore = true;
   static const int _pageSize = 30;
+  String? _selectedLevelRange;
+
+  int? get _minLevel {
+    switch (_selectedLevelRange) {
+      case '1-5': return 1;
+      case '6-10': return 6;
+      case '11-20': return 11;
+      case '20+': return 20;
+      default: return null;
+    }
+  }
+  int? get _maxLevel {
+    switch (_selectedLevelRange) {
+      case '1-5': return 5;
+      case '6-10': return 10;
+      case '11-20': return 20;
+      default: return null;
+    }
+  }
 
   @override
   void initState() {
@@ -1917,7 +2014,12 @@ class _UsersTabState extends State<_UsersTab> {
 
   Future<void> _loadPage() async {
     try {
-      final result = await apiService.getGlobalUsers(take: _pageSize, skip: (_page - 1) * _pageSize);
+      final result = await apiService.getGlobalUsers(
+        take: _pageSize,
+        skip: (_page - 1) * _pageSize,
+        minLevel: _minLevel,
+        maxLevel: _maxLevel,
+      );
       if (mounted) {
         setState(() {
           _users = (result['users'] as List?) ?? [];
@@ -1959,32 +2061,80 @@ class _UsersTabState extends State<_UsersTab> {
     );
   }
 
+  Widget _userLevelChip(String? range, String label) {
+    final selected = _selectedLevelRange == range;
+    final chipColor = selected ? AppColors.accentAmber : AppColors.surfaceLight;
+    final borderColor = selected ? AppColors.accentAmber : AppColors.borderLight;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: GestureDetector(
+        onTap: () {
+          setState(() { _selectedLevelRange = range; _page = 1; _loading = true; });
+          _loadPage();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: chipColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor, width: 0.5),
+          ),
+          child: Text(label, style: TextStyle(
+            color: selected ? Colors.white : AppColors.textSecondary,
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+          )),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return Center(child: CircularProgressIndicator(color: AppColors.accentBlue));
-    }
-    return RefreshIndicator(
-      onRefresh: _loadPage,
-      child: _users.isEmpty
-          ? ListView(children: [
-              Padding(
-                padding: const EdgeInsets.all(32),
-                child: Center(child: Text(
-                  'Henuz kullanici bulunamadi.',
-                  style: TextStyle(color: AppColors.textTertiary),
-                  textAlign: TextAlign.center,
-                )),
+    return Column(
+      children: [
+        // Level filter chips
+        SizedBox(
+          height: 40,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            children: [
+              _userLevelChip(null, t('all')),
+              _userLevelChip('1-5', 'Lv 1-5'),
+              _userLevelChip('6-10', 'Lv 6-10'),
+              _userLevelChip('11-20', 'Lv 11-20'),
+              _userLevelChip('20+', 'Lv 20+'),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _loading
+            ? Center(child: CircularProgressIndicator(color: AppColors.accentBlue))
+            : RefreshIndicator(
+                onRefresh: _loadPage,
+                child: _users.isEmpty
+                    ? ListView(children: [
+                        Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Center(child: Text(
+                            'Henuz kullanici bulunamadi.',
+                            style: TextStyle(color: AppColors.textTertiary),
+                            textAlign: TextAlign.center,
+                          )),
+                        ),
+                      ])
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        itemCount: _users.length + 1,
+                        itemBuilder: (ctx, i) {
+                          if (i < _users.length) return _buildUserCard(_users[i], (_page - 1) * _pageSize + i + 1);
+                          return _buildPaginationBar();
+                        },
+                      ),
               ),
-            ])
-          : ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              itemCount: _users.length + 1,
-              itemBuilder: (ctx, i) {
-                if (i < _users.length) return _buildUserCard(_users[i], (_page - 1) * _pageSize + i + 1);
-                return _buildPaginationBar();
-              },
-            ),
+        ),
+      ],
     );
   }
 
@@ -1994,6 +2144,8 @@ class _UsersTabState extends State<_UsersTab> {
     final userId = (u['id'] ?? '') as String;
     final campaignCount = (u['campaignCount'] ?? 0) as int;
     final followerCount = (u['followerCount'] ?? 0) as int;
+    final userLevel = (u['level'] ?? 0);
+    final userLevelStr = userLevel is double ? userLevel.toStringAsFixed(0) : '$userLevel';
     final name = displayName.isNotEmpty ? displayName : (slogan.isNotEmpty ? slogan : 'Kullanici');
 
     return GestureDetector(
@@ -2052,6 +2204,15 @@ class _UsersTabState extends State<_UsersTab> {
                   const SizedBox(width: 3),
                   Text('$followerCount', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
                 ]),
+                const SizedBox(height: 2),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: AppColors.accentAmber.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text('Lv.$userLevelStr', style: TextStyle(color: AppColors.accentAmber, fontSize: 10, fontWeight: FontWeight.bold)),
+                ),
               ],
             ),
             const SizedBox(width: 4),

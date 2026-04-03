@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../app/theme.dart';
 import '../../app/widgets/modern_card.dart';
@@ -16,6 +17,7 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   bool _isLoading = true;
   String? _error;
+  Timer? _autoRefreshTimer;
 
   int _totalUsers = 0;
   int _activeUsers = 0;
@@ -26,6 +28,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   void initState() {
     super.initState();
     _fetchTelemetry();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchTelemetry());
+  }
+
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchTelemetry() async {
@@ -84,7 +93,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Live Traffic & Telemetry', style: TextStyle(color: AppColors.textPrimary, fontSize: 24, fontWeight: FontWeight.bold)),
+                  Row(
+                    children: [
+                      Text('Live Traffic & Telemetry', style: TextStyle(color: AppColors.textPrimary, fontSize: 24, fontWeight: FontWeight.bold)),
+                      const Spacer(),
+                      Icon(Icons.autorenew, color: AppColors.accentGreen, size: 14),
+                      const SizedBox(width: 4),
+                      Text('Auto-refresh 30s', style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
+                    ],
+                  ),
                   const SizedBox(height: 24),
 
                   // Graphing Cards

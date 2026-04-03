@@ -116,25 +116,43 @@ class _RootNavigationState extends State<RootNavigation> {
             ),
           ),
         ),
-        // Version label + Notification star — top right
+        // Story button + Notification star — top right
         Positioned(
           top: MediaQuery.of(context).padding.top + 8,
           right: 12,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.navyPrimary.withOpacity(0.85),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  'v.9',
-                  style: TextStyle(
+              GestureDetector(
+                onTap: () {
+                  ScaffoldMessenger.of(context).clearSnackBars();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Yakinda...', textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white, fontSize: 13)),
+                      backgroundColor: AppColors.navyPrimary.withOpacity(0.9),
+                      duration: const Duration(milliseconds: 800),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      margin: EdgeInsets.only(
+                        bottom: MediaQuery.of(context).size.height - 140,
+                        left: MediaQuery.of(context).size.width / 2 - 50,
+                        right: MediaQuery.of(context).size.width / 2 - 50,
+                      ),
+                    ),
+                  );
+                },
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.navyPrimary.withOpacity(0.85),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.auto_stories,
                     color: AppColors.textTertiary.withOpacity(0.5),
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
+                    size: 20,
                   ),
                 ),
               ),

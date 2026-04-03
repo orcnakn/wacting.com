@@ -123,6 +123,11 @@ class LocaleService extends ChangeNotifier {
       'name_update_failed': 'Isim guncellenemedi.',
       'bio_update_failed': 'Biyografi guncellenemedi.',
       'user': 'Kullanici',
+      'profile_private': 'Bu profil gizlidir.',
+      'follow_on_wacting': 'Wacting\'te Takip Et',
+      'follow_request_sent': 'Takip istegi gonderildi!',
+      'sending': 'Gonderiliyor...',
+      'close': 'Kapat',
 
       // ── Settings ──
       'settings': 'Ayarlar',
@@ -351,6 +356,11 @@ class LocaleService extends ChangeNotifier {
       'name_update_failed': 'Could not update name.',
       'bio_update_failed': 'Could not update bio.',
       'user': 'User',
+      'profile_private': 'This profile is private.',
+      'follow_on_wacting': 'Follow on Wacting',
+      'follow_request_sent': 'Follow request sent!',
+      'sending': 'Sending...',
+      'close': 'Close',
 
       // ── Settings ──
       'settings': 'Settings',

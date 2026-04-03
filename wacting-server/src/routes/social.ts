@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { SocketManager } from '../socket/socket_manager.js';
+import { refreshProfileLevel } from '../engine/profile_level_calculator.js';
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_dev_key';
@@ -118,6 +119,8 @@ export async function socialRoutes(fastify: FastifyInstance) {
                 where: { followerId, followingId }
             });
 
+            await refreshProfileLevel(prisma, followingId);
+
             return reply.send({ success: true, message: "Unfollowed successfully." });
         } catch (err) {
             return reply.code(500).send({ error: 'Unfollow failed' });
@@ -153,6 +156,9 @@ export async function socialRoutes(fastify: FastifyInstance) {
                 });
                 SocketManager.notifyUser(followerId, acceptNotif);
             });
+
+            await refreshProfileLevel(prisma, followingId);
+
             return reply.send({ success: true });
         } catch (err) {
             return reply.code(500).send({ error: 'Approval failed' });

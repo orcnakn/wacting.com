@@ -128,13 +128,22 @@ class LodManager {
   // Unchanged from previous system.
 
   static double userDotSize(double zoom) {
-    if (zoom < 3.0) return 2.0;
-    if (zoom < 5.0) return 2.5;
-    if (zoom < 7.0) return 3.0;
+    // Continents (<4): very small 1.0→1.5
+    if (zoom < 4.0) {
+      final t = (zoom / 4.0).clamp(0.0, 1.0);
+      return 1.0 + 0.5 * t;
+    }
+    // Countries (4-7): small 1.5→3.0
+    if (zoom < 7.0) {
+      final t = ((zoom - 4.0) / 3.0).clamp(0.0, 1.0);
+      return 1.5 + 1.5 * t;
+    }
+    // Regions (7-10): medium 3.0→5.0
     if (zoom < 10.0) {
       final t = ((zoom - 7.0) / 3.0).clamp(0.0, 1.0);
       return 3.0 + 2.0 * t;
     }
+    // Cities (10+): full 5.0→8.0
     final t = ((zoom - 10.0) / 3.0).clamp(0.0, 1.0);
     return 5.0 + 3.0 * t;
   }
@@ -145,11 +154,14 @@ class LodManager {
 
   static double userOpacity(double zoom, bool isMyIcon) {
     if (isMyIcon) return 1.0;
-    if (zoom < 2.0) return 0.4;
-    if (zoom < 3.0) return 0.5;
-    if (zoom < 5.0) return 0.6;
-    if (zoom < 8.0) return 0.75;
-    return 1.0;
+    // Cities (>=10): fully visible
+    if (zoom >= 10.0) return 1.0;
+    // Regions (7-10): 0.7→1.0
+    if (zoom >= 7.0) return 0.7 + 0.3 * ((zoom - 7.0) / 3.0);
+    // Countries (4-7): 0.2→0.7 — progressive fade
+    if (zoom >= 4.0) return 0.2 + 0.5 * ((zoom - 4.0) / 3.0);
+    // Continents (<4): 0.1→0.2 — very faint
+    return 0.1 + 0.1 * (zoom / 4.0);
   }
 
   static bool shouldRenderUser(double zoom, bool isMyIcon) {

@@ -38,11 +38,18 @@ export async function profileRoutes(fastify: FastifyInstance) {
             if (slogan !== undefined) userUpdate.slogan = slogan;
             if (description !== undefined) userUpdate.description = description;
             if (displayName !== undefined) userUpdate.displayName = displayName;
-            if (twitterUrl !== undefined) userUpdate.twitterUrl = twitterUrl;
-            if (facebookUrl !== undefined) userUpdate.facebookUrl = facebookUrl;
-            if (instagramUrl !== undefined) userUpdate.instagramUrl = instagramUrl;
-            if (tiktokUrl !== undefined) userUpdate.tiktokUrl = tiktokUrl;
-            if (linkedinUrl !== undefined) userUpdate.linkedinUrl = linkedinUrl;
+            // Auto-generate full URLs from usernames if no http prefix
+            const autoUrl = (val: string | undefined, baseUrl: string) => {
+                if (val === undefined) return undefined;
+                if (!val || val.trim() === '') return val;
+                if (val.startsWith('http')) return val;
+                return `${baseUrl}${val.replace('@', '')}`;
+            };
+            if (twitterUrl !== undefined) userUpdate.twitterUrl = autoUrl(twitterUrl, 'https://x.com/');
+            if (facebookUrl !== undefined) userUpdate.facebookUrl = autoUrl(facebookUrl, 'https://facebook.com/');
+            if (instagramUrl !== undefined) userUpdate.instagramUrl = autoUrl(instagramUrl, 'https://instagram.com/');
+            if (tiktokUrl !== undefined) userUpdate.tiktokUrl = autoUrl(tiktokUrl, 'https://tiktok.com/@');
+            if (linkedinUrl !== undefined) userUpdate.linkedinUrl = autoUrl(linkedinUrl, 'https://linkedin.com/in/');
 
             // Update socialLinksOrder when any social URL changes
             const socialFields = ['twitterUrl', 'facebookUrl', 'instagramUrl', 'tiktokUrl', 'linkedinUrl'];
@@ -95,6 +102,30 @@ export async function profileRoutes(fastify: FastifyInstance) {
         }
     });
 
+    // PUT /api/profile/social-followers — Update follower count for a platform
+    fastify.put('/social-followers', async (request, reply) => {
+        try {
+            const userId = (request as any).userId;
+            const { platform, followerCount } = request.body as any;
+            const validPlatforms = ['instagram', 'twitter', 'facebook', 'tiktok', 'linkedin'];
+            if (!validPlatforms.includes(platform) || typeof followerCount !== 'number') {
+                return reply.code(400).send({ error: 'Invalid platform or follower count' });
+            }
+            const fieldMap: Record<string, string> = {
+                instagram: 'instagramFollowers', twitter: 'twitterFollowers',
+                facebook: 'facebookFollowers', tiktok: 'tiktokFollowers', linkedin: 'linkedinFollowers',
+            };
+            await prisma.user.update({
+                where: { id: userId },
+                data: { [fieldMap[platform]!]: followerCount },
+            });
+            return reply.send({ success: true });
+        } catch (err: any) {
+            fastify.log.error(`Social followers update failed: ${err}`);
+            return reply.code(500).send({ error: 'Failed to update follower count' });
+        }
+    });
+
     fastify.get('/me', async (request, reply) => {
         try {
             const userId = (request as any).userId;
@@ -107,6 +138,10 @@ export async function profileRoutes(fastify: FastifyInstance) {
                     avatarUrl: true,
                     slogan: true,
                     description: true,
+                    cachedProfileLevel: true,
+                    cachedFollowerLevel: true,
+                    cachedAgeLevel: true,
+                    cachedWacLevel: true,
                 }
             });
 
@@ -121,6 +156,10 @@ export async function profileRoutes(fastify: FastifyInstance) {
                 ...user,
                 wacBalance: userWac.wacBalance.toFixed(6),
                 isActive: userWac.isActive,
+                profileLevel: user?.cachedProfileLevel ?? 1,
+                followerLevel: user?.cachedFollowerLevel ?? 0,
+                ageLevel: user?.cachedAgeLevel ?? 1,
+                wacLevel: user?.cachedWacLevel ?? 0,
             });
         } catch (err) {
             return reply.code(500).send({ error: 'Failed' });
@@ -146,6 +185,16 @@ export async function profileRoutes(fastify: FastifyInstance) {
                     linkedinUrl: true,
                     socialLinksOrder: true,
                     walletId: true,
+                    cachedProfileLevel: true,
+                    cachedFollowerLevel: true,
+                    cachedAgeLevel: true,
+                    cachedWacLevel: true,
+                    instagramFollowers: true,
+                    twitterFollowers: true,
+                    facebookFollowers: true,
+                    tiktokFollowers: true,
+                    linkedinFollowers: true,
+                    isPrivate: true,
                     icon: { select: { lastKnownX: true, lastKnownY: true, exploreMode: true } },
                     campaignMemberships: {
                         select: {
@@ -153,7 +202,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
                             stakedWac: true,
                             joinedAt: true,
                             campaign: {
-                                select: { id: true, title: true, slogan: true, isActive: true }
+                                select: { id: true, title: true, slogan: true, isActive: true, cachedLevel: true, stanceType: true }
                             }
                         },
                         where: {
@@ -185,6 +234,10 @@ export async function profileRoutes(fastify: FastifyInstance) {
                 followerCount,
                 followingCount,
                 isFollowedByViewer,
+                profileLevel: profile.cachedProfileLevel,
+                followerLevel: profile.cachedFollowerLevel,
+                ageLevel: profile.cachedAgeLevel,
+                wacLevel: profile.cachedWacLevel,
             });
 
         } catch (err: any) {

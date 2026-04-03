@@ -138,6 +138,8 @@ export interface IconState {
     level?: number;                  // Total campaign level (follower + year + WAC)
     widthMeters?: number;            // Physical sign width in meters
     heightMeters?: number;           // Physical sign height in meters
+    profileLevel?: number;           // User's cached profile level (for map z-order)
+    isPrivate?: boolean;             // Whether the user's profile is private
     restrictedContinents?: string[];
     restrictedCountries?: string[];
     restrictedCities?: string[];

@@ -50,6 +50,22 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Profile level system (cached, recalculated on follower/WAC changes)
+  cachedProfileLevel  Int @default(1)  // Total = followerLevel + ageLevel + wacLevel
+  cachedFollowerLevel Int @default(0)  // FLOOR((LOG10(followers)-1)*10)
+  cachedAgeLevel      Int @default(1)  // 1 + full years since creation
+  cachedWacLevel      Int @default(0)  // FLOOR((LOG10(wacBalance)-1)*10)
+
+  // Social media follower counts (self-reported or fetched)
+  instagramFollowers Int?
+  twitterFollowers   Int?
+  facebookFollowers  Int?
+  tiktokFollowers    Int?
+  linkedinFollowers   Int?
+
+  // Privacy
+  isPrivate Boolean @default(false)
+
   // A user can own 0 or 1 active map icon
   icon Icon?
 
@@ -101,6 +117,33 @@ model User {
 
   // Login sessions
   loginSessions LoginSession[]
+
+  // Stories
+  stories Story[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STORY
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Story {
+  id          String          @id @default(uuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id])
+  content     String?         @db.Text
+  mediaUrl    String?
+  mediaType   StoryMediaType?
+  youtubeUrl  String?
+  isPublished Boolean         @default(false)
+  publishedTo String[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+enum StoryMediaType {
+  IMAGE
+  VIDEO
+  YOUTUBE_EMBED
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -308,6 +351,8 @@ model Icon {
   restrictedCities     String[]
 
   visits IconCountryVisit[]
+
+  hasPublishedStory Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

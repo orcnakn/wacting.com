@@ -29,6 +29,7 @@ import { campaignRoutes } from './routes/campaign.js';
 import { oauthRoutes } from './routes/oauth.js';
 import { devNotesRoutes } from './routes/devnotes.js';
 import notificationRoutes from './routes/notifications.js';
+import { storyRoutes } from './routes/story.js';
 // import { registerSnapshotCron } from './workers/snapshot_worker.js';
 // import './services/notification_worker.js';
 
@@ -217,6 +218,8 @@ async function start() {
                     pinnedY = latToGridY(campaign.pinnedLat);
                 }
 
+                // Only leaders get campaign tabela data (slogan, level, dimensions).
+                // Members keep campaign color but render as user dots, not tabelalar.
                 engine.icons.set(icon.userId, {
                     id: icon.id,
                     userId: icon.userId,
@@ -230,17 +233,19 @@ async function start() {
                     exploreMode: icon.exploreMode,
                     campaignSpeed: campaign?.speed ?? 0.5,
                     campaignColor: stanceColor(campaign, icon.colorHex),
-                    campaignSlogan: campaign ? campaign.slogan : undefined,
+                    campaignSlogan: isLeader && campaign ? campaign.slogan : undefined,
                     pinnedX,
                     pinnedY,
                     isCampaignLeader: isLeader ?? false,
-                    isEmergency: campaign?.stanceType === 'EMERGENCY',
-                    emergencyAreaM2: campaign?.stanceType === 'EMERGENCY' ? ((campaign as any).emergencyAreaM2 ?? 0) : 0,
+                    isEmergency: isLeader && campaign?.stanceType === 'EMERGENCY',
+                    emergencyAreaM2: isLeader && campaign?.stanceType === 'EMERGENCY' ? ((campaign as any).emergencyAreaM2 ?? 0) : 0,
                     stanceType: campaign?.stanceType ?? undefined,
                     campaignId: campaign?.id ?? undefined,
-                    level,
-                    widthMeters,
-                    heightMeters,
+                    level: isLeader ? level : 0,
+                    widthMeters: isLeader ? widthMeters : 0,
+                    heightMeters: isLeader ? heightMeters : 0,
+                    profileLevel: icon.user?.cachedProfileLevel ?? 1,
+                    isPrivate: icon.user?.isPrivate ?? false,
                     restrictedContinents: (icon as any).restrictedContinents ?? [],
                     restrictedCountries: (icon as any).restrictedCountries ?? [],
                     restrictedCities: (icon as any).restrictedCities ?? [],
@@ -352,6 +357,7 @@ async function start() {
         fastify.register(devNotesRoutes, { prefix: '/api/devnotes' });
         fastify.register(campaignRoutes, { prefix: '/campaign' });
         fastify.register(notificationRoutes, { prefix: '/api/notifications' });
+        fastify.register(storyRoutes, { prefix: '/api/story' });
 
         fastify.get('/ping', async (request, reply) => {
             return { status: 'ok', time: Date.now(), total_icons: engine.icons.size };

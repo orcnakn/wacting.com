@@ -160,6 +160,8 @@ export async function feedRoutes(fastify: FastifyInstance) {
                 sort?: string;
                 take?: string;
                 skip?: string;
+                minLevel?: string;
+                maxLevel?: string;
             };
 
             const where: any = { isActive: true };
@@ -169,6 +171,12 @@ export async function feedRoutes(fastify: FastifyInstance) {
             }
             if (query.stance && ['SUPPORT', 'EMERGENCY'].includes(query.stance)) {
                 where.stanceType = query.stance;
+            }
+            if (query.minLevel) {
+                where.cachedLevel = { ...(where.cachedLevel || {}), gte: Number(query.minLevel) };
+            }
+            if (query.maxLevel) {
+                where.cachedLevel = { ...(where.cachedLevel || {}), lte: Number(query.maxLevel) };
             }
 
             const take = Math.min(Number(query.take) || 50, 100);
@@ -205,6 +213,7 @@ export async function feedRoutes(fastify: FastifyInstance) {
                 totalWacStaked: c.totalWacStaked?.toFixed?.(6) ?? '0',
                 memberCount: c._count.members,
                 leader: c.leader,
+                cachedLevel: c.cachedLevel ?? 0,
                 createdAt: c.createdAt,
             }));
 
@@ -234,18 +243,27 @@ export async function feedRoutes(fastify: FastifyInstance) {
     // GET /feed/global/users — All users sorted by total campaign memberships
     fastify.get('/global/users', async (request, reply) => {
         try {
-            const query = request.query as { take?: string; skip?: string };
+            const query = request.query as { take?: string; skip?: string; minLevel?: string; maxLevel?: string };
             const take = Math.min(parseInt(query.take || '50', 10) || 50, 100);
             const skip = parseInt(query.skip || '0', 10) || 0;
 
+            const userWhere: any = { status: 'ACTIVE', isBot: false };
+            if (query.minLevel) {
+                userWhere.cachedProfileLevel = { ...(userWhere.cachedProfileLevel || {}), gte: Number(query.minLevel) };
+            }
+            if (query.maxLevel) {
+                userWhere.cachedProfileLevel = { ...(userWhere.cachedProfileLevel || {}), lte: Number(query.maxLevel) };
+            }
+
             const users = await prisma.user.findMany({
-                where: { status: 'ACTIVE', isBot: false },
+                where: userWhere,
                 select: {
                     id: true,
                     displayName: true,
                     slogan: true,
                     avatarUrl: true,
                     createdAt: true,
+                    cachedProfileLevel: true,
                     _count: {
                         select: {
                             campaignMemberships: true,
@@ -263,7 +281,7 @@ export async function feedRoutes(fastify: FastifyInstance) {
             });
 
             const total = await prisma.user.count({
-                where: { status: 'ACTIVE', isBot: false },
+                where: userWhere,
             });
 
             return reply.send({
@@ -277,6 +295,7 @@ export async function feedRoutes(fastify: FastifyInstance) {
                     campaignCount: u._count.campaignMemberships,
                     followerCount: u._count.followers,
                     followingCount: u._count.following,
+                    level: u.cachedProfileLevel ?? 0,
                 })),
                 total,
             });

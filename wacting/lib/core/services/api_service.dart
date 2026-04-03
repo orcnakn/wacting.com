@@ -219,15 +219,20 @@ class ApiService {
     return (res.data as Map<String, dynamic>)['campaigns'] as List<dynamic>;
   }
 
-  Future<Map<String, dynamic>> getGlobalUsers({int take = 50, int skip = 0}) async {
-    final res = await _dio.get('/feed/global/users', queryParameters: {'take': take, 'skip': skip});
+  Future<Map<String, dynamic>> getGlobalUsers({int take = 50, int skip = 0, int? minLevel, int? maxLevel}) async {
+    final params = <String, dynamic>{'take': take, 'skip': skip};
+    if (minLevel != null) params['minLevel'] = minLevel;
+    if (maxLevel != null) params['maxLevel'] = maxLevel;
+    final res = await _dio.get('/feed/global/users', queryParameters: params);
     return res.data as Map<String, dynamic>;
   }
 
-  Future<List<dynamic>> getGlobalCampaigns({String? category, String? stance, String sort = 'members', int take = 50, int skip = 0}) async {
+  Future<List<dynamic>> getGlobalCampaigns({String? category, String? stance, String sort = 'members', int take = 50, int skip = 0, int? minLevel, int? maxLevel}) async {
     final params = <String, dynamic>{'sort': sort, 'take': take, 'skip': skip};
     if (category != null) params['category'] = category;
     if (stance != null) params['stance'] = stance;
+    if (minLevel != null) params['minLevel'] = minLevel;
+    if (maxLevel != null) params['maxLevel'] = maxLevel;
     final res = await _dio.get('/feed/global/campaigns', queryParameters: params);
     return (res.data as Map<String, dynamic>)['campaigns'] as List<dynamic>;
   }
@@ -379,6 +384,44 @@ class ApiService {
     if (tiktokUrl != null) body['tiktokUrl'] = tiktokUrl;
     if (linkedinUrl != null) body['linkedinUrl'] = linkedinUrl;
     await _dio.put('/api/profile', data: body);
+  }
+
+  Future<void> updateSocialFollowers(String platform, int followerCount) async {
+    await _dio.put('/api/profile/social-followers', data: {
+      'platform': platform,
+      'followerCount': followerCount,
+    });
+  }
+
+  // ── Stories ───────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> createStory({String? content, String? mediaUrl, String? mediaType, String? youtubeUrl}) async {
+    final res = await _dio.post('/api/story', data: {
+      if (content != null) 'content': content,
+      if (mediaUrl != null) 'mediaUrl': mediaUrl,
+      if (mediaType != null) 'mediaType': mediaType,
+      if (youtubeUrl != null) 'youtubeUrl': youtubeUrl,
+    });
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<List<dynamic>> getMyStories() async {
+    final res = await _dio.get('/api/story/mine');
+    return (res.data as Map<String, dynamic>)['stories'] as List<dynamic>;
+  }
+
+  Future<List<dynamic>> getUserStories(String userId) async {
+    final res = await _dio.get('/api/story/user/$userId');
+    return (res.data as Map<String, dynamic>)['stories'] as List<dynamic>;
+  }
+
+  Future<void> deleteStory(String id) async {
+    await _dio.delete('/api/story/$id');
+  }
+
+  Future<Map<String, dynamic>> publishStory(String id, List<String> platforms) async {
+    final res = await _dio.post('/api/story/$id/publish', data: {'platforms': platforms});
+    return res.data as Map<String, dynamic>;
   }
 
   // ── Follow / Social ──────────────────────────────────────────────────────

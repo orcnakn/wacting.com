@@ -23,6 +23,7 @@ import {
 import { buildMerkleTree } from '../engine/merkle_builder.js';
 import { recordChainedTransaction } from '../engine/chain_engine.js';
 import { SocketManager } from '../socket/socket_manager.js';
+import { refreshProfileLevel } from '../engine/profile_level_calculator.js';
 
 const prisma = new PrismaClient();
 
@@ -288,6 +289,16 @@ export const snapshotWorker = new Worker(
             `WAC distributed: ${totalWacRewarded.toFixed(6)}, ` +
             `Merkle root: ${root}`
         );
+
+        // ── REFRESH ALL PROFILE LEVELS ─────────────────────────────────
+        console.log('[Snapshot] Refreshing profile levels...');
+        const allUsers = await prisma.user.findMany({
+            select: { id: true },
+        });
+        for (const user of allUsers) {
+            await refreshProfileLevel(prisma, user.id);
+        }
+        console.log(`[Snapshot] Profile levels refreshed for ${allUsers.length} users.`);
     },
     { connection }
 );

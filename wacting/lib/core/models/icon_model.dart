@@ -27,6 +27,8 @@ class IconModel extends Equatable {
   final double level;          // Total campaign level (follower + year + WAC)
   final double widthMeters;    // Physical sign width in meters
   final double heightMeters;   // Physical sign height in meters
+  final int profileLevel;      // User's cached profile level (for map z-order)
+  final bool isPrivate;        // Whether the user's profile is private
 
   const IconModel({
     required this.id,
@@ -51,6 +53,8 @@ class IconModel extends Equatable {
     this.level = 0,
     this.widthMeters = 0,
     this.heightMeters = 0,
+    this.profileLevel = 1,
+    this.isPrivate = false,
   });
 
   factory IconModel.fromJson(Map<String, dynamic> json) {
@@ -87,6 +91,8 @@ class IconModel extends Equatable {
       level: (json['level'] as num?)?.toDouble() ?? 0,
       widthMeters: (json['widthMeters'] as num?)?.toDouble() ?? 0,
       heightMeters: (json['heightMeters'] as num?)?.toDouble() ?? 0,
+      profileLevel: (json['profileLevel'] as num?)?.toInt() ?? 1,
+      isPrivate: json['isPrivate'] as bool? ?? false,
     );
   }
 
@@ -123,5 +129,7 @@ class IconModel extends Equatable {
         level,
         widthMeters,
         heightMeters,
+        profileLevel,
+        isPrivate,
       ];
 }

@@ -9,6 +9,8 @@ import '../../core/services/locale_service.dart';
 import '../../core/utils/format_utils.dart';
 
 import '../social/notifications_screen.dart';
+import 'story_section.dart';
+import 'followers_section.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String? viewUserId;
@@ -255,22 +257,46 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                   ),
           ),
 
-          // ── Slogan ──
-          if (sloganText.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Center(
-              child: Text('"$sloganText"',
-                  style: TextStyle(color: AppColors.accentTeal, fontStyle: FontStyle.italic, fontSize: 13)),
+          const SizedBox(height: 8),
+
+          // ── Seviye rozeti ──
+          Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.accentAmber.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                'Lv. ${_profile?['profileLevel'] ?? 1}',
+                style: TextStyle(color: AppColors.accentAmber, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
             ),
-          ],
+          ),
+
           const SizedBox(height: 16),
 
-          // ── Bio / Hakkinda ──
-          _buildBioSection(bio),
-          const SizedBox(height: 20),
-
-          // ── Sosyal Medya Platformlari ──
+          // ── Bolum 1: Kisisel Bilgiler ──
           _buildSocialPlatformsSection(),
+          const SizedBox(height: 16),
+
+          // ── Katildigi Kampanyalar ──
+          _buildJoinedCampaignsSection(),
+          const SizedBox(height: 16),
+
+          // ── Bolum 2: Takipciler ──
+          FollowersSection(
+            userId: widget.viewUserId ?? apiService.userId ?? '',
+            followerCount: (_profile?['followerCount'] ?? 0) as int,
+            followingCount: (_profile?['followingCount'] ?? 0) as int,
+          ),
+          const SizedBox(height: 16),
+
+          // ── Bolum 3: Story ──
+          StorySection(
+            isOwnProfile: _isOwnProfile,
+            userId: widget.viewUserId ?? apiService.userId ?? '',
+          ),
 
           // ── Ayarlar (sadece kendi profili) ──
           if (_isOwnProfile) ...[
@@ -296,9 +322,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Icon(Icons.info_outline, color: AppColors.accentBlue, size: 18),
+          Icon(Icons.auto_stories, color: AppColors.accentBlue, size: 18),
           const SizedBox(width: 8),
-          Text(t('about'), style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+          Text('Story', style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
           const Spacer(),
           if (_isOwnProfile && !_editingBio)
             GestureDetector(
@@ -357,6 +383,82 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // JOINED CAMPAIGNS SECTION
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildJoinedCampaignsSection() {
+    final memberships = (_profile?['campaignMemberships'] as List?) ?? [];
+    if (memberships.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderLight),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.campaign, color: AppColors.accentBlue, size: 18),
+          const SizedBox(width: 8),
+          Text(t('campaigns'), style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppColors.accentBlue.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text('${memberships.length}', style: TextStyle(color: AppColors.accentBlue, fontSize: 11, fontWeight: FontWeight.bold)),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        ...memberships.map<Widget>((m) {
+          final campaign = m['campaign'] as Map<String, dynamic>? ?? {};
+          final title = (campaign['title'] ?? '') as String;
+          final slogan = (campaign['slogan'] ?? '') as String;
+          final cachedLevel = campaign['cachedLevel'];
+          final levelStr = cachedLevel is double ? cachedLevel.toStringAsFixed(0) : '${cachedLevel ?? 0}';
+          final stanceType = (campaign['stanceType'] ?? 'SUPPORT') as String;
+          final stanceColor = stanceType == 'EMERGENCY' ? const Color(0xFFFF0000) : const Color(0xFF4CAF50);
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceWhite,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: stanceColor.withOpacity(0.2), width: 0.5),
+            ),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title, style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  if (slogan.isNotEmpty)
+                    Text(slogan, style: TextStyle(color: AppColors.textTertiary, fontSize: 11),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                ]),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.accentAmber.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text('Lv.$levelStr', style: TextStyle(color: AppColors.accentAmber, fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+            ]),
+          );
+        }),
+      ]),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // SOCIAL PLATFORMS SECTION
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -381,6 +483,22 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           Icon(Icons.share, color: AppColors.accentBlue, size: 18),
           const SizedBox(width: 8),
           Text(t('social_media'), style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+          const Spacer(),
+          Builder(builder: (_) {
+            final max = _getMaxFollowerEntry();
+            if (max == null) return const SizedBox.shrink();
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.accentBlue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${max['short']}: ${_formatFollowerCount(max['count'] as int)}',
+                style: TextStyle(color: AppColors.accentBlue, fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+            );
+          }),
         ]),
         const SizedBox(height: 12),
         ...platforms.map((p) => _buildPlatformRow(p)),
@@ -418,10 +536,26 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           ),
         ),
         const SizedBox(width: 12),
-        // Platform name + username
+        // Platform name + username + follower count
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(platform.name, style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+            Row(children: [
+              Text(platform.name, style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+              if (_getFollowerCount(platform.key) > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: platform.color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _formatFollowerCount(_getFollowerCount(platform.key)),
+                    style: TextStyle(color: platform.color, fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ]),
             if (hasUrl)
               Text(url!, style: TextStyle(color: AppColors.textTertiary, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis)
             else
@@ -526,21 +660,49 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   }
 
   void _showEditSocialUrlDialog(String platform, String platformName) {
-    final urlController = TextEditingController(text: _getSocialUrl(platform) ?? '');
+    final usernameController = TextEditingController();
+    final followerController = TextEditingController();
+    final platformHints = {
+      'instagram': '@kullaniciadi',
+      'twitter': '@kullaniciadi',
+      'facebook': 'kullaniciadi',
+      'tiktok': '@kullaniciadi',
+      'linkedin': 'kullaniciadi',
+    };
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(t('link_title').replaceAll('{platform}', platformName), style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
-        content: TextField(
-          controller: urlController,
-          style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
-          decoration: InputDecoration(
-            hintText: t('enter_profile_link'),
-            hintStyle: TextStyle(color: AppColors.textTertiary),
-            filled: true,
-            fillColor: AppColors.surfaceLight,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.borderLight)),
-          ),
+        title: Text('$platformName Ekle', style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: usernameController,
+              style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: platformHints[platform] ?? 'Kullanici adi',
+                hintStyle: TextStyle(color: AppColors.textTertiary),
+                prefixIcon: Icon(Icons.person, color: AppColors.textTertiary, size: 18),
+                filled: true,
+                fillColor: AppColors.surfaceLight,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.borderLight)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: followerController,
+              keyboardType: TextInputType.number,
+              style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: 'Takipci sayisi (opsiyonel)',
+                hintStyle: TextStyle(color: AppColors.textTertiary),
+                prefixIcon: Icon(Icons.people, color: AppColors.textTertiary, size: 18),
+                filled: true,
+                fillColor: AppColors.surfaceLight,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppColors.borderLight)),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -550,14 +712,24 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentBlue, foregroundColor: Colors.white),
             onPressed: () async {
-              final url = urlController.text.trim();
+              final username = usernameController.text.trim();
+              if (username.isEmpty) return;
               try {
+                // Send username — backend auto-generates URL
                 switch (platform) {
-                  case 'instagram': await apiService.updateProfileSocialUrls(instagramUrl: url); break;
-                  case 'twitter': await apiService.updateProfileSocialUrls(twitterUrl: url); break;
-                  case 'facebook': await apiService.updateProfileSocialUrls(facebookUrl: url); break;
-                  case 'tiktok': await apiService.updateProfileSocialUrls(tiktokUrl: url); break;
-                  case 'linkedin': await apiService.updateProfileSocialUrls(linkedinUrl: url); break;
+                  case 'instagram': await apiService.updateProfileSocialUrls(instagramUrl: username); break;
+                  case 'twitter': await apiService.updateProfileSocialUrls(twitterUrl: username); break;
+                  case 'facebook': await apiService.updateProfileSocialUrls(facebookUrl: username); break;
+                  case 'tiktok': await apiService.updateProfileSocialUrls(tiktokUrl: username); break;
+                  case 'linkedin': await apiService.updateProfileSocialUrls(linkedinUrl: username); break;
+                }
+                // Update follower count if provided
+                final followerText = followerController.text.trim();
+                if (followerText.isNotEmpty) {
+                  final count = int.tryParse(followerText);
+                  if (count != null && count > 0) {
+                    await apiService.updateSocialFollowers(platform, count);
+                  }
                 }
                 Navigator.pop(ctx);
                 _loadProfile();
@@ -583,6 +755,43 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       case 'linkedin': return _profile?['linkedinUrl'] as String?;
       default: return null;
     }
+  }
+
+  int _getFollowerCount(String platform) {
+    switch (platform) {
+      case 'instagram': return (_profile?['instagramFollowers'] as int?) ?? 0;
+      case 'twitter': return (_profile?['twitterFollowers'] as int?) ?? 0;
+      case 'facebook': return (_profile?['facebookFollowers'] as int?) ?? 0;
+      case 'tiktok': return (_profile?['tiktokFollowers'] as int?) ?? 0;
+      case 'linkedin': return (_profile?['linkedinFollowers'] as int?) ?? 0;
+      default: return 0;
+    }
+  }
+
+  String _formatFollowerCount(int count) {
+    if (count >= 1000000) return '${(count / 1000000).toStringAsFixed(1)}M';
+    if (count >= 1000) return '${(count / 1000).toStringAsFixed(1)}K';
+    return '$count';
+  }
+
+  /// En yüksek takipçi sayısına sahip platformu döndürür.
+  /// Dönen map: {'short': 'IG', 'count': 125000} veya null (hiç takipçi yoksa)
+  Map<String, dynamic>? _getMaxFollowerEntry() {
+    const entries = [
+      {'key': 'instagram', 'short': 'IG'},
+      {'key': 'twitter',   'short': 'X'},
+      {'key': 'facebook',  'short': 'FB'},
+      {'key': 'tiktok',    'short': 'TT'},
+      {'key': 'linkedin',  'short': 'LI'},
+    ];
+    String? bestShort;
+    int bestCount = 0;
+    for (final e in entries) {
+      final c = _getFollowerCount(e['key']!);
+      if (c > bestCount) { bestCount = c; bestShort = e['short']; }
+    }
+    if (bestCount == 0) return null;
+    return {'short': bestShort, 'count': bestCount};
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

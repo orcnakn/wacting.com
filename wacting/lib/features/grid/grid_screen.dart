@@ -18,6 +18,7 @@ import '../../app/theme.dart';
 import 'day_night_layer.dart';
 import 'lod_manager.dart';
 import 'emergency_marker.dart';
+import '../profile/profile_screen.dart';
 
 // ─── Continent → Country mapping ─────────────────────────────────────────────
 const Map<String, List<String>> _continentCountries = {
@@ -844,9 +845,14 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
               final markerDots = <Marker>[];
               final myId = apiService.userId;
-              // Sort by level descending: higher-level campaigns render on top (z-order)
+              // Sort by level descending: higher-level icons render on top (z-order).
+              // Campaign icons use campaign level; user-only icons use profileLevel.
               final sortedIcons = List<IconModel>.from(filteredIcons)
-                ..sort((a, b) => b.level.compareTo(a.level));
+                ..sort((a, b) {
+                  final aKey = a.level > 0 ? a.level : a.profileLevel.toDouble();
+                  final bKey = b.level > 0 ? b.level : b.profileLevel.toDouble();
+                  return bKey.compareTo(aKey);
+                });
               for (final icon in sortedIcons) {
                 if (icon.isEmergency) continue; // Skip — rendered in emergency layer
                   final latLng = _offsetToLatLng(icon.position);
@@ -1195,7 +1201,11 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
                         if (LodManager.isUserFullDetail(zoom)) {
                           // High zoom: show person icon with name on hover (next to icon)
-                          final displayLabel = name.isNotEmpty ? name : 'Kullanici';
+                          final rawName = name.isNotEmpty ? name : 'Kullanici';
+                          final isPrivate = loc['isPrivate'] == true;
+                          final displayLabel = isPrivate && !isOwn
+                              ? '${rawName.substring(0, rawName.length < 3 ? rawName.length : 3)}********'
+                              : rawName;
                           return Marker(
                             point: LatLng(lat, lng),
                             width: 140,
@@ -1212,29 +1222,50 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Container(
-                                        width: 28,
-                                        height: 28,
-                                        decoration: BoxDecoration(
-                                          color: color.withOpacity(0.8),
-                                          shape: BoxShape.circle,
-                                          border: Border.all(color: Colors.white, width: 2),
-                                        ),
-                                        child: const Icon(Icons.person, color: Colors.white, size: 16),
+                                      Stack(
+                                        clipBehavior: Clip.none,
+                                        children: [
+                                          Container(
+                                            width: 28,
+                                            height: 28,
+                                            decoration: BoxDecoration(
+                                              color: color.withOpacity(0.8),
+                                              shape: BoxShape.circle,
+                                              border: Border.all(color: Colors.white, width: 2),
+                                            ),
+                                            child: const Icon(Icons.person, color: Colors.white, size: 16),
+                                          ),
+                                          if (loc['hasPublishedStory'] == true)
+                                            const Positioned(
+                                              top: -3,
+                                              right: -3,
+                                              child: Icon(Icons.star, color: Colors.amber, size: 10),
+                                            ),
+                                        ],
                                       ),
                                       if (_hoveredUserPin == loc['userId'])
-                                        Container(
-                                          margin: const EdgeInsets.only(left: 4),
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: Colors.black.withOpacity(0.75),
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                          child: Text(
-                                            displayLabel,
-                                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
+                                        GestureDetector(
+                                          onTap: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => ProfileScreen(viewUserId: loc['userId']),
+                                              ),
+                                            );
+                                          },
+                                          child: Container(
+                                            margin: const EdgeInsets.only(left: 4),
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withOpacity(0.75),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              displayLabel,
+                                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
                                           ),
                                         ),
                                     ],
@@ -1277,7 +1308,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
 
           // ── Semantic Zoom Overlay ──
           Positioned(
-            top: 40,
+            top: 100,
             left: MediaQuery.of(context).size.width / 2 - 80,
             child: IgnorePointer(
               child: Container(
@@ -1323,6 +1354,38 @@ class _GridScreenState extends ConsumerState<GridScreen> {
             ),
           ),
 
+          // ── Zoom Slider ──
+          Positioned(
+            bottom: 80,
+            left: 16,
+            child: SizedBox(
+              height: 150,
+              width: 30,
+              child: RotatedBox(
+                quarterTurns: 3,
+                child: SliderTheme(
+                  data: SliderThemeData(
+                    trackHeight: 2,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                    activeTrackColor: AppColors.accentTeal,
+                    inactiveTrackColor: AppColors.textTertiary.withOpacity(0.3),
+                    thumbColor: AppColors.accentTeal,
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                  ),
+                  child: Slider(
+                    value: _currentZoom.clamp(2.0, 18.0),
+                    min: 2.0,
+                    max: 18.0,
+                    onChanged: (val) {
+                      _mapController.move(_mapController.camera.center, val);
+                      setState(() => _currentZoom = val);
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+
           // ── Focus Button (tap: go to my icon at cities zoom) ──
           Positioned(
             bottom: 30,
@@ -1348,17 +1411,38 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                   final lat = myLoc['lat'] as double?;
                   final lng = myLoc['lng'] as double?;
                   if (lat != null && lng != null) {
-                    _mapController.move(LatLng(lat, lng), 11.0);
+                    _mapController.move(LatLng(lat, lng), 16.0);
                     return;
                   }
                 }
                 if (_myIconLatLng != null) {
-                  _mapController.move(_myIconLatLng!, 11.0);
+                  _mapController.move(_myIconLatLng!, 16.0);
                 } else {
-                  _mapController.move(_initialCenter, 11.0);
+                  _mapController.move(_initialCenter, 16.0);
                 }
               },
             )),
+          ),
+
+          // ── Version Label ──
+          Positioned(
+            bottom: 38,
+            left: 120,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.navyPrimary.withOpacity(0.85),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                'v.10',
+                style: TextStyle(
+                  color: AppColors.textTertiary.withOpacity(0.5),
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
           ),
 
           // ── Pause/Resume Button ──
@@ -1838,8 +1922,6 @@ class _GridScreenState extends ConsumerState<GridScreen> {
   // ──────────────────────── PUBLIC PROFILE MODAL ────────────────────────
 
   void _showPublicProfile(BuildContext context, IconModel icon, String slogan) {
-      double tokensToSend = 10.0;
-
       showModalBottomSheet(
           context: context,
           backgroundColor: AppColors.surfaceWhite,
@@ -1848,6 +1930,8 @@ class _GridScreenState extends ConsumerState<GridScreen> {
           builder: (ctx) {
               return StatefulBuilder(
                   builder: (ctx, setModalState) {
+                      bool _sending = false;
+
                       return Padding(
                           padding: EdgeInsets.only(
                             bottom: MediaQuery.of(ctx).viewInsets.bottom,
@@ -1859,44 +1943,87 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                                   children: [
                                       CircleAvatar(
                                           radius: 40,
-                                          backgroundColor: icon.color,
+                                          backgroundColor: icon.displayColor,
                                           child: const Icon(Icons.person, size: 40, color: Colors.white),
                                       ),
-                                      const SizedBox(height: 16),
-                                      Text('User: ${icon.id}',
-                                          style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
-                                      const SizedBox(height: 8),
-                                      Text('"$slogan"',
-                                          style: TextStyle(color: AppColors.accentTeal, fontSize: 16, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600),
-                                          textAlign: TextAlign.center),
-
-                                      const SizedBox(height: 24),
-                                      Divider(color: AppColors.borderLight),
-                                      const SizedBox(height: 16),
-                                      Text('Send Tokens with Follow Request',
-                                          style: TextStyle(color: AppColors.accentTeal, fontWeight: FontWeight.w600)),
-                                      const SizedBox(height: 8),
-                                      Slider(
-                                          value: tokensToSend, min: 0, max: 1000, divisions: 100,
-                                          activeColor: AppColors.accentTeal,
-                                          label: '${tokensToSend.toInt()} WAC',
-                                          onChanged: (val) => setModalState(() => tokensToSend = val),
-                                      ),
-                                      const SizedBox(height: 16),
-                                      ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                              backgroundColor: AppColors.accentTeal,
-                                              minimumSize: const Size(double.infinity, 50),
-                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                                      const SizedBox(height: 12),
+                                      // Level rozeti
+                                      Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                          decoration: BoxDecoration(
+                                              color: AppColors.accentAmber.withOpacity(0.15),
+                                              borderRadius: BorderRadius.circular(10),
                                           ),
-                                          onPressed: () {
-                                              Navigator.pop(ctx);
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                  SnackBar(content: Text('Follow request sent with ${tokensToSend.toInt()} tokens!')));
-                                          },
-                                          child: Text('FOLLOW & SEND ${tokensToSend.toInt()} WAC',
-                                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                          child: Text(
+                                              'Lv. ${icon.profileLevel}',
+                                              style: TextStyle(color: AppColors.accentAmber, fontWeight: FontWeight.bold, fontSize: 14),
+                                          ),
                                       ),
+                                      const SizedBox(height: 12),
+                                      if (slogan.isNotEmpty)
+                                          Text('"$slogan"',
+                                              style: TextStyle(color: AppColors.accentTeal, fontSize: 15, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600),
+                                              textAlign: TextAlign.center),
+                                      const SizedBox(height: 20),
+                                      if (icon.isPrivate) ...[
+                                          // Gizli profil — sadece seviye görünür
+                                          Container(
+                                              padding: const EdgeInsets.all(12),
+                                              decoration: BoxDecoration(
+                                                  color: AppColors.surfaceLight,
+                                                  borderRadius: BorderRadius.circular(10),
+                                              ),
+                                              child: Row(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                      Icon(Icons.lock_outline, color: AppColors.textTertiary, size: 16),
+                                                      const SizedBox(width: 6),
+                                                      Text(t('profile_private'),
+                                                          style: TextStyle(color: AppColors.textTertiary, fontSize: 13)),
+                                                  ],
+                                              ),
+                                          ),
+                                          const SizedBox(height: 16),
+                                          TextButton(
+                                              onPressed: () => Navigator.pop(ctx),
+                                              child: Text(t('close'), style: TextStyle(color: AppColors.textTertiary)),
+                                          ),
+                                      ] else ...[
+                                          // Açık profil — takip butonu
+                                          Divider(color: AppColors.borderLight),
+                                          const SizedBox(height: 12),
+                                          ElevatedButton.icon(
+                                              style: ElevatedButton.styleFrom(
+                                                  backgroundColor: AppColors.accentTeal,
+                                                  minimumSize: const Size(double.infinity, 48),
+                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                              ),
+                                              icon: _sending
+                                                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                                  : const Icon(Icons.person_add, color: Colors.white, size: 18),
+                                              label: Text(
+                                                  _sending ? t('sending') : t('follow_on_wacting'),
+                                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                              ),
+                                              onPressed: _sending ? null : () async {
+                                                  setModalState(() => _sending = true);
+                                                  try {
+                                                      await apiService.followUser(icon.userId);
+                                                      if (ctx.mounted) Navigator.pop(ctx);
+                                                      if (context.mounted) {
+                                                          ScaffoldMessenger.of(context).showSnackBar(
+                                                              SnackBar(content: Text(t('follow_request_sent'))));
+                                                      }
+                                                  } catch (_) {
+                                                      setModalState(() => _sending = false);
+                                                      if (context.mounted) {
+                                                          ScaffoldMessenger.of(context).showSnackBar(
+                                                              SnackBar(content: Text(t('error_occurred'))));
+                                                      }
+                                                  }
+                                              },
+                                          ),
+                                      ],
                                       const SizedBox(height: 24),
                                   ],
                               )
