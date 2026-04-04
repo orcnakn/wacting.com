@@ -42,6 +42,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
   // Settings state
   bool _settingsExpanded = false;
+  final _settingsKey = GlobalKey();
 
   bool get _isOwnProfile => widget.viewUserId == null || widget.viewUserId == apiService.userId;
   String get _targetUserId => widget.viewUserId ?? apiService.userId ?? '';
@@ -1131,6 +1132,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
   Widget _buildSettingsSection() {
     return Container(
+      key: _settingsKey,
       decoration: BoxDecoration(
         color: AppColors.surfaceLight,
         borderRadius: BorderRadius.circular(12),
@@ -1139,7 +1141,22 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       child: Column(children: [
         // Header
         GestureDetector(
-          onTap: () => setState(() => _settingsExpanded = !_settingsExpanded),
+          onTap: () {
+            final willExpand = !_settingsExpanded;
+            setState(() => _settingsExpanded = willExpand);
+            if (willExpand) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (_settingsKey.currentContext != null) {
+                  Scrollable.ensureVisible(
+                    _settingsKey.currentContext!,
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeInOut,
+                    alignment: 0.5,
+                  );
+                }
+              });
+            }
+          },
           child: Container(
             padding: const EdgeInsets.all(14),
             child: Row(children: [

@@ -13,14 +13,15 @@
  *   5. Updates user's instagramUrl + instagramId in DB
  *   6. Returns HTML that calls window.opener.postMessage({success, username}) and closes
  *
- * Instagram Basic Display API:
- *   - Gives us: id, username, account_type
- *   - Does NOT give follower count (that requires Graph API + Business account)
- *   - Follower count can be entered manually in the follow-up dialog
+ * Instagram API with Instagram Login (Basic Display API'nin yerini alan yeni sistem):
+ *   - Gives us: id, username, name
+ *   - Creator veya Business hesapları desteklenir (kişisel hesaplar için Creator'a geçiş gerekir)
+ *   - Follower count manuel dialog'da girilir
+ *   - Scope: instagram_business_basic
  *
  * Environment variables required:
- *   INSTAGRAM_CLIENT_ID       — Instagram App ID from Meta Developer Console
- *   INSTAGRAM_CLIENT_SECRET   — Instagram App Secret
+ *   INSTAGRAM_CLIENT_ID       — Meta App ID (developers.facebook.com)
+ *   INSTAGRAM_CLIENT_SECRET   — Meta App Secret
  *   APP_URL                   — Public base URL e.g. https://wacting.com
  */
 
@@ -69,12 +70,13 @@ interface LinkProviderConfig {
 function getLinkConfig(provider: string): LinkProviderConfig | null {
     const configs: Record<string, LinkProviderConfig> = {
         instagram: {
+            // New Instagram API with Instagram Login (replaces deprecated Basic Display API)
             authUrl: 'https://api.instagram.com/oauth/authorize',
             tokenUrl: 'https://api.instagram.com/oauth/access_token',
-            profileUrl: 'https://graph.instagram.com/me?fields=id,username,account_type',
+            profileUrl: 'https://graph.instagram.com/v21.0/me?fields=id,username,name',
             clientId: process.env.INSTAGRAM_CLIENT_ID || '',
             clientSecret: process.env.INSTAGRAM_CLIENT_SECRET || '',
-            scope: 'user_profile',
+            scope: 'instagram_business_basic',
             idField: 'instagramId',
             urlField: 'instagramUrl',
             followerField: 'instagramFollowers',
