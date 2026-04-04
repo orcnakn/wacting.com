@@ -1688,18 +1688,6 @@ class _GlobalTabState extends State<_GlobalTab> {
             ],
           ),
         ),
-        // Category filter chips
-        SizedBox(
-          height: 40,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            children: [
-              _filterChip(null, t('all')),
-              ..._categories.entries.map((e) => _filterChip(e.key, e.value)),
-            ],
-          ),
-        ),
         // Level filter chips
         SizedBox(
           height: 40,
