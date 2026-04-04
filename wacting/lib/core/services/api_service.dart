@@ -115,9 +115,19 @@ class ApiService {
     setAuth(token, usrId);
   }
 
-  /// Get the OAuth start URL for a given provider
+  /// Get the OAuth start URL for a given provider (login)
   String getOAuthStartUrl(String provider) {
     return '${AppConfig.apiBaseUrl}/auth/oauth/start/$provider';
+  }
+
+  /// Get the social account link URL for a given provider (authenticated)
+  String getSocialLinkUrl(String provider) {
+    return '${AppConfig.apiBaseUrl}/auth/link/$provider?token=${_token ?? ''}';
+  }
+
+  /// Unlink a social account from the current user's profile
+  Future<void> unlinkSocialAccount(String provider) async {
+    await _dio.delete('/auth/link/$provider');
   }
 
   // ── Campaigns ───────────────────────────────────────────────────────────────

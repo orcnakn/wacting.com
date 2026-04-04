@@ -27,6 +27,7 @@ import { voteRoutes } from './routes/vote.js';
 import { profileRoutes } from './routes/profile.js';
 import { campaignRoutes } from './routes/campaign.js';
 import { oauthRoutes } from './routes/oauth.js';
+import { socialLinkRoutes } from './routes/social_link.js';
 import { devNotesRoutes } from './routes/devnotes.js';
 import notificationRoutes from './routes/notifications.js';
 import { storyRoutes } from './routes/story.js';
@@ -344,6 +345,7 @@ async function start() {
         fastify.register(webhookRoutes);
         fastify.register(authRoutes);
         fastify.register(oauthRoutes);
+        fastify.register(socialLinkRoutes);
         fastify.register(adminRoutes);
         fastify.register(iconRoutes);
         fastify.register(socialRoutes);

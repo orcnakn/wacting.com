@@ -1,3 +1,4 @@
+import 'dart:convert' show json;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 // ignore: avoid_web_libraries_in_flutter
@@ -801,6 +802,120 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // OAUTH SOCIAL LINK
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Platforms that support OAuth linking (others use manual URL entry)
+  static const _oauthProviders = {'instagram', 'twitter', 'tiktok'};
+
+  /// Opens OAuth popup and listens for postMessage result
+  void _linkWithOAuth(String provider, String providerName) {
+    final url = apiService.getSocialLinkUrl(provider);
+    final popup = html.window.open(url, 'wacting_link_$provider',
+        'width=520,height=680,left=200,top=100');
+
+    // Listen for postMessage from popup
+    html.window.onMessage.listen((event) {
+      try {
+        final raw = event.data as String?;
+        if (raw == null) return;
+        final parsed = _jsonDecode(raw);
+        final linkData = parsed['wactingLink'];
+        if (linkData == null) return;
+
+        try { popup.close(); } catch (_) {}
+
+        if (linkData['error'] != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(linkData['error'] as String),
+              backgroundColor: AppColors.accentRed,
+            ),
+          );
+          return;
+        }
+
+        // Success — reload profile then optionally ask for follower count
+        _loadProfile().then((_) {
+          final followerCount = linkData['followerCount'];
+          // Instagram Basic Display API does not return follower count
+          // Show dialog to enter it manually if not already provided
+          if (followerCount == null && mounted) {
+            _showFollowerUpdateDialog(provider, providerName, 0);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('@${linkData['username']} bağlandı!'),
+                backgroundColor: AppColors.accentGreen,
+              ),
+            );
+          }
+        });
+      } catch (_) {}
+    });
+  }
+
+  Map<String, dynamic> _jsonDecode(String raw) {
+    return json.decode(raw) as Map<String, dynamic>;
+  }
+
+  /// Dialog to update follower count for a connected platform
+  void _showFollowerUpdateDialog(String platform, String platformName, int currentCount) {
+    final ctrl = TextEditingController(text: currentCount > 0 ? '$currentCount' : '');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceWhite,
+        title: Text('$platformName Takipçi Sayısı',
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 15)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Takipçi sayını gir (seviye hesaplaması için kullanılır).',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: '0',
+              hintStyle: TextStyle(color: AppColors.textTertiary),
+              prefixIcon: Icon(Icons.people, color: AppColors.textTertiary, size: 18),
+              filled: true,
+              fillColor: AppColors.surfaceLight,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: AppColors.borderLight)),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(t('cancel'), style: TextStyle(color: AppColors.textTertiary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accentBlue, foregroundColor: Colors.white),
+            onPressed: () async {
+              final count = int.tryParse(ctrl.text.trim()) ?? 0;
+              if (count > 0) {
+                try {
+                  await apiService.updateSocialFollowers(platform, count);
+                  Navigator.pop(ctx);
+                  _loadProfile();
+                } catch (_) {}
+              } else {
+                Navigator.pop(ctx);
+              }
+            },
+            child: Text(t('save')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // KOLON 1: KAMPANYALAR
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -955,13 +1070,32 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     overflow: TextOverflow.ellipsis),
               ),
               if (count > 0)
-                Text(_formatFollowerCount(count),
-                    style: TextStyle(color: p.color, fontSize: 11, fontWeight: FontWeight.bold))
-              else if (!hasUrl && _isOwnProfile)
                 GestureDetector(
-                  onTap: () => _showEditSocialUrlDialog(p.key, p.name),
-                  child: Text('Ekle', style: TextStyle(color: AppColors.accentBlue, fontSize: 10)),
+                  onTap: _isOwnProfile ? () => _showFollowerUpdateDialog(p.key, p.name, count) : null,
+                  child: Text(_formatFollowerCount(count),
+                      style: TextStyle(color: p.color, fontSize: 11, fontWeight: FontWeight.bold)),
                 )
+              else if (!hasUrl && _isOwnProfile) ...[
+                if (_oauthProviders.contains(p.key))
+                  GestureDetector(
+                    onTap: () => _linkWithOAuth(p.key, p.name),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: p.color.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: p.color.withOpacity(0.4)),
+                      ),
+                      child: Text('Bağla', style: TextStyle(color: p.color, fontSize: 10, fontWeight: FontWeight.bold)),
+                    ),
+                  )
+                else
+                  GestureDetector(
+                    onTap: () => _showEditSocialUrlDialog(p.key, p.name),
+                    child: Text('Ekle', style: TextStyle(color: AppColors.accentBlue, fontSize: 10)),
+                  ),
+              ] else if (hasUrl && _isOwnProfile)
+                Icon(Icons.check_circle, color: AppColors.accentGreen, size: 16)
               else
                 Text('—', style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
             ]),
