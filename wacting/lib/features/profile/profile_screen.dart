@@ -274,28 +274,34 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             ),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
-          // ── Bolum 1: Kisisel Bilgiler ──
-          _buildSocialPlatformsSection(),
-          const SizedBox(height: 16),
+          // ── 3 Dikey Kolon ──
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
 
-          // ── Katildigi Kampanyalar ──
-          _buildJoinedCampaignsSection(),
-          const SizedBox(height: 16),
+                // ── Kolon 1: Kampanyalar ──
+                Expanded(
+                  child: _buildCampaignsColumn(),
+                ),
 
-          // ── Bolum 2: Takipciler ──
-          FollowersSection(
-            userId: widget.viewUserId ?? apiService.userId ?? '',
-            followerCount: (_profile?['followerCount'] ?? 0) as int,
-            followingCount: (_profile?['followingCount'] ?? 0) as int,
-          ),
-          const SizedBox(height: 16),
+                const SizedBox(width: 12),
 
-          // ── Bolum 3: Story ──
-          StorySection(
-            isOwnProfile: _isOwnProfile,
-            userId: widget.viewUserId ?? apiService.userId ?? '',
+                // ── Kolon 2: Sosyal Medya + Takipciler ──
+                Expanded(
+                  child: _buildSocialColumn(),
+                ),
+
+                const SizedBox(width: 12),
+
+                // ── Kolon 3: Story ──
+                Expanded(
+                  child: _buildStoryColumn(),
+                ),
+              ],
+            ),
           ),
 
           // ── Ayarlar (sadece kendi profili) ──
@@ -792,6 +798,197 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     }
     if (bestCount == 0) return null;
     return {'short': bestShort, 'count': bestCount};
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // KOLON 1: KAMPANYALAR
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildCampaignsColumn() {
+    final memberships = (_profile?['campaignMemberships'] as List?) ?? [];
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderLight),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.campaign, color: AppColors.accentBlue, size: 16),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(t('campaigns'),
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis),
+          ),
+          if (memberships.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.accentBlue.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text('${memberships.length}',
+                  style: TextStyle(color: AppColors.accentBlue, fontSize: 11, fontWeight: FontWeight.bold)),
+            ),
+        ]),
+        const SizedBox(height: 10),
+        if (memberships.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              _isOwnProfile ? 'Henuz bir kampanyaya katilmadin.' : 'Kampanya yok.',
+              style: TextStyle(color: AppColors.textTertiary, fontSize: 11, fontStyle: FontStyle.italic),
+            ),
+          )
+        else
+          ...memberships.map<Widget>((m) {
+            final campaign = m['campaign'] as Map<String, dynamic>? ?? {};
+            final title = (campaign['title'] ?? '') as String;
+            final slogan = (campaign['slogan'] ?? '') as String;
+            final cachedLevel = campaign['cachedLevel'];
+            final levelStr = cachedLevel is double
+                ? cachedLevel.toStringAsFixed(0)
+                : '${cachedLevel ?? 1}';
+            final stanceType = (campaign['stanceType'] ?? 'SUPPORT') as String;
+            final stanceColor = stanceType == 'EMERGENCY'
+                ? const Color(0xFFFF0000)
+                : const Color(0xFF4CAF50);
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceWhite,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: stanceColor.withOpacity(0.2), width: 0.5),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title,
+                    style: TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w600),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Row(children: [
+                  Expanded(
+                    child: Text(slogan,
+                        style: TextStyle(color: AppColors.textTertiary, fontSize: 10),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.accentAmber.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Text('Lv.$levelStr',
+                        style: TextStyle(color: AppColors.accentAmber, fontSize: 9, fontWeight: FontWeight.bold)),
+                  ),
+                ]),
+              ]),
+            );
+          }),
+      ]),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // KOLON 2: SOSYAL MEDYA + TAKIPCILER
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildSocialColumn() {
+    final platforms = [
+      _PlatformDef('instagram', 'Instagram', Icons.camera_alt, const Color(0xFFE1306C)),
+      _PlatformDef('twitter', 'X', Icons.close, const Color(0xFF1DA1F2), textLabel: 'X'),
+      _PlatformDef('facebook', 'Facebook', Icons.facebook, const Color(0xFF1877F2)),
+      _PlatformDef('tiktok', 'TikTok', Icons.music_note, const Color(0xFF000000)),
+      _PlatformDef('linkedin', 'LinkedIn', Icons.work, const Color(0xFF0A66C2)),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderLight),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.share, color: AppColors.accentBlue, size: 16),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(t('social_media'),
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis),
+          ),
+        ]),
+        const SizedBox(height: 10),
+
+        // Platform satirlari — icon + isim + takipci sayisi
+        ...platforms.map((p) {
+          final count = _getFollowerCount(p.key);
+          final url = _getSocialUrl(p.key);
+          final hasUrl = url != null && url.isNotEmpty;
+          return Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceWhite,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.borderLight, width: 0.5),
+            ),
+            child: Row(children: [
+              Container(
+                width: 28, height: 28,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: p.color.withOpacity(0.1)),
+                child: Center(
+                  child: p.textLabel != null
+                      ? Text(p.textLabel!,
+                          style: TextStyle(color: p.color, fontSize: 11, fontWeight: FontWeight.w900))
+                      : Icon(p.icon, color: p.color, size: 14),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(p.name,
+                    style: TextStyle(color: AppColors.textPrimary, fontSize: 11, fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis),
+              ),
+              if (count > 0)
+                Text(_formatFollowerCount(count),
+                    style: TextStyle(color: p.color, fontSize: 11, fontWeight: FontWeight.bold))
+              else if (!hasUrl && _isOwnProfile)
+                GestureDetector(
+                  onTap: () => _showEditSocialUrlDialog(p.key, p.name),
+                  child: Text('Ekle', style: TextStyle(color: AppColors.accentBlue, fontSize: 10)),
+                )
+              else
+                Text('—', style: TextStyle(color: AppColors.textTertiary, fontSize: 11)),
+            ]),
+          );
+        }),
+
+        const SizedBox(height: 6),
+
+        // Wacting takipci sayisi
+        FollowersSection(
+          userId: widget.viewUserId ?? apiService.userId ?? '',
+          followerCount: (_profile?['followerCount'] ?? 0) as int,
+          followingCount: (_profile?['followingCount'] ?? 0) as int,
+        ),
+      ]),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // KOLON 3: STORY
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildStoryColumn() {
+    return StorySection(
+      isOwnProfile: _isOwnProfile,
+      userId: widget.viewUserId ?? apiService.userId ?? '',
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
