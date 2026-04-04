@@ -5,7 +5,7 @@ import '../../app/widgets/modern_card.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/locale_service.dart';
 import '../profile/profile_screen.dart';
-import '../grid/grid_screen.dart' show globalMapNavigateTo;
+import '../grid/grid_screen.dart' show globalMapNavigateTo, globalNavigateToCampaign;
 import '../root_navigation.dart' show globalSwitchTab;
 
 String _extractError(dynamic e, [String? fallback]) {
@@ -460,29 +460,22 @@ class _CampaignsTabState extends State<_CampaignsTab> {
 
     return InkWell(
       borderRadius: BorderRadius.circular(10),
-      onTap: () {
-        // Haritada konumuna git
-        if (pinnedLat != null && pinnedLng != null) {
-          globalSwitchTab?.call(0);
-          globalMapNavigateTo?.call(pinnedLat, pinnedLng, zoom: 8.0);
-        }
-        _showCampaignDetailSheet(
-          campaignId: campaignId,
-          title: title,
-          slogan: slogan,
-          participants: participants,
-          totalWacStaked: totalWacStaked,
-          myStakedWac: myStakedWac,
-          isLeader: isLeader,
-          speed: speed,
-          pinnedLat: pinnedLat,
-          pinnedLng: pinnedLng,
-          isEmergency: isEmergency,
-          emergencyWacPool: emergencyWacPool,
-          emergencyAreaM2: emergencyAreaM2,
-          emergencyExpiresAt: emergencyExpiresAt,
-        );
-      },
+      onTap: () => _showCampaignDetailSheet(
+        campaignId: campaignId,
+        title: title,
+        slogan: slogan,
+        participants: participants,
+        totalWacStaked: totalWacStaked,
+        myStakedWac: myStakedWac,
+        isLeader: isLeader,
+        speed: speed,
+        pinnedLat: pinnedLat,
+        pinnedLng: pinnedLng,
+        isEmergency: isEmergency,
+        emergencyWacPool: emergencyWacPool,
+        emergencyAreaM2: emergencyAreaM2,
+        emergencyExpiresAt: emergencyExpiresAt,
+      ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
@@ -529,6 +522,23 @@ class _CampaignsTabState extends State<_CampaignsTab> {
               ),
             ],
             const SizedBox(width: 4),
+            // Haritada konumuna git rozeti
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                globalSwitchTab?.call(0);
+                globalNavigateToCampaign?.call(campaignId);
+              },
+              child: Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: AppColors.accentTeal.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.location_on, color: AppColors.accentTeal, size: 14),
+              ),
+            ),
+            const SizedBox(width: 2),
             Icon(Icons.chevron_right, color: AppColors.textTertiary, size: 16),
           ],
         ),
@@ -1872,18 +1882,8 @@ class _GlobalTabState extends State<_GlobalTab> {
     final categoryLabel = _categories[categoryType] ?? categoryType;
     final cachedLevel = (c['cachedLevel'] ?? 0);
     final levelStr = cachedLevel is double ? cachedLevel.toStringAsFixed(0) : '$cachedLevel';
-    final pinnedLat = (c['pinnedLat'] as num?)?.toDouble();
-    final pinnedLng = (c['pinnedLng'] as num?)?.toDouble();
-
     return GestureDetector(
-      onTap: () {
-        // Haritada konumuna git
-        if (pinnedLat != null && pinnedLng != null) {
-          globalSwitchTab?.call(0);
-          globalMapNavigateTo?.call(pinnedLat, pinnedLng, zoom: 8.0);
-        }
-        _openCampaignDetail(campaignId);
-      },
+      onTap: () => _openCampaignDetail(campaignId),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(12),
@@ -1956,6 +1956,23 @@ class _GlobalTabState extends State<_GlobalTab> {
                 const Spacer(),
                 Text(leaderName, style: TextStyle(color: AppColors.accentTeal, fontSize: 11, fontWeight: FontWeight.w500),
                     maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(width: 6),
+                // Haritada konumuna git rozeti
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    globalSwitchTab?.call(0);
+                    globalNavigateToCampaign?.call(campaignId);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: AppColors.accentTeal.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.location_on, color: AppColors.accentTeal, size: 14),
+                  ),
+                ),
               ],
             ),
           ],

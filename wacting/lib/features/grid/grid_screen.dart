@@ -90,6 +90,9 @@ Color _hexToColor(String hex) {
 typedef MapNavigateCallback = void Function(double lat, double lng, {double zoom});
 MapNavigateCallback? globalMapNavigateTo;
 
+// Global callback: navigate map to a campaign's icon by campaignId (no lat/lng needed)
+void Function(String campaignId)? globalNavigateToCampaign;
+
 class GridScreen extends ConsumerStatefulWidget {
   const GridScreen({Key? key}) : super(key: key);
 
@@ -145,6 +148,16 @@ class _GridScreenState extends ConsumerState<GridScreen> {
     socketService.connect(AppConfig.socketUrl);
     globalMapNavigateTo = (double lat, double lng, {double zoom = 8.0}) {
       _mapController.move(LatLng(lat, lng), zoom);
+    };
+    globalNavigateToCampaign = (String campaignId) {
+      // Find the icon for this campaign in the last known stream snapshot
+      final icons = _lastIcons ?? [];
+      final match = icons.cast<IconModel?>().firstWhere(
+        (ic) => ic!.campaignId == campaignId, orElse: () => null);
+      if (match != null) {
+        final latLng = _offsetToLatLng(match.position);
+        _mapController.move(latLng, 7.0);
+      }
     };
     _fetchUserLocations();
     _locationTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchUserLocations());
