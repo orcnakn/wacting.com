@@ -215,6 +215,8 @@ export async function feedRoutes(fastify: FastifyInstance) {
                 leader: c.leader,
                 cachedLevel: c.cachedLevel ?? 0,
                 createdAt: c.createdAt,
+                pinnedLat: c.pinnedLat ?? null,
+                pinnedLng: c.pinnedLng ?? null,
             }));
 
             if (query.sort === 'members' || !query.sort) {

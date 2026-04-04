@@ -460,22 +460,29 @@ class _CampaignsTabState extends State<_CampaignsTab> {
 
     return InkWell(
       borderRadius: BorderRadius.circular(10),
-      onTap: () => _showCampaignDetailSheet(
-        campaignId: campaignId,
-        title: title,
-        slogan: slogan,
-        participants: participants,
-        totalWacStaked: totalWacStaked,
-        myStakedWac: myStakedWac,
-        isLeader: isLeader,
-        speed: speed,
-        pinnedLat: pinnedLat,
-        pinnedLng: pinnedLng,
-        isEmergency: isEmergency,
-        emergencyWacPool: emergencyWacPool,
-        emergencyAreaM2: emergencyAreaM2,
-        emergencyExpiresAt: emergencyExpiresAt,
-      ),
+      onTap: () {
+        // Haritada konumuna git
+        if (pinnedLat != null && pinnedLng != null) {
+          globalSwitchTab?.call(0);
+          globalMapNavigateTo?.call(pinnedLat, pinnedLng, zoom: 8.0);
+        }
+        _showCampaignDetailSheet(
+          campaignId: campaignId,
+          title: title,
+          slogan: slogan,
+          participants: participants,
+          totalWacStaked: totalWacStaked,
+          myStakedWac: myStakedWac,
+          isLeader: isLeader,
+          speed: speed,
+          pinnedLat: pinnedLat,
+          pinnedLng: pinnedLng,
+          isEmergency: isEmergency,
+          emergencyWacPool: emergencyWacPool,
+          emergencyAreaM2: emergencyAreaM2,
+          emergencyExpiresAt: emergencyExpiresAt,
+        );
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
@@ -1865,9 +1872,18 @@ class _GlobalTabState extends State<_GlobalTab> {
     final categoryLabel = _categories[categoryType] ?? categoryType;
     final cachedLevel = (c['cachedLevel'] ?? 0);
     final levelStr = cachedLevel is double ? cachedLevel.toStringAsFixed(0) : '$cachedLevel';
+    final pinnedLat = (c['pinnedLat'] as num?)?.toDouble();
+    final pinnedLng = (c['pinnedLng'] as num?)?.toDouble();
 
     return GestureDetector(
-      onTap: () => _openCampaignDetail(campaignId),
+      onTap: () {
+        // Haritada konumuna git
+        if (pinnedLat != null && pinnedLng != null) {
+          globalSwitchTab?.call(0);
+          globalMapNavigateTo?.call(pinnedLat, pinnedLng, zoom: 8.0);
+        }
+        _openCampaignDetail(campaignId);
+      },
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(12),
