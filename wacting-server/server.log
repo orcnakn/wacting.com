@@ -1,0 +1,5 @@
+{"level":30,"time":1775231275459,"pid":27728,"hostname":"DESKTOP-QVIL6F8","msg":"Prisma Postgres Connected"}
+{"level":30,"time":1775231275519,"pid":27728,"hostname":"DESKTOP-QVIL6F8","msg":"Loaded 0 icons from DB into engine"}
+{"level":30,"time":1775231275524,"pid":27728,"hostname":"DESKTOP-QVIL6F8","msg":"Wacting Physics Engine Running (5Hz)"}
+{"level":30,"time":1775231275588,"pid":27728,"hostname":"DESKTOP-QVIL6F8","msg":"Flutter web served from C:\\Users\\STC\\Desktop\\wacting.com\\wacting-server\\src\\public\\web"}
+{"level":50,"time":1775231275789,"pid":27728,"hostname":"DESKTOP-QVIL6F8","err":{"type":"Error","message":"listen EADDRINUSE: address already in use 0.0.0.0:3000","stack":"Error: listen EADDRINUSE: address already in use 0.0.0.0:3000\n    at Server.setupListenHandle [as _listen2] (node:net:1948:16)\n    at listenInCluster (node:net:2005:12)\n    at node:net:2214:7\n    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)","code":"EADDRINUSE","errno":-4091,"syscall":"listen","address":"0.0.0.0","port":3000},"msg":"listen EADDRINUSE: address already in use 0.0.0.0:3000"}
