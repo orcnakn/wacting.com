@@ -222,6 +222,10 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                     });
                 }
 
+                // Pre-calculate initial level (1 member = leader, 0 years old)
+                const initialWac = parseFloat((isEmergency ? emergencyWacPool : stakeAmount).toString());
+                const initialLc = calculateLevel(1, new Date(), initialWac);
+
                 // Create campaign
                 const c = await (tx as any).campaign.create({
                     data: {
@@ -245,6 +249,9 @@ export async function campaignRoutes(fastify: FastifyInstance) {
                         emergencyWacPool: isEmergency ? emergencyWacPool : new Prisma.Decimal(0),
                         emergencyAreaM2: emergencyAreaM2,
                         emergencyExpiresAt: emergencyExpiresAt,
+                        cachedLevel: initialLc.totalLevel,
+                        cachedWidthMeters: initialLc.widthMeters,
+                        cachedHeightMeters: initialLc.heightMeters,
                     },
                 });
 

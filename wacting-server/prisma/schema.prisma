@@ -603,7 +603,7 @@ model Campaign {
   emergencyExpiresAt DateTime?                                  // When the campaign expires
 
   // Level system (cached, recalculated on member/WAC changes)
-  cachedLevel        Float    @default(0)   // Total level = followerLevel + yearLevel + wacLevel
+  cachedLevel        Float    @default(1)   // Total level = followerLevel + yearLevel + wacLevel (min 1)
   cachedWidthMeters  Float    @default(0)   // Physical sign width in meters (level^2 * sqrt(level) * 2)
   cachedHeightMeters Float    @default(0)   // Physical sign height in meters (level^2 * sqrt(level))
 }
