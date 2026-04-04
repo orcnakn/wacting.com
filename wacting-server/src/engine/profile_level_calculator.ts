@@ -1,11 +1,15 @@
 /**
  * profile_level_calculator.ts
  *
- * Profile level = followerLevel + ageLevel + wacLevel
+ * Profile level = max(1, min(200, followerLevel + ageLevel + wacLevel))
  *
  * Follower level:  FLOOR(MAX(0, (LOG10(followers) - 1) * 10))
  * Age level:       1 + full years since profile creation
  * WAC level:       FLOOR(MAX(0, (LOG10(wacBalance) - 1) * 10))
+ *
+ * Distribution: ~70% of profiles land at L30 or below (logarithmic scaling
+ * makes high levels exponentially rarer). Maximum is capped at 200.
+ * All profiles start at minimum L1 (ageLevel ≥ 1 for new accounts).
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -50,7 +54,7 @@ export function calculateProfileLevel(
     const followerLevel = flooredLogComponent(followerCount);
     const ageLevel = ageLevelSince(createdAt);
     const wacLevel = flooredLogComponent(wacBalance);
-    const totalLevel = followerLevel + ageLevel + wacLevel;
+    const totalLevel = Math.max(1, Math.min(200, followerLevel + ageLevel + wacLevel));
     return { followerLevel, ageLevel, wacLevel, totalLevel };
 }
 

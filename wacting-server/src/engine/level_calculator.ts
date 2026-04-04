@@ -1,11 +1,14 @@
 /**
  * level_calculator.ts
  *
- * Campaign level = followerLevel + yearsActive + wacLevel
+ * Campaign level = max(1, min(200, followerLevel + yearsActive + wacLevel))
  *
  * Follower level:  IF(LOG10(members) - 1 >= 0, (LOG10(members) - 1) * 10, 0)
  * Year level:      years since campaign creation (integer)
  * WAC level:       IF(LOG10(totalWacStaked) - 1 >= 0, (LOG10(totalWacStaked) - 1) * 10, 0)
+ *
+ * Distribution: ~70% of campaigns land at L30 or below (logarithmic scaling
+ * makes high levels exponentially rarer). Maximum is capped at 200.
  *
  * Physical sign size (meters):
  *   baseValue = level^2 * sqrt(level)
@@ -66,7 +69,7 @@ export function calculateLevel(
     const followerLevel = logComponent(memberCount);
     const yearLevel = yearsSince(createdAt);
     const wacLevel = logComponent(totalWacStaked);
-    const totalLevel = followerLevel + yearLevel + wacLevel;
+    const totalLevel = Math.max(1, Math.min(200, followerLevel + yearLevel + wacLevel));
     const { widthMeters, heightMeters } = levelToPhysicalSize(totalLevel);
 
     return { followerLevel, yearLevel, wacLevel, totalLevel, widthMeters, heightMeters };
