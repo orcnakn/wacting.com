@@ -156,7 +156,10 @@ class _GridScreenState extends ConsumerState<GridScreen> {
         (ic) => ic!.campaignId == campaignId, orElse: () => null);
       if (match != null) {
         final latLng = _offsetToLatLng(match.position);
-        _mapController.move(latLng, 7.0);
+        final focusZoom = match.widthMeters > 0
+            ? LodManager.focusZoom(match.widthMeters, latLng.latitude).clamp(5.0, 16.0)
+            : 11.0;
+        _mapController.move(latLng, focusZoom);
       }
     };
     _fetchUserLocations();
@@ -980,10 +983,11 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                     continue;
                   }
 
-                  // Campaign icons: level-based LOD with Web Mercator projection
+                  // Campaign icons: always visible, level determines rendering mode
+                  // High zoom + high level → polygon (tabela)
+                  // Low zoom or low level → level-scaled dot
                   final double opacity = LodManager.campaignOpacity(
                       icon.level, icon.widthMeters, latLng.latitude, zoom);
-                  if (opacity <= 0) continue; // Not visible at this zoom
 
                   for (final worldOffset in _worldOffsets) {
                     final offsetPoint = LatLng(latLng.latitude, latLng.longitude + worldOffset);
@@ -991,7 +995,7 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                     final double? rectW = LodManager.renderWidthPx(
                         icon.widthMeters, latLng.latitude, zoom);
 
-                    if (rectW != null) {
+                    if (rectW != null && opacity > 0) {
                       // Full detail: polygon (tabela) with 2:1 aspect, clamped 10-100px
                       final double rectH = rectW / 2.0;
                       final String? slogan = icon.campaignSlogan;
@@ -1042,15 +1046,17 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                           ),
                       ));
                     } else {
-                      // Below 10px threshold: fixed-size dot icon
-                      const double dotSize = 8.0;
+                      // Below polygon threshold OR too far: level-scaled dot
+                      // Level determines dot size: L1=6px, L10=10px, L50=16px, L200=20px
+                      final double dotSize = (4.0 + icon.level.clamp(1, 200) * 0.08).clamp(6.0, 20.0);
+                      final double dotOpacity = opacity > 0 ? opacity : (0.4 + icon.level.clamp(1, 200) * 0.003).clamp(0.4, 1.0);
 
                       markerDots.add(Marker(
                           point: offsetPoint,
                           width: dotSize + 6,
                           height: dotSize + 6,
                           child: Opacity(
-                            opacity: opacity,
+                            opacity: dotOpacity,
                             child: Center(
                               child: Container(
                                 width: dotSize,
@@ -1697,17 +1703,25 @@ class _GridScreenState extends ConsumerState<GridScreen> {
                                 final pLat = (c['pinnedLat'] as num?)?.toDouble();
                                 final pLng = (c['pinnedLng'] as num?)?.toDouble();
                                 final campaignId = c['id'] as String?;
+                                final cWidth = (c['cachedWidthMeters'] as num?)?.toDouble() ?? 0;
                                 return GestureDetector(
                                   onTap: () {
                                     setState(() => _campaignPanelOpen = false);
                                     if (pLat != null && pLng != null) {
-                                      _mapController.move(LatLng(pLat, pLng), 11.0);
+                                      final focusZoom = cWidth > 0
+                                          ? LodManager.focusZoom(cWidth, pLat).clamp(5.0, 16.0)
+                                          : 11.0;
+                                      _mapController.move(LatLng(pLat, pLng), focusZoom);
                                     } else {
                                       final match = _lastIcons?.cast<IconModel?>().firstWhere(
                                         (ic) => ic!.campaignSlogan == slogan && slogan.isNotEmpty,
                                         orElse: () => null);
                                       if (match != null) {
-                                        _mapController.move(_offsetToLatLng(match.position), 11.0);
+                                        final matchLat = _offsetToLatLng(match.position);
+                                        final focusZoom = match.widthMeters > 0
+                                            ? LodManager.focusZoom(match.widthMeters, matchLat.latitude).clamp(5.0, 16.0)
+                                            : 11.0;
+                                        _mapController.move(matchLat, focusZoom);
                                       }
                                     }
                                     if (campaignId != null) {

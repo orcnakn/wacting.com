@@ -9,6 +9,9 @@ class AppConfig {
   // ─────────────────────────────────────────────────────────────────────────
   static const bool isProduction = bool.fromEnvironment('PRODUCTION', defaultValue: false);
 
+  // LOCAL_SERVER=true → use real server at localhost (for dev/testing)
+  static const bool isLocalServer = bool.fromEnvironment('LOCAL_SERVER', defaultValue: false);
+
   // ─────────────────────────────────────────────────────────────────────────
   // URLS
   // ─────────────────────────────────────────────────────────────────────────

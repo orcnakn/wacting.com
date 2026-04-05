@@ -34,7 +34,7 @@ class SocketService {
   IO.Socket? _socket;
 
   void connect(String serverUrl) {
-    if (AppConfig.isProduction) {
+    if (AppConfig.isProduction || AppConfig.isLocalServer) {
       _connectProduction(serverUrl);
     } else {
       _connectMock();
