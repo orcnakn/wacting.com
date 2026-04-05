@@ -50,22 +50,22 @@ function yearsSince(date: Date): number {
 /**
  * Convert a level to physical sign dimensions in meters.
  * baseValue = level^2 * sqrt(level)
- * width = baseValue * MAP_SCALE, height = width / 2
+ * width = baseValue * 2, height = baseValue  (2:1 aspect ratio)
  *
- * MAP_SCALE = 100 makes level-based sizes practical for map rendering:
- *   L1  →   100m  (polygon at zoom ≈10)
- *   L5  →  5,590m (polygon at zoom ≈7)
- *   L10 → 31,623m (polygon at zoom ≈5)
- *   L20 → 178,885m (polygon at zoom ≈3)
+ * Example sizes:
+ *   L1  →       2m  (dot only, tabela at extreme zoom)
+ *   L5  →     112m  (tabela at zoom ≈14)
+ *   L10 →     632m  (tabela at zoom ≈11)
+ *   L20 →   3,578m  (tabela at zoom ≈9)
+ *   L43 →  24,249m  (tabela at zoom ≈6)
+ *   L100 → 200,000m (tabela at zoom ≈4)
  *
- * Minimum 50,000m ensures even L1 campaigns appear as dots from zoom ≈4.
+ * Below-threshold campaigns always appear as level-scaled dots.
  */
 export function levelToPhysicalSize(level: number): { widthMeters: number; heightMeters: number } {
     if (level <= 0) return { widthMeters: 0, heightMeters: 0 };
     const baseValue = Math.pow(level, 2) * Math.sqrt(level);
-    const widthMeters = Math.max(50000, baseValue * 100);
-    const heightMeters = widthMeters / 2;
-    return { widthMeters, heightMeters };
+    return { widthMeters: baseValue * 2, heightMeters: baseValue };
 }
 
 /**
